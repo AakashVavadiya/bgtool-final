@@ -16,6 +16,7 @@ import {
   FileType,
   Layers,
   Eye,
+  EyeOff,
   Pipette,
   Copy,
   Palette,
@@ -3330,6 +3331,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
 
   // 14. Binary & Code Research Editor Modal State
   const [isCodeEditorOpen, setIsCodeEditorOpen] = useState<boolean>(false);
+  const [showEditorTopHeading, setShowEditorTopHeading] = useState<boolean>(true);
   const [rawBinaryBytes, setRawBinaryBytes] = useState<Uint8Array | null>(null);
   const [editorTheme, setEditorTheme] = useState<EditorThemeKey>("vs-dark");
   const [editorFontSize, setEditorFontSize] = useState<number>(13);
@@ -5468,7 +5470,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
   return (
     <div className="w-full flex flex-col gap-8">
       {/* ── TOP DYNAMIC ISLAND FLOATING BAR (Smooth Centered Animation) ─────── */}
-      {hasProcessed && !isEditingSettings && (
+      {hasProcessed && !isEditingSettings && !isCodeEditorOpen && (
         <div className="fixed top-4 sm:top-6 inset-x-0 flex justify-center items-center z-50 pointer-events-none px-3">
           <aside
             aria-label="Quick download dynamic island"
@@ -9307,309 +9309,362 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
             color: EDITOR_THEMES[editorTheme].text,
           }}
         >
-          {/* 1. Header Toolbar */}
-          <div
-            className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2.5 shadow-md backdrop-blur-md shrink-0"
-            style={{
-              borderColor: EDITOR_THEMES[editorTheme].border,
-              backgroundColor: EDITOR_THEMES[editorTheme].gutterBg,
-            }}
-          >
-            {/* Left: Branding & File Info */}
-            <div className="flex items-center gap-3">
+          {/* 1. Header Toolbar (Can be toggled/hidden) */}
+          {showEditorTopHeading ? (
+            <>
               <div
-                className="flex h-9 w-9 items-center justify-center rounded-xl border shadow-inner"
+                className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2.5 shadow-md backdrop-blur-md shrink-0"
                 style={{
-                  backgroundColor: EDITOR_THEMES[editorTheme].bg,
                   borderColor: EDITOR_THEMES[editorTheme].border,
-                  color: EDITOR_THEMES[editorTheme].accent,
+                  backgroundColor: EDITOR_THEMES[editorTheme].gutterBg,
                 }}
               >
-                <Code2 className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-extrabold text-sm tracking-wide text-foreground">
-                    {file?.name ? `${file.name.replace(/\.[^.]+$/, "")}.${binaryOutputMode === "C-Array" ? "h" : binaryOutputMode === "Hexadecimal" ? "hex" : binaryOutputMode === "Base64" ? "base64" : "bin"}` : "image_stream.bin"}
-                  </span>
-                  <span
-                    className="rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wider border"
+                {/* Left: Branding & File Info */}
+                <div className="flex items-center gap-3">
+                  <div
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border shadow-inner"
                     style={{
-                      borderColor: EDITOR_THEMES[editorTheme].accent,
+                      backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                      borderColor: EDITOR_THEMES[editorTheme].border,
                       color: EDITOR_THEMES[editorTheme].accent,
-                      backgroundColor: `${EDITOR_THEMES[editorTheme].accent}15`,
                     }}
                   >
-                    {binaryOutputMode} Mode
+                    <Code2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-extrabold text-sm tracking-wide text-foreground">
+                        {file?.name ? `${file.name.replace(/\.[^.]+$/, "")}.${binaryOutputMode === "C-Array" ? "h" : binaryOutputMode === "Hexadecimal" ? "hex" : binaryOutputMode === "Base64" ? "base64" : "bin"}` : "image_stream.bin"}
+                      </span>
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wider border"
+                        style={{
+                          borderColor: EDITOR_THEMES[editorTheme].accent,
+                          color: EDITOR_THEMES[editorTheme].accent,
+                          backgroundColor: `${EDITOR_THEMES[editorTheme].accent}15`,
+                        }}
+                      >
+                        {binaryOutputMode} Mode
+                      </span>
+                    </div>
+                    <p
+                      className="text-[11px] font-semibold mt-0.5"
+                      style={{ color: EDITOR_THEMES[editorTheme].gutterText }}
+                    >
+                      {binaryStats.totalBytes > 0
+                        ? `${binaryStats.totalBytes.toLocaleString()} Bytes (${binaryStats.totalBits.toLocaleString()} Bits)`
+                        : `${(fullBinaryOutputText || binaryOutputText).length.toLocaleString()} Characters`}
+                      {" · "}
+                      {binaryStats.magic.format}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Middle: Live Format Switcher Tabs */}
+                <div
+                  className="flex items-center gap-1 p-1 rounded-xl border overflow-x-auto max-w-full"
+                  style={{
+                    backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                    borderColor: EDITOR_THEMES[editorTheme].border,
+                  }}
+                >
+                  {(
+                    [
+                      "Binary",
+                      "Hexadecimal",
+                      "Base64",
+                      "C-Array",
+                      "Pixel-Matrix",
+                      "Decimal",
+                      "Octal",
+                    ] as const
+                  ).map((mode) => {
+                    const isActive = binaryOutputMode === mode;
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => {
+                          setBinaryOutputMode(mode);
+                          if (imageSrc) generateBinaryData(imageSrc);
+                        }}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer"
+                        style={{
+                          backgroundColor: isActive ? EDITOR_THEMES[editorTheme].accent : "transparent",
+                          color: isActive ? "#ffffff" : EDITOR_THEMES[editorTheme].text,
+                        }}
+                      >
+                        {mode}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Right: Actions, Themes, Search, Wrap, Hide Heading, Close */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Find / Search Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setIsEditorSearching(!isEditorSearching)}
+                    className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all cursor-pointer"
+                    style={{
+                      borderColor: isEditorSearching ? EDITOR_THEMES[editorTheme].accent : EDITOR_THEMES[editorTheme].border,
+                      backgroundColor: isEditorSearching ? `${EDITOR_THEMES[editorTheme].accent}25` : EDITOR_THEMES[editorTheme].bg,
+                      color: isEditorSearching ? EDITOR_THEMES[editorTheme].accent : EDITOR_THEMES[editorTheme].text,
+                    }}
+                    title="Search bytes or text in stream (Ctrl+F)"
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Search</span>
+                  </button>
+
+                  {/* Word Wrap Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setEditorLineWrap(!editorLineWrap)}
+                    className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all cursor-pointer"
+                    style={{
+                      borderColor: EDITOR_THEMES[editorTheme].border,
+                      backgroundColor: editorLineWrap ? `${EDITOR_THEMES[editorTheme].accent}20` : EDITOR_THEMES[editorTheme].bg,
+                      color: editorLineWrap ? EDITOR_THEMES[editorTheme].accent : EDITOR_THEMES[editorTheme].text,
+                    }}
+                    title={`Word Wrap: ${editorLineWrap ? "ON" : "OFF"}`}
+                  >
+                    <WrapText className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">{editorLineWrap ? "Wrap" : "No Wrap"}</span>
+                  </button>
+
+                  {/* Font Size Adjusters */}
+                  <div
+                    className="flex items-center rounded-lg border overflow-hidden"
+                    style={{
+                      borderColor: EDITOR_THEMES[editorTheme].border,
+                      backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setEditorFontSize((prev) => Math.max(10, prev - 1))}
+                      className="px-2 py-1 hover:bg-white/10 transition-colors font-bold text-xs cursor-pointer"
+                      title="Decrease font size"
+                    >
+                      A-
+                    </button>
+                    <span
+                      className="px-1.5 text-[11px] font-mono border-x"
+                      style={{ borderColor: EDITOR_THEMES[editorTheme].border }}
+                    >
+                      {editorFontSize}px
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setEditorFontSize((prev) => Math.min(22, prev + 1))}
+                      className="px-2 py-1 hover:bg-white/10 transition-colors font-bold text-xs cursor-pointer"
+                      title="Increase font size"
+                    >
+                      A+
+                    </button>
+                  </div>
+
+                  {/* Theme Selector */}
+                  <select
+                    value={editorTheme}
+                    onChange={(e) => setEditorTheme(e.target.value as EditorThemeKey)}
+                    className="rounded-lg border px-2.5 py-1 text-xs font-bold focus:outline-none cursor-pointer"
+                    style={{
+                      backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                      borderColor: EDITOR_THEMES[editorTheme].border,
+                      color: EDITOR_THEMES[editorTheme].text,
+                    }}
+                  >
+                    {(Object.keys(EDITOR_THEMES) as EditorThemeKey[]).map((tk) => (
+                      <option key={tk} value={tk}>
+                        {EDITOR_THEMES[tk].name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Copy Full Dataset */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      copyToClipboard(
+                        fullBinaryOutputText || binaryOutputText,
+                        `${binaryOutputMode} Full Dataset`
+                      );
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all shadow-xs cursor-pointer hover:opacity-90"
+                    style={{
+                      backgroundColor: EDITOR_THEMES[editorTheme].accent,
+                      borderColor: EDITOR_THEMES[editorTheme].accent,
+                      color: "#ffffff",
+                    }}
+                    title="Copy 100% complete dataset to clipboard"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Copy All</span>
+                  </button>
+
+                  {/* Download File */}
+                  <button
+                    type="button"
+                    onClick={handleDownload}
+                    className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all shadow-xs cursor-pointer hover:bg-white/10"
+                    style={{
+                      backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                      borderColor: EDITOR_THEMES[editorTheme].border,
+                      color: EDITOR_THEMES[editorTheme].text,
+                    }}
+                    title="Download full file"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Export</span>
+                  </button>
+
+                  {/* Hide Top Heading Toggle Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowEditorTopHeading(false)}
+                    className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all shadow-xs cursor-pointer hover:bg-white/10"
+                    style={{
+                      backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                      borderColor: EDITOR_THEMES[editorTheme].border,
+                      color: EDITOR_THEMES[editorTheme].text,
+                    }}
+                    title="Hide top heading & toolbar for full code view"
+                  >
+                    <EyeOff className="h-3.5 w-3.5 opacity-80" />
+                    <span className="hidden lg:inline">Hide Heading</span>
+                  </button>
+
+                  {/* Close Button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsCodeEditorOpen(false)}
+                    className="flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-extrabold text-red-400 hover:bg-red-500 hover:text-white transition-all shadow-xs cursor-pointer"
+                    title="Close code editor (Esc)"
+                  >
+                    <X className="h-4 w-4" />
+                    <span>Close</span>
+                    <kbd className="hidden sm:inline-block rounded px-1 py-0.2 text-[9px] font-mono border border-current opacity-70">
+                      ESC
+                    </kbd>
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Binary Deep Research & Stream Analytics Panel */}
+              <div
+                className="flex items-center gap-3 px-4 py-2 border-b overflow-x-auto shrink-0 text-[11px]"
+                style={{
+                  borderColor: EDITOR_THEMES[editorTheme].border,
+                  backgroundColor: `${EDITOR_THEMES[editorTheme].gutterBg}aa`,
+                }}
+              >
+                {/* Header Signature */}
+                <div
+                  className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 shrink-0"
+                  style={{
+                    borderColor: EDITOR_THEMES[editorTheme].border,
+                    backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                  }}
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" style={{ color: EDITOR_THEMES[editorTheme].accent }} />
+                  <span className="font-bold opacity-75">Header:</span>
+                  <span className="font-extrabold" style={{ color: EDITOR_THEMES[editorTheme].accent }}>
+                    {binaryStats.magic.format}
+                  </span>
+                  <span className="text-[10px] opacity-70 font-mono">[{binaryStats.magic.magicHex}]</span>
+                </div>
+
+                {/* Shannon Entropy */}
+                <div
+                  className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 shrink-0"
+                  style={{
+                    borderColor: EDITOR_THEMES[editorTheme].border,
+                    backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                  }}
+                >
+                  <Activity className="h-3.5 w-3.5 text-amber-400" />
+                  <span className="font-bold opacity-75">Shannon Entropy:</span>
+                  <span className="font-extrabold text-amber-400">
+                    {binaryStats.entropy} / 8.000
+                  </span>
+                  <span className="text-[10px] opacity-70">
+                    {binaryStats.entropy > 7.5 ? "(High Randomness · Compressed)" : binaryStats.entropy > 4 ? "(Moderate Structure)" : "(Low Randomness · Sparse)"}
                   </span>
                 </div>
-                <p
-                  className="text-[11px] font-semibold mt-0.5"
-                  style={{ color: EDITOR_THEMES[editorTheme].gutterText }}
-                >
-                  {binaryStats.totalBytes > 0
-                    ? `${binaryStats.totalBytes.toLocaleString()} Bytes (${binaryStats.totalBits.toLocaleString()} Bits)`
-                    : `${(fullBinaryOutputText || binaryOutputText).length.toLocaleString()} Characters`}
-                  {" · "}
-                  {binaryStats.magic.format}
-                </p>
-              </div>
-            </div>
 
-            {/* Middle: Live Format Switcher Tabs */}
+                {/* Bit Balance / Density */}
+                <div
+                  className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 shrink-0"
+                  style={{
+                    borderColor: EDITOR_THEMES[editorTheme].border,
+                    backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                  }}
+                >
+                  <Binary className="h-3.5 w-3.5 text-emerald-400" />
+                  <span className="font-bold opacity-75">Bit Balance:</span>
+                  <span className="font-extrabold text-emerald-400">
+                    {binaryStats.bitDensity}% [1s] · {100 - binaryStats.bitDensity}% [0s]
+                  </span>
+                  <span className="text-[10px] opacity-70 font-mono">
+                    (0s: {binaryStats.zeroCount.toLocaleString()} | 1s: {binaryStats.oneCount.toLocaleString()})
+                  </span>
+                </div>
+
+                {/* Bit Depth / Grouping */}
+                <div
+                  className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 shrink-0"
+                  style={{
+                    borderColor: EDITOR_THEMES[editorTheme].border,
+                    backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                  }}
+                >
+                  <Cpu className="h-3.5 w-3.5" style={{ color: EDITOR_THEMES[editorTheme].accent }} />
+                  <span className="font-bold opacity-75">Grouping:</span>
+                  <span className="font-extrabold">{binaryBitDepth}</span>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Floating Controls when Top Heading is Hidden */
             <div
-              className="flex items-center gap-1 p-1 rounded-xl border overflow-x-auto max-w-full"
+              className="absolute top-3 right-4 z-50 flex items-center gap-2 rounded-xl p-1.5 border shadow-2xl backdrop-blur-xl animate-in fade-in duration-150"
               style={{
-                backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                backgroundColor: `${EDITOR_THEMES[editorTheme].gutterBg}ee`,
                 borderColor: EDITOR_THEMES[editorTheme].border,
               }}
             >
-              {(
-                [
-                  "Binary",
-                  "Hexadecimal",
-                  "Base64",
-                  "C-Array",
-                  "Pixel-Matrix",
-                  "Decimal",
-                  "Octal",
-                ] as const
-              ).map((mode) => {
-                const isActive = binaryOutputMode === mode;
-                return (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => {
-                      setBinaryOutputMode(mode);
-                      if (imageSrc) generateBinaryData(imageSrc);
-                    }}
-                    className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer"
-                    style={{
-                      backgroundColor: isActive ? EDITOR_THEMES[editorTheme].accent : "transparent",
-                      color: isActive ? "#ffffff" : EDITOR_THEMES[editorTheme].text,
-                    }}
-                  >
-                    {mode}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Right: Actions, Themes, Search, Wrap, Close */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Find / Search Toggle */}
               <button
                 type="button"
-                onClick={() => setIsEditorSearching(!isEditorSearching)}
-                className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all cursor-pointer"
-                style={{
-                  borderColor: isEditorSearching ? EDITOR_THEMES[editorTheme].accent : EDITOR_THEMES[editorTheme].border,
-                  backgroundColor: isEditorSearching ? `${EDITOR_THEMES[editorTheme].accent}25` : EDITOR_THEMES[editorTheme].bg,
-                  color: isEditorSearching ? EDITOR_THEMES[editorTheme].accent : EDITOR_THEMES[editorTheme].text,
-                }}
-                title="Search bytes or text in stream (Ctrl+F)"
-              >
-                <Search className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Search</span>
-              </button>
-
-              {/* Word Wrap Toggle */}
-              <button
-                type="button"
-                onClick={() => setEditorLineWrap(!editorLineWrap)}
-                className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all cursor-pointer"
-                style={{
-                  borderColor: EDITOR_THEMES[editorTheme].border,
-                  backgroundColor: editorLineWrap ? `${EDITOR_THEMES[editorTheme].accent}20` : EDITOR_THEMES[editorTheme].bg,
-                  color: editorLineWrap ? EDITOR_THEMES[editorTheme].accent : EDITOR_THEMES[editorTheme].text,
-                }}
-                title={`Word Wrap: ${editorLineWrap ? "ON" : "OFF"}`}
-              >
-                <WrapText className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{editorLineWrap ? "Wrap" : "No Wrap"}</span>
-              </button>
-
-              {/* Font Size Adjusters */}
-              <div
-                className="flex items-center rounded-lg border overflow-hidden"
+                onClick={() => setShowEditorTopHeading(true)}
+                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all cursor-pointer hover:bg-white/10"
                 style={{
                   borderColor: EDITOR_THEMES[editorTheme].border,
                   backgroundColor: EDITOR_THEMES[editorTheme].bg,
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setEditorFontSize((prev) => Math.max(10, prev - 1))}
-                  className="px-2 py-1 hover:bg-white/10 transition-colors font-bold text-xs cursor-pointer"
-                  title="Decrease font size"
-                >
-                  A-
-                </button>
-                <span
-                  className="px-1.5 text-[11px] font-mono border-x"
-                  style={{ borderColor: EDITOR_THEMES[editorTheme].border }}
-                >
-                  {editorFontSize}px
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setEditorFontSize((prev) => Math.min(22, prev + 1))}
-                  className="px-2 py-1 hover:bg-white/10 transition-colors font-bold text-xs cursor-pointer"
-                  title="Increase font size"
-                >
-                  A+
-                </button>
-              </div>
-
-              {/* Theme Selector */}
-              <select
-                value={editorTheme}
-                onChange={(e) => setEditorTheme(e.target.value as EditorThemeKey)}
-                className="rounded-lg border px-2.5 py-1 text-xs font-bold focus:outline-none cursor-pointer"
-                style={{
-                  backgroundColor: EDITOR_THEMES[editorTheme].bg,
-                  borderColor: EDITOR_THEMES[editorTheme].border,
                   color: EDITOR_THEMES[editorTheme].text,
                 }}
+                title="Show top heading and toolbar"
               >
-                {(Object.keys(EDITOR_THEMES) as EditorThemeKey[]).map((tk) => (
-                  <option key={tk} value={tk}>
-                    {EDITOR_THEMES[tk].name}
-                  </option>
-                ))}
-              </select>
-
-              {/* Copy Full Dataset */}
-              <button
-                type="button"
-                onClick={() => {
-                  copyToClipboard(
-                    fullBinaryOutputText || binaryOutputText,
-                    `${binaryOutputMode} Full Dataset`
-                  );
-                }}
-                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all shadow-xs cursor-pointer hover:opacity-90"
-                style={{
-                  backgroundColor: EDITOR_THEMES[editorTheme].accent,
-                  borderColor: EDITOR_THEMES[editorTheme].accent,
-                  color: "#ffffff",
-                }}
-                title="Copy 100% complete dataset to clipboard"
-              >
-                <Copy className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Copy All</span>
+                <Eye className="h-3.5 w-3.5" style={{ color: EDITOR_THEMES[editorTheme].accent }} />
+                <span>Show Heading</span>
               </button>
 
-              {/* Download File */}
-              <button
-                type="button"
-                onClick={handleDownload}
-                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all shadow-xs cursor-pointer hover:bg-white/10"
-                style={{
-                  backgroundColor: EDITOR_THEMES[editorTheme].bg,
-                  borderColor: EDITOR_THEMES[editorTheme].border,
-                  color: EDITOR_THEMES[editorTheme].text,
-                }}
-                title="Download full file"
-              >
-                <Download className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Export</span>
-              </button>
-
-              {/* Close Button */}
               <button
                 type="button"
                 onClick={() => setIsCodeEditorOpen(false)}
-                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all shadow-xs cursor-pointer hover:bg-red-500 hover:text-white"
-                style={{
-                  backgroundColor: EDITOR_THEMES[editorTheme].bg,
-                  borderColor: EDITOR_THEMES[editorTheme].border,
-                  color: EDITOR_THEMES[editorTheme].text,
-                }}
-                title="Close editor (Esc)"
+                className="flex items-center gap-1.5 rounded-lg border border-red-500/50 bg-red-500/15 px-3.5 py-1.5 text-xs font-extrabold text-red-400 hover:bg-red-500 hover:text-white transition-all cursor-pointer shadow-xs"
+                title="Close code editor (Esc)"
               >
                 <X className="h-4 w-4" />
-                <kbd className="hidden md:inline-block rounded px-1 py-0.2 text-[9px] font-mono border opacity-70">
+                <span>Close Editor</span>
+                <kbd className="hidden sm:inline-block rounded px-1 py-0.2 text-[9px] font-mono border border-current opacity-70">
                   ESC
                 </kbd>
               </button>
             </div>
-          </div>
-
-          {/* 2. Binary Deep Research & Stream Analytics Panel */}
-          <div
-            className="flex items-center gap-3 px-4 py-2 border-b overflow-x-auto shrink-0 text-[11px]"
-            style={{
-              borderColor: EDITOR_THEMES[editorTheme].border,
-              backgroundColor: `${EDITOR_THEMES[editorTheme].gutterBg}aa`,
-            }}
-          >
-            {/* Header Signature */}
-            <div
-              className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 shrink-0"
-              style={{
-                borderColor: EDITOR_THEMES[editorTheme].border,
-                backgroundColor: EDITOR_THEMES[editorTheme].bg,
-              }}
-            >
-              <ShieldCheck className="h-3.5 w-3.5" style={{ color: EDITOR_THEMES[editorTheme].accent }} />
-              <span className="font-bold opacity-75">Header:</span>
-              <span className="font-extrabold" style={{ color: EDITOR_THEMES[editorTheme].accent }}>
-                {binaryStats.magic.format}
-              </span>
-              <span className="text-[10px] opacity-70 font-mono">[{binaryStats.magic.magicHex}]</span>
-            </div>
-
-            {/* Shannon Entropy */}
-            <div
-              className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 shrink-0"
-              style={{
-                borderColor: EDITOR_THEMES[editorTheme].border,
-                backgroundColor: EDITOR_THEMES[editorTheme].bg,
-              }}
-            >
-              <Activity className="h-3.5 w-3.5 text-amber-400" />
-              <span className="font-bold opacity-75">Shannon Entropy:</span>
-              <span className="font-extrabold text-amber-400">
-                {binaryStats.entropy} / 8.000
-              </span>
-              <span className="text-[10px] opacity-70">
-                {binaryStats.entropy > 7.5 ? "(High Randomness · Compressed)" : binaryStats.entropy > 4 ? "(Moderate Structure)" : "(Low Randomness · Sparse)"}
-              </span>
-            </div>
-
-            {/* Bit Balance / Density */}
-            <div
-              className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 shrink-0"
-              style={{
-                borderColor: EDITOR_THEMES[editorTheme].border,
-                backgroundColor: EDITOR_THEMES[editorTheme].bg,
-              }}
-            >
-              <Binary className="h-3.5 w-3.5 text-emerald-400" />
-              <span className="font-bold opacity-75">Bit Balance:</span>
-              <span className="font-extrabold text-emerald-400">
-                {binaryStats.bitDensity}% [1s] · {100 - binaryStats.bitDensity}% [0s]
-              </span>
-              <span className="text-[10px] opacity-70 font-mono">
-                (0s: {binaryStats.zeroCount.toLocaleString()} | 1s: {binaryStats.oneCount.toLocaleString()})
-              </span>
-            </div>
-
-            {/* Bit Depth / Grouping */}
-            <div
-              className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 shrink-0"
-              style={{
-                borderColor: EDITOR_THEMES[editorTheme].border,
-                backgroundColor: EDITOR_THEMES[editorTheme].bg,
-              }}
-            >
-              <Cpu className="h-3.5 w-3.5" style={{ color: EDITOR_THEMES[editorTheme].accent }} />
-              <span className="font-bold opacity-75">Grouping:</span>
-              <span className="font-extrabold">{binaryBitDepth}</span>
-            </div>
-          </div>
+          )}
 
           {/* 3. Search / Byte Hunter Bar (when toggled on) */}
           {isEditorSearching && (
@@ -9761,7 +9816,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
               <span>Encoding: <strong className="text-foreground">UTF-8 / Raw Stream</strong></span>
             </div>
 
-            {/* Right Integrity Info */}
+            {/* Right Integrity Info & Status Bar Close */}
             <div className="flex items-center gap-3 shrink-0">
               <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
                 <Check className="h-3 w-3 text-emerald-400" />
@@ -9771,6 +9826,15 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
               <span>
                 {((fullBinaryOutputText || binaryOutputText || "").length).toLocaleString()} chars
               </span>
+              <button
+                type="button"
+                onClick={() => setIsCodeEditorOpen(false)}
+                className="ml-2 flex items-center gap-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[10px] font-extrabold text-red-400 hover:bg-red-500 hover:text-white transition-all cursor-pointer"
+                title="Close Editor"
+              >
+                <X className="h-3 w-3" />
+                <span>Close</span>
+              </button>
             </div>
           </div>
         </div>
