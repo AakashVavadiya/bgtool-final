@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Dark rounded square background -->
+  <rect width="32" height="32" rx="7" fill="#0f172a"/>
+  <!-- "bg" text in white, Outfit-style bold -->
+  <text
+    x="16"
+    y="22"
+    text-anchor="middle"
+    font-family="'Outfit', 'DM Sans', Arial, sans-serif"
+    font-size="14"
+    font-weight="800"
+    letter-spacing="-0.5"
+    fill="#ffffff"
+  >bg</text>
+  <!-- Orange Accent dot -->
+  <circle cx="25" cy="20.5" r="2.5" fill="#f97316"/>
+</svg>
