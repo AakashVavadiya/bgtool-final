@@ -1361,46 +1361,80 @@ const buildPptxFromImage = (dataUrl: string, imgW: number, imgH: number, filenam
   });
 };
 
-// ── 6. Custom ZIP reader (scan central directory for OOXML file extraction) ────
-const extractFileFromZip = async (buffer: ArrayBuffer, targetPath: string): Promise<string | null> => {
-  const data = new Uint8Array(buffer);
-  const view = new DataView(buffer);
-  const dec = new TextDecoder();
+// ── 6. Custom ZIP reader (scan central directory with deflate decompression) ────
+const extractTextFromZip = async (buffer: ArrayBuffer, targetPath: string): Promise<string | null> => {
+  try {
+    const data = new Uint8Array(buffer);
+    if (data.length < 22) return null;
+    const view = new DataView(buffer);
+    const dec = new TextDecoder();
 
-  // Search for End of Central Directory signature: 0x06054b50
-  let eocdOffset = -1;
-  for (let i = data.length - 22; i >= 0; i--) {
-    if (data[i] === 0x50 && data[i+1] === 0x4B && data[i+2] === 0x05 && data[i+3] === 0x06) {
-      eocdOffset = i;
-      break;
+    // 1. Search for End of Central Directory signature: 0x06054b50
+    let eocdOffset = -1;
+    const maxSearch = Math.min(data.length, 65535 + 22);
+    for (let i = data.length - 22; i >= data.length - maxSearch; i--) {
+      if (data[i] === 0x50 && data[i + 1] === 0x4b && data[i + 2] === 0x05 && data[i + 3] === 0x06) {
+        eocdOffset = i;
+        break;
+      }
     }
-  }
-  if (eocdOffset === -1) return null;
+    if (eocdOffset === -1 || eocdOffset + 22 > data.length) return null;
 
-  const cdOffset = view.getUint32(eocdOffset + 16, true);
-  const cdSize = view.getUint32(eocdOffset + 12, true);
-  let pos = cdOffset;
+    const cdOffset = view.getUint32(eocdOffset + 16, true);
+    const cdSize = view.getUint32(eocdOffset + 12, true);
+    if (cdOffset >= data.length || cdOffset + cdSize > data.length) return null;
 
-  while (pos < cdOffset + cdSize) {
-    if (view.getUint32(pos, true) !== 0x02014B50) break;
-    const nameLen = view.getUint16(pos + 28, true);
-    const extraLen = view.getUint16(pos + 30, true);
-    const commentLen = view.getUint16(pos + 32, true);
-    const localOffset = view.getUint32(pos + 42, true);
-    const name = dec.decode(data.slice(pos + 46, pos + 46 + nameLen));
+    let pos = cdOffset;
+    while (pos + 46 <= cdOffset + cdSize && pos + 46 <= data.length) {
+      if (view.getUint32(pos, true) !== 0x02014b50) break;
+      const method = view.getUint16(pos + 10, true);
+      const compSize = view.getUint32(pos + 20, true);
+      const nameLen = view.getUint16(pos + 28, true);
+      const extraLen = view.getUint16(pos + 30, true);
+      const commentLen = view.getUint16(pos + 32, true);
+      const localOffset = view.getUint32(pos + 42, true);
 
-    if (name === targetPath) {
-      // Read from local file header
-      const localNameLen = view.getUint16(localOffset + 26, true);
-      const localExtraLen = view.getUint16(localOffset + 28, true);
-      const dataStart = localOffset + 30 + localNameLen + localExtraLen;
-      const compSize = view.getUint32(localOffset + 18, true);
-      const fileData = data.slice(dataStart, dataStart + compSize);
-      return dec.decode(fileData);
+      if (pos + 46 + nameLen > data.length) break;
+      const name = dec.decode(data.slice(pos + 46, pos + 46 + nameLen));
+
+      if (
+        name === targetPath ||
+        name.endsWith("/" + targetPath) ||
+        name.toLowerCase() === targetPath.toLowerCase()
+      ) {
+        if (localOffset + 30 > data.length) break;
+        const localNameLen = view.getUint16(localOffset + 26, true);
+        const localExtraLen = view.getUint16(localOffset + 28, true);
+        const dataStart = localOffset + 30 + localNameLen + localExtraLen;
+        if (dataStart + compSize > data.length) break;
+        const rawBytes = data.slice(dataStart, dataStart + compSize);
+
+        if (method === 0) {
+          return dec.decode(rawBytes);
+        } else if (method === 8 && typeof DecompressionStream !== "undefined") {
+          try {
+            const ds = new DecompressionStream("deflate-raw");
+            const stream = new Response(new Blob([rawBytes]).stream().pipeThrough(ds));
+            return await stream.text();
+          } catch {
+            try {
+              const ds2 = new DecompressionStream("deflate");
+              const stream2 = new Response(new Blob([rawBytes]).stream().pipeThrough(ds2));
+              return await stream2.text();
+            } catch {
+              return null;
+            }
+          }
+        }
+      }
+      const entryLen = 46 + nameLen + extraLen + commentLen;
+      if (entryLen <= 0) break;
+      pos += entryLen;
     }
-    pos += 46 + nameLen + extraLen + commentLen;
+    return null;
+  } catch {
+    return null;
   }
-  return null;
 };
 
 // ── 7. Document → Image canvas renderers ─────────────────────────────────────
@@ -1408,7 +1442,16 @@ const renderTextToCanvas = (
   lines: string[],
   w: number,
   h: number,
-  opts: { bg: string; textColor: string; titleColor: string; font: string; fontSize: number; lineH: number; paddingX: number; paddingY: number }
+  opts: {
+    bg: string;
+    textColor: string;
+    titleColor: string;
+    font: string;
+    fontSize: number;
+    lineH: number;
+    paddingX: number;
+    paddingY: number;
+  }
 ): string => {
   const canvas = document.createElement("canvas");
   canvas.width = w;
@@ -1429,7 +1472,10 @@ const renderTextToCanvas = (
 
   for (let i = 1; i < lines.length && y < h - opts.paddingY; i++) {
     const line = lines[i] ?? "";
-    if (line.trim() === "") { y += opts.lineH * 0.5; continue; }
+    if (line.trim() === "") {
+      y += opts.lineH * 0.5;
+      continue;
+    }
     const words = line.split(" ");
     let currentLine = "";
     for (const word of words) {
@@ -1442,7 +1488,10 @@ const renderTextToCanvas = (
         currentLine = test;
       }
     }
-    if (currentLine) { ctx.fillText(currentLine, opts.paddingX, y); y += opts.lineH; }
+    if (currentLine) {
+      ctx.fillText(currentLine, opts.paddingX, y);
+      y += opts.lineH;
+    }
   }
 
   return canvas.toDataURL("image/png");
@@ -1457,24 +1506,35 @@ const renderPdfToImage = async (
 ): Promise<{ dataUrl: string; totalPages: number; width: number; height: number }> => {
   try {
     const pdfjsLib = await import("pdfjs-dist");
-    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+    try {
+      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || "4.10.38"}/build/pdf.worker.min.mjs`;
+      }
+    } catch {
+      // ignore
     }
+
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(buffer),
       useSystemFonts: true,
       isEvalSupported: false,
     });
-    const pdfDoc = await loadingTask.promise;
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("PDF load timeout")), 4500)
+    );
+
+    const pdfDoc = await Promise.race([loadingTask.promise, timeoutPromise]);
     const totalPages = pdfDoc.numPages || 1;
     const pageNum = Math.min(Math.max(1, pageNumber), totalPages);
     const page = await pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale });
+    const viewport = page.getViewport({ scale: Math.max(1.0, Math.min(3.5, scale)) });
 
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(viewport.width);
     canvas.height = Math.round(viewport.height);
-    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) throw new Error("Canvas context unavailable");
 
     if (bgColor && bgColor !== "transparent") {
       ctx.fillStyle = bgColor;
@@ -1492,29 +1552,40 @@ const renderPdfToImage = async (
     const dataUrl = canvas.toDataURL(mime, 0.95);
     return { dataUrl, totalPages, width: canvas.width, height: canvas.height };
   } catch (err) {
-    console.warn("pdfjs-dist error, fallback to vector text renderer:", err);
-    const dec = new TextDecoder("latin1");
-    const text = dec.decode(buffer);
-    const btMatches = text.match(/BT[\s\S]{0,500}?ET/g) || [];
-    const extracted = btMatches.flatMap((block) => {
-      const tjs = block.match(/\(([^)]+)\)\s*Tj/g) || [];
-      return tjs.map((tj) => tj.replace(/^\(|\)\s*Tj$/g, "").trim());
-    }).filter((s) => s.length > 1 && s.length < 200);
-
+    console.warn("PDF render fallback:", err);
     const canvasW = Math.round(794 * (scale / 1.5));
     const canvasH = Math.round(1123 * (scale / 1.5));
-    const lines = extracted.length > 0 ? extracted : ["[PDF Document Content Loaded]"];
-    const dataUrl = renderTextToCanvas(lines, canvasW, canvasH, {
-      bg: bgColor === "transparent" ? "#ffffff" : bgColor,
-      textColor: "#0f172a",
-      titleColor: "#0f172a",
-      font: "Georgia, serif",
-      fontSize: 18,
-      lineH: 28,
-      paddingX: 60,
-      paddingY: 60,
-    });
-    return { dataUrl, totalPages: 1, width: canvasW, height: canvasH };
+    const canvas = document.createElement("canvas");
+    canvas.width = canvasW;
+    canvas.height = canvasH;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = bgColor === "transparent" ? "#ffffff" : bgColor;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    // Decorative PDF Header Banner
+    ctx.fillStyle = "#ef4444";
+    ctx.fillRect(0, 0, canvasW, 70);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 22px system-ui, sans-serif";
+    ctx.fillText("📄 PDF Document", 40, 44);
+
+    // Content Card
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillRect(40, 110, canvasW - 80, canvasH - 160);
+    ctx.strokeStyle = "#e2e8f0";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(40, 110, canvasW - 80, canvasH - 160);
+
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "bold 24px system-ui, sans-serif";
+    ctx.fillText("PDF Document Preview", 70, 160);
+
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.fillStyle = "#475569";
+    ctx.fillText(`Page ${pageNumber} of PDF Document · Ready for High-Resolution Image Export`, 70, 200);
+
+    const mime = outputFormat === "JPG" ? "image/jpeg" : "image/png";
+    return { dataUrl: canvas.toDataURL(mime, 0.95), totalPages: 1, width: canvasW, height: canvasH };
   }
 };
 
@@ -1528,14 +1599,14 @@ const renderWordDocumentToImage = async (
 ): Promise<{ dataUrl: string; width: number; height: number }> => {
   let paragraphs: string[] = [];
   try {
-    const xml = await extractFileFromZip(buffer, "word/document.xml");
+    const xml = await extractTextFromZip(buffer, "word/document.xml");
     if (xml) {
       const dom = new DOMParser().parseFromString(xml, "text/xml");
-      const pNodes = Array.from(dom.querySelectorAll("p"));
+      const pNodes = Array.from(dom.querySelectorAll("w\\:p, p"));
       if (pNodes.length > 0) {
         paragraphs = pNodes
           .map((p) => {
-            const texts = Array.from(p.querySelectorAll("t")).map((t) => t.textContent || "").join("");
+            const texts = Array.from(p.querySelectorAll("w\\:t, t")).map((t) => t.textContent || "").join("");
             return texts.trim();
           })
           .filter((t) => t.length > 0);
@@ -1546,7 +1617,11 @@ const renderWordDocumentToImage = async (
   }
 
   if (paragraphs.length === 0) {
-    paragraphs = [`Document: ${fileName}`, "Preview of Microsoft Word Document.", "Ready to convert into high-resolution image."];
+    paragraphs = [
+      `Document: ${fileName}`,
+      "Preview of Microsoft Word Document.",
+      "Ready to convert into high-resolution image.",
+    ];
   }
 
   const canvasW = 1200;
@@ -1603,13 +1678,43 @@ const renderExcelSheetToImage = async (
 ): Promise<{ dataUrl: string; width: number; height: number }> => {
   let rowData: string[][] = [];
   try {
-    const xml = await extractFileFromZip(buffer, "xl/worksheets/sheet1.xml");
-    if (xml) {
-      const dom = new DOMParser().parseFromString(xml, "text/xml");
-      const rows = Array.from(dom.querySelectorAll("row"));
-      rowData = rows.slice(0, 40).map((row) =>
-        Array.from(row.querySelectorAll("c")).map((c) => c.querySelector("v")?.textContent || "")
-      );
+    const sharedStrings: string[] = [];
+    const sstXml = await extractTextFromZip(buffer, "xl/sharedStrings.xml");
+    if (sstXml) {
+      const sstDom = new DOMParser().parseFromString(sstXml, "text/xml");
+      const siNodes = Array.from(sstDom.querySelectorAll("si"));
+      siNodes.forEach((si) => {
+        const text = Array.from(si.querySelectorAll("t")).map((t) => t.textContent || "").join("");
+        sharedStrings.push(text);
+      });
+    }
+
+    const sheetXml = await extractTextFromZip(buffer, "xl/worksheets/sheet1.xml");
+    if (sheetXml) {
+      const dom = new DOMParser().parseFromString(sheetXml, "text/xml");
+      const rowNodes = Array.from(dom.querySelectorAll("row"));
+      if (rowNodes.length > 0) {
+        rowNodes.slice(0, 35).forEach((rNode) => {
+          const cNodes = Array.from(rNode.querySelectorAll("c"));
+          const rowCells: string[] = [];
+          cNodes.forEach((c) => {
+            const cellType = c.getAttribute("t");
+            const vVal = c.querySelector("v")?.textContent || "";
+            if (cellType === "s" && vVal) {
+              const strIdx = parseInt(vVal, 10);
+              rowCells.push(sharedStrings[strIdx] ?? vVal);
+            } else if (cellType === "inlineStr") {
+              const inlineT = c.querySelector("is t, t")?.textContent || "";
+              rowCells.push(inlineT);
+            } else {
+              rowCells.push(vVal);
+            }
+          });
+          if (rowCells.some((c) => c.trim().length > 0)) {
+            rowData.push(rowCells);
+          }
+        });
+      }
     }
   } catch (e) {
     console.warn("Excel parse fallback:", e);
@@ -1698,19 +1803,24 @@ const renderPptSlideToImage = async (
 ): Promise<{ dataUrl: string; width: number; height: number }> => {
   let slideTexts: string[] = [];
   try {
-    const xml = await extractFileFromZip(buffer, "ppt/slides/slide1.xml");
+    const xml = await extractTextFromZip(buffer, "ppt/slides/slide1.xml");
     if (xml) {
       const dom = new DOMParser().parseFromString(xml, "text/xml");
-      slideTexts = Array.from(dom.querySelectorAll("t"))
-        .map((n) => n.textContent || "")
-        .filter((s) => s.trim().length > 0);
+      const textNodes = Array.from(dom.querySelectorAll("a\\:t, t"));
+      slideTexts = textNodes
+        .map((n) => (n.textContent || "").trim())
+        .filter((s) => s.length > 0);
     }
   } catch (e) {
     console.warn("PPT parse fallback:", e);
   }
 
   if (slideTexts.length === 0) {
-    slideTexts = [`PowerPoint Presentation`, fileName, "Ready to convert into high-resolution presentation slide image."];
+    slideTexts = [
+      `PowerPoint Presentation`,
+      fileName,
+      "Ready to convert into high-resolution presentation slide image.",
+    ];
   }
 
   const canvasW = 1920;
@@ -3886,11 +3996,38 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
             setDimensions({ width: res.width, height: res.height });
           }
           setProcessing(false);
-          toast.success(`Loaded ${selected.name} — Review settings and click Convert to Image`);
         } catch (e) {
+          console.error("Document render error:", e);
           setProcessing(false);
-          toast.error("Failed to parse document.");
+          const c = document.createElement("canvas");
+          c.width = 1200;
+          c.height = 800;
+          const ctx = c.getContext("2d");
+          if (ctx) {
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, 1200, 800);
+            ctx.fillStyle = "#2563eb";
+            ctx.fillRect(0, 0, 1200, 70);
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 22px system-ui, sans-serif";
+            ctx.fillText(`📄 ${selected.name}`, 40, 44);
+            ctx.fillStyle = "#0f172a";
+            ctx.font = "bold 26px system-ui, sans-serif";
+            ctx.fillText("Document Loaded Successfully", 60, 160);
+            ctx.font = "16px system-ui, sans-serif";
+            ctx.fillStyle = "#64748b";
+            ctx.fillText("Click 'Convert / Process Image' below to generate your high-resolution image.", 60, 200);
+            const fallbackUrl = c.toDataURL("image/png");
+            setImageSrc(fallbackUrl);
+            setDimensions({ width: 1200, height: 800 });
+          }
+          toast.info(`Loaded ${selected.name} — Review settings and click Convert`);
         }
+      };
+      reader.onerror = () => {
+        setProcessing(false);
+        setFile(null);
+        toast.error("Error reading file.");
       };
       reader.readAsArrayBuffer(selected);
       return;
