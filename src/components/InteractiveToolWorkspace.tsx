@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   Upload,
   Download,
@@ -9212,12 +9213,12 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       )}
 
       {/* Fullscreen Enlarge Image Preview Modal */}
-      {isFullscreenPreview && (imageSrc || processedSrc) && (
+      {typeof document !== "undefined" && isFullscreenPreview && (imageSrc || processedSrc) && createPortal(
         <div
           role="dialog"
           aria-modal="true"
           onClick={() => setIsFullscreenPreview(false)}
-          className="fixed inset-0 z-[9999] flex flex-col bg-black/95 backdrop-blur-2xl animate-in fade-in duration-200"
+          className="fixed inset-0 z-[9999999] flex flex-col bg-black/95 backdrop-blur-2xl animate-in fade-in duration-200"
         >
           {/* Top Modal Header Bar */}
           <div
@@ -9295,15 +9296,16 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
               />
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── CUSTOM FULLSCREEN BINARY & CODE RESEARCH EDITOR MODAL ── */}
-      {isCodeEditorOpen && (
+      {typeof document !== "undefined" && isCodeEditorOpen && createPortal(
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-[9999] flex flex-col font-mono text-xs select-text overflow-hidden animate-in fade-in duration-150"
+          className="fixed inset-0 z-[9999999] flex flex-col font-mono text-xs select-text overflow-hidden animate-in fade-in duration-150"
           style={{
             backgroundColor: EDITOR_THEMES[editorTheme].bg,
             color: EDITOR_THEMES[editorTheme].text,
@@ -9837,7 +9839,8 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
