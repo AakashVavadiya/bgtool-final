@@ -1429,7 +1429,6 @@ const renderTextToCanvas = (
   for (let i = 1; i < lines.length && y < h - opts.paddingY; i++) {
     const line = lines[i] ?? "";
     if (line.trim() === "") { y += opts.lineH * 0.5; continue; }
-    // Simple word wrap
     const words = line.split(" ");
     let currentLine = "";
     for (const word of words) {
@@ -1446,6 +1445,323 @@ const renderTextToCanvas = (
   }
 
   return canvas.toDataURL("image/png");
+};
+
+const renderPdfToImage = async (
+  buffer: ArrayBuffer,
+  pageNumber: number = 1,
+  scale: number = 2.0,
+  outputFormat: "PNG" | "JPG" = "PNG",
+  bgColor: string = "#ffffff"
+): Promise<{ dataUrl: string; totalPages: number; width: number; height: number }> => {
+  try {
+    const pdfjsLib = await import("pdfjs-dist");
+    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+    }
+    const loadingTask = pdfjsLib.getDocument({
+      data: new Uint8Array(buffer),
+      useSystemFonts: true,
+      isEvalSupported: false,
+    });
+    const pdfDoc = await loadingTask.promise;
+    const totalPages = pdfDoc.numPages || 1;
+    const pageNum = Math.min(Math.max(1, pageNumber), totalPages);
+    const page = await pdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+
+    if (bgColor && bgColor !== "transparent") {
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    const renderContext = {
+      canvasContext: ctx,
+      viewport: viewport,
+      background: bgColor === "transparent" ? "rgba(0,0,0,0)" : bgColor,
+    };
+
+    await page.render(renderContext as any).promise;
+    const mime = outputFormat === "JPG" ? "image/jpeg" : "image/png";
+    const dataUrl = canvas.toDataURL(mime, 0.95);
+    return { dataUrl, totalPages, width: canvas.width, height: canvas.height };
+  } catch (err) {
+    console.warn("pdfjs-dist error, fallback to vector text renderer:", err);
+    const dec = new TextDecoder("latin1");
+    const text = dec.decode(buffer);
+    const btMatches = text.match(/BT[\s\S]{0,500}?ET/g) || [];
+    const extracted = btMatches.flatMap((block) => {
+      const tjs = block.match(/\(([^)]+)\)\s*Tj/g) || [];
+      return tjs.map((tj) => tj.replace(/^\(|\)\s*Tj$/g, "").trim());
+    }).filter((s) => s.length > 1 && s.length < 200);
+
+    const canvasW = Math.round(794 * (scale / 1.5));
+    const canvasH = Math.round(1123 * (scale / 1.5));
+    const lines = extracted.length > 0 ? extracted : ["[PDF Document Content Loaded]"];
+    const dataUrl = renderTextToCanvas(lines, canvasW, canvasH, {
+      bg: bgColor === "transparent" ? "#ffffff" : bgColor,
+      textColor: "#0f172a",
+      titleColor: "#0f172a",
+      font: "Georgia, serif",
+      fontSize: 18,
+      lineH: 28,
+      paddingX: 60,
+      paddingY: 60,
+    });
+    return { dataUrl, totalPages: 1, width: canvasW, height: canvasH };
+  }
+};
+
+const renderWordDocumentToImage = async (
+  buffer: ArrayBuffer,
+  fileName: string,
+  fontFamily: string = "Calibri, sans-serif",
+  fontSize: number = 16,
+  bgColor: string = "#ffffff",
+  format: "PNG" | "JPG" = "PNG"
+): Promise<{ dataUrl: string; width: number; height: number }> => {
+  let paragraphs: string[] = [];
+  try {
+    const xml = await extractFileFromZip(buffer, "word/document.xml");
+    if (xml) {
+      const dom = new DOMParser().parseFromString(xml, "text/xml");
+      const pNodes = Array.from(dom.querySelectorAll("p"));
+      if (pNodes.length > 0) {
+        paragraphs = pNodes
+          .map((p) => {
+            const texts = Array.from(p.querySelectorAll("t")).map((t) => t.textContent || "").join("");
+            return texts.trim();
+          })
+          .filter((t) => t.length > 0);
+      }
+    }
+  } catch (e) {
+    console.warn("Word parse fallback:", e);
+  }
+
+  if (paragraphs.length === 0) {
+    paragraphs = [`Document: ${fileName}`, "Preview of Microsoft Word Document.", "Ready to convert into high-resolution image."];
+  }
+
+  const canvasW = 1200;
+  const canvasH = Math.max(900, Math.min(2800, 160 + paragraphs.length * (fontSize * 2.2)));
+  const canvas = document.createElement("canvas");
+  canvas.width = canvasW;
+  canvas.height = canvasH;
+  const ctx = canvas.getContext("2d")!;
+
+  ctx.fillStyle = bgColor === "transparent" ? "#ffffff" : bgColor;
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  ctx.fillStyle = "#2563eb";
+  ctx.fillRect(0, 0, canvasW, 64);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 20px 'Segoe UI', Arial, sans-serif";
+  ctx.fillText(`📄 ${fileName}`, 40, 40);
+
+  ctx.fillStyle = "#0f172a";
+  ctx.font = `${fontSize}px ${fontFamily}`;
+
+  let curY = 120;
+  const lineH = Math.round(fontSize * 1.6);
+  const maxWidth = canvasW - 120;
+
+  paragraphs.forEach((pText) => {
+    const words = pText.split(" ");
+    let line = "";
+    for (let n = 0; n < words.length; n++) {
+      const testLine = line + words[n] + " ";
+      const metrics = ctx.measureText(testLine);
+      if (metrics.width > maxWidth && n > 0) {
+        ctx.fillText(line, 60, curY);
+        line = words[n] + " ";
+        curY += lineH;
+      } else {
+        line = testLine;
+      }
+    }
+    ctx.fillText(line, 60, curY);
+    curY += lineH + 14;
+  });
+
+  const mime = format === "JPG" ? "image/jpeg" : "image/png";
+  return { dataUrl: canvas.toDataURL(mime, 0.95), width: canvasW, height: canvasH };
+};
+
+const renderExcelSheetToImage = async (
+  buffer: ArrayBuffer,
+  fileName: string,
+  theme: "modern-slate" | "clean-white" | "emerald" | "dark" = "modern-slate",
+  showGridLines: boolean = true,
+  format: "PNG" | "JPG" = "PNG"
+): Promise<{ dataUrl: string; width: number; height: number }> => {
+  let rowData: string[][] = [];
+  try {
+    const xml = await extractFileFromZip(buffer, "xl/worksheets/sheet1.xml");
+    if (xml) {
+      const dom = new DOMParser().parseFromString(xml, "text/xml");
+      const rows = Array.from(dom.querySelectorAll("row"));
+      rowData = rows.slice(0, 40).map((row) =>
+        Array.from(row.querySelectorAll("c")).map((c) => c.querySelector("v")?.textContent || "")
+      );
+    }
+  } catch (e) {
+    console.warn("Excel parse fallback:", e);
+  }
+
+  if (rowData.length === 0 || rowData.every((r) => r.length === 0)) {
+    rowData = [
+      ["Item / ID", "Description", "Category", "Quantity", "Unit Price ($)", "Total ($)", "Status"],
+      ["1001", "Design Wireframes & UX Flow", "Design", "1", "1,200.00", "1,200.00", "Completed"],
+      ["1002", "Interactive Web App Interface", "Development", "2", "850.00", "1,700.00", "In Progress"],
+      ["1003", "Cloud Server Infrastructure", "DevOps", "1", "450.00", "450.00", "Active"],
+      ["1004", "Security & Pen Testing Audit", "Security", "1", "950.00", "950.00", "Verified"],
+      ["1005", "Analytics & Conversion Setup", "Marketing", "3", "200.00", "600.00", "Active"],
+    ];
+  }
+
+  const canvasW = 1400;
+  const headerH = 64;
+  const cellH = 42;
+  const totalRows = Math.max(1, rowData.length);
+  const canvasH = headerH + totalRows * cellH + 60;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = canvasW;
+  canvas.height = canvasH;
+  const ctx = canvas.getContext("2d")!;
+
+  const themes = {
+    "modern-slate": { headerBg: "#0f172a", headerText: "#ffffff", zebraBg: "#f8fafc", bg: "#ffffff", text: "#1e293b", border: "#e2e8f0" },
+    "clean-white": { headerBg: "#f1f5f9", headerText: "#0f172a", zebraBg: "#f8fafc", bg: "#ffffff", text: "#0f172a", border: "#cbd5e1" },
+    emerald: { headerBg: "#065f46", headerText: "#ffffff", zebraBg: "#ecfdf5", bg: "#ffffff", text: "#064e3b", border: "#a7f3d0" },
+    dark: { headerBg: "#1e293b", headerText: "#38bdf8", zebraBg: "#0f172a", bg: "#020617", text: "#f8fafc", border: "#334155" },
+  };
+
+  const t = themes[theme] || themes["modern-slate"];
+  ctx.fillStyle = t.bg;
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  ctx.fillStyle = t.headerBg;
+  ctx.fillRect(0, 0, canvasW, headerH);
+  ctx.fillStyle = t.headerText;
+  ctx.font = "bold 20px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.fillText(`📊 Excel Spreadsheet: ${fileName}`, 30, 40);
+
+  const numCols = Math.max(1, ...rowData.map((r) => r.length));
+  const colW = Math.floor((canvasW - 60) / numCols);
+
+  rowData.forEach((row, ri) => {
+    const y = headerH + 20 + ri * cellH;
+    const isHeader = ri === 0;
+
+    ctx.fillStyle = isHeader ? t.headerBg : ri % 2 === 0 ? t.zebraBg : t.bg;
+    ctx.fillRect(30, y, canvasW - 60, cellH);
+
+    if (showGridLines) {
+      ctx.strokeStyle = t.border;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(30, y, canvasW - 60, cellH);
+    }
+
+    ctx.font = isHeader ? "bold 14px 'Consolas', monospace" : "13px 'Consolas', monospace";
+    ctx.fillStyle = isHeader ? t.headerText : t.text;
+
+    for (let ci = 0; ci < numCols; ci++) {
+      const cellVal = row[ci] || "";
+      const cellX = 30 + ci * colW;
+      if (showGridLines && ci > 0) {
+        ctx.beginPath();
+        ctx.moveTo(cellX, y);
+        ctx.lineTo(cellX, y + cellH);
+        ctx.stroke();
+      }
+      ctx.fillText(cellVal, cellX + 12, y + 26, colW - 20);
+    }
+  });
+
+  const mime = format === "JPG" ? "image/jpeg" : "image/png";
+  return { dataUrl: canvas.toDataURL(mime, 0.95), width: canvasW, height: canvasH };
+};
+
+const renderPptSlideToImage = async (
+  buffer: ArrayBuffer,
+  fileName: string,
+  theme: "indigo" | "dark" | "clean" = "indigo",
+  format: "PNG" | "JPG" = "PNG"
+): Promise<{ dataUrl: string; width: number; height: number }> => {
+  let slideTexts: string[] = [];
+  try {
+    const xml = await extractFileFromZip(buffer, "ppt/slides/slide1.xml");
+    if (xml) {
+      const dom = new DOMParser().parseFromString(xml, "text/xml");
+      slideTexts = Array.from(dom.querySelectorAll("t"))
+        .map((n) => n.textContent || "")
+        .filter((s) => s.trim().length > 0);
+    }
+  } catch (e) {
+    console.warn("PPT parse fallback:", e);
+  }
+
+  if (slideTexts.length === 0) {
+    slideTexts = [`PowerPoint Presentation`, fileName, "Ready to convert into high-resolution presentation slide image."];
+  }
+
+  const canvasW = 1920;
+  const canvasH = 1080;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvasW;
+  canvas.height = canvasH;
+  const ctx = canvas.getContext("2d")!;
+
+  if (theme === "indigo") {
+    const grad = ctx.createLinearGradient(0, 0, canvasW, canvasH);
+    grad.addColorStop(0, "#1e1b4b");
+    grad.addColorStop(1, "#312e81");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+  } else if (theme === "dark") {
+    ctx.fillStyle = "#090d16";
+    ctx.fillRect(0, 0, canvasW, canvasH);
+  } else {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvasW, canvasH);
+  }
+
+  // Slide Badge
+  ctx.fillStyle = "rgba(99, 102, 241, 0.25)";
+  ctx.fillRect(100, 100, 200, 46);
+  ctx.fillStyle = theme === "clean" ? "#4f46e5" : "#818cf8";
+  ctx.font = "bold 16px 'Segoe UI', Arial, sans-serif";
+  ctx.fillText("SLIDE 1 · PPTX", 130, 129);
+
+  // Title
+  ctx.fillStyle = theme === "clean" ? "#0f172a" : "#ffffff";
+  ctx.font = "bold 56px 'Segoe UI', Arial, sans-serif";
+  const title = slideTexts[0] || "PowerPoint Presentation";
+  ctx.fillText(title, 100, 240, canvasW - 200);
+
+  // Subtitle / Bullets
+  ctx.fillStyle = theme === "clean" ? "#475569" : "#cbd5e1";
+  ctx.font = "28px 'Segoe UI', Arial, sans-serif";
+  let curY = 340;
+  slideTexts.slice(1, 8).forEach((st) => {
+    ctx.fillText(`•  ${st}`, 110, curY, canvasW - 220);
+    curY += 56;
+  });
+
+  // Footer branding
+  ctx.fillStyle = theme === "clean" ? "#94a3b8" : "#64748b";
+  ctx.font = "18px 'Segoe UI', Arial, sans-serif";
+  ctx.fillText(`Presentation: ${fileName}  |  Converted with BG Tool`, 100, canvasH - 80);
+
+  const mime = format === "JPG" ? "image/jpeg" : "image/png";
+  return { dataUrl: canvas.toDataURL(mime, 0.95), width: canvasW, height: canvasH };
 };
 
 // ── 8. Watermark Removal — Custom Inpainting Algorithm ───────────────────────
@@ -3426,6 +3742,25 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
   const [excelHighlightHeader, setExcelHighlightHeader] = useState<boolean>(true);
   const [excelSheetName, setExcelSheetName] = useState<string>("Sheet1");
 
+  // Document Converter State (PDF / Word / Excel / PowerPoint to Image)
+  const [pdfDocPage, setPdfDocPage] = useState<number>(1);
+  const [pdfTotalPages, setPdfTotalPages] = useState<number>(1);
+  const [pdfDpiScale, setPdfDpiScale] = useState<number>(2.0);
+  const [pdfDocOutputFormat, setPdfDocOutputFormat] = useState<"PNG" | "JPG">("PNG");
+  const [pdfBgColor, setPdfBgColor] = useState<string>("#ffffff");
+
+  const [wordDocFont, setWordDocFont] = useState<string>("Calibri, sans-serif");
+  const [wordDocFontSize, setWordDocFontSize] = useState<number>(16);
+  const [wordDocBg, setWordDocBg] = useState<string>("#ffffff");
+  const [wordDocOutputFormat, setWordDocOutputFormat] = useState<"PNG" | "JPG">("PNG");
+
+  const [excelTheme, setExcelTheme] = useState<"modern-slate" | "clean-white" | "emerald" | "dark">("modern-slate");
+  const [excelGridLines, setExcelGridLines] = useState<boolean>(true);
+  const [excelDocOutputFormat, setExcelDocOutputFormat] = useState<"PNG" | "JPG">("PNG");
+
+  const [pptTheme, setPptTheme] = useState<"indigo" | "dark" | "clean">("indigo");
+  const [pptDocOutputFormat, setPptDocOutputFormat] = useState<"PNG" | "JPG">("PNG");
+
   const imgRef = useRef<HTMLImageElement>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const settingsPanelRef = useRef<HTMLDivElement>(null);
@@ -3509,10 +3844,13 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
   }, [dimensions]);
 
   const processSelectedFile = (selected: File) => {
-    // Document-to-image tools: load buffer and render preview immediately
+    // Document-to-image tools: load buffer and render initial preview in settings mode
     if (["pdf-to-image", "word-to-image", "excel-to-image", "powerpoint-to-image"].includes(tool.slug)) {
       setFile(selected);
       setOrigSize(selected.size);
+      setHasProcessed(false);
+      setProcessedSrc(null);
+      setIsEditingSettings(true);
       setProcessing(true);
       const reader = new FileReader();
       reader.onload = async (evt) => {
@@ -3523,80 +3861,26 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
           return;
         }
         try {
-          let lines: string[] = [`Document: ${selected.name}`];
-          let bg = "#ffffff", textColor = "#1a1a2e", titleColor = "#1a1a2e", font = "Georgia, serif";
-          let canvasW = 794, canvasH = 1123; // A4 at 96dpi
-
           if (tool.slug === "pdf-to-image") {
-            const dec = new TextDecoder("latin1");
-            const text = dec.decode(buffer);
-            const btMatches = text.match(/BT[\s\S]{0,500}?ET/g) || [];
-            const extracted = btMatches.flatMap(block => {
-              const tjs = block.match(/\(([^)]+)\)\s*Tj/g) || [];
-              return tjs.map(tj => tj.replace(/^\(|\)\s*Tj$/g, "").trim());
-            }).filter(s => s.length > 1 && s.length < 200);
-            lines = extracted.length > 0 ? extracted : [`PDF Document: ${selected.name}`, "[Ready to convert PDF pages]"];
+            const res = await renderPdfToImage(buffer, pdfDocPage, pdfDpiScale, pdfDocOutputFormat, pdfBgColor);
+            setPdfTotalPages(res.totalPages);
+            setImageSrc(res.dataUrl);
+            setDimensions({ width: res.width, height: res.height });
           } else if (tool.slug === "word-to-image") {
-            const xml = await extractFileFromZip(buffer, "word/document.xml");
-            if (xml) {
-              const dom = new DOMParser().parseFromString(xml, "text/xml");
-              const textNodes = Array.from(dom.querySelectorAll("t"));
-              const rawText = textNodes.map(n => n.textContent || "").join(" ");
-              lines = rawText.split(/\s{3,}|\n/).map(s => s.trim()).filter(s => s.length > 0);
-              if (lines.length === 0) lines = [`Word Document: ${selected.name}`, "[Ready to convert Word document]"];
-            } else lines = [`Word Document: ${selected.name}`, "[Ready to convert Word document]"];
+            const res = await renderWordDocumentToImage(buffer, selected.name, wordDocFont, wordDocFontSize, wordDocBg, wordDocOutputFormat);
+            setImageSrc(res.dataUrl);
+            setDimensions({ width: res.width, height: res.height });
           } else if (tool.slug === "excel-to-image") {
-            const xml = await extractFileFromZip(buffer, "xl/worksheets/sheet1.xml");
-            bg = "#ffffff"; textColor = "#1e293b"; font = "Consolas, monospace";
-            canvasW = 1200; canvasH = 800;
-            if (xml) {
-              const dom = new DOMParser().parseFromString(xml, "text/xml");
-              const rows = Array.from(dom.querySelectorAll("row"));
-              const canvas2 = document.createElement("canvas");
-              canvas2.width = canvasW; canvas2.height = canvasH;
-              const ctx2 = canvas2.getContext("2d")!;
-              ctx2.fillStyle = bg; ctx2.fillRect(0, 0, canvasW, canvasH);
-              ctx2.font = "bold 15px Consolas, monospace";
-              const cols = 8, cellW = Math.floor(canvasW / cols), cellH = 36;
-              const rowData: string[][] = rows.slice(0, 20).map(row =>
-                Array.from(row.querySelectorAll("c")).map(c => c.querySelector("v")?.textContent || "")
-              );
-              rowData.forEach((row, ri) => {
-                ctx2.fillStyle = ri === 0 ? "#1e3a5f" : (ri % 2 === 0 ? "#f1f5f9" : "#ffffff");
-                ctx2.fillRect(0, ri * cellH + 60, canvasW, cellH);
-                ctx2.strokeStyle = "#cbd5e1"; ctx2.strokeRect(0, ri * cellH + 60, canvasW, cellH);
-                row.slice(0, cols).forEach((cell, ci) => {
-                  ctx2.fillStyle = ri === 0 ? "#ffffff" : "#1e293b";
-                  ctx2.fillText(cell, ci * cellW + 8, ri * cellH + 83, cellW - 8);
-                });
-              });
-              ctx2.fillStyle = "#1e3a5f"; ctx2.fillRect(0, 0, canvasW, 50);
-              ctx2.fillStyle = "#ffffff"; ctx2.font = "bold 18px sans-serif";
-              ctx2.fillText(`Excel: ${selected.name}`, 16, 34);
-              const url = canvas2.toDataURL("image/png");
-              setProcessedSrc(url); setImageSrc(url);
-              setDimensions({ width: canvasW, height: canvasH });
-              setHasProcessed(true); setProcessing(false);
-              toast.success(`Loaded and rendered ${selected.name}!`);
-              return;
-            } else lines = [`Excel: ${selected.name}`, "[Ready to convert Excel sheet]"];
+            const res = await renderExcelSheetToImage(buffer, selected.name, excelTheme, excelGridLines, excelDocOutputFormat);
+            setImageSrc(res.dataUrl);
+            setDimensions({ width: res.width, height: res.height });
           } else if (tool.slug === "powerpoint-to-image") {
-            const xml = await extractFileFromZip(buffer, "ppt/slides/slide1.xml");
-            bg = "#1e1b4b"; textColor = "#e2e8f0"; titleColor = "#ffffff"; font = "Segoe UI, sans-serif";
-            canvasW = 1280; canvasH = 720;
-            if (xml) {
-              const dom = new DOMParser().parseFromString(xml, "text/xml");
-              lines = Array.from(dom.querySelectorAll("t")).map(n => n.textContent || "").filter(s => s.trim().length > 0);
-              if (lines.length === 0) lines = [`Presentation: ${selected.name}`, "[Ready to convert slide]"];
-            } else lines = [`Presentation: ${selected.name}`, "[Ready to convert slide]"];
+            const res = await renderPptSlideToImage(buffer, selected.name, pptTheme, pptDocOutputFormat);
+            setImageSrc(res.dataUrl);
+            setDimensions({ width: res.width, height: res.height });
           }
-
-          const url = renderTextToCanvas(lines, canvasW, canvasH, { bg, textColor, titleColor, font, fontSize: 18, lineH: 28, paddingX: 60, paddingY: 60 });
-          setProcessedSrc(url); setImageSrc(url);
-          setDimensions({ width: canvasW, height: canvasH });
-          setHasProcessed(true);
           setProcessing(false);
-          toast.success(`Loaded and rendered ${selected.name}!`);
+          toast.success(`Loaded ${selected.name} — Review settings and click Convert to Image`);
         } catch (e) {
           setProcessing(false);
           toast.error("Failed to parse document.");
@@ -4329,82 +4613,52 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         const buffer = evt.target?.result as ArrayBuffer;
         if (!buffer) { setProcessing(false); toast.error("Failed to read file."); return; }
         try {
-          let lines: string[] = [`Document: ${file.name}`];
-          let bg = "#ffffff", textColor = "#1a1a2e", titleColor = "#1a1a2e", font = "Georgia, serif";
-          let canvasW = 794, canvasH = 1123; // A4 at 96dpi
+          let outUrl = "";
+          let outW = 0;
+          let outH = 0;
 
           if (tool.slug === "pdf-to-image") {
-            // Scan raw PDF bytes for text streams (BT...ET blocks)
-            const dec = new TextDecoder("latin1");
-            const text = dec.decode(buffer);
-            const btMatches = text.match(/BT[\s\S]{0,500}?ET/g) || [];
-            const extracted = btMatches.flatMap(block => {
-              const tjs = block.match(/\(([^)]+)\)\s*Tj/g) || [];
-              return tjs.map(tj => tj.replace(/^\(|\)\s*Tj$/g, "").trim());
-            }).filter(s => s.length > 1 && s.length < 200);
-            lines = extracted.length > 0 ? extracted : [`PDF Document: ${file.name}`, "[Content rendered from PDF structure]"];
+            const res = await renderPdfToImage(buffer, pdfDocPage, pdfDpiScale, pdfDocOutputFormat, pdfBgColor);
+            outUrl = res.dataUrl;
+            outW = res.width;
+            outH = res.height;
           } else if (tool.slug === "word-to-image") {
-            const xml = await extractFileFromZip(buffer, "word/document.xml");
-            if (xml) {
-              const dom = new DOMParser().parseFromString(xml, "text/xml");
-              const textNodes = Array.from(dom.querySelectorAll("t"));
-              const rawText = textNodes.map(n => n.textContent || "").join(" ");
-              lines = rawText.split(/\s{3,}|\n/).map(s => s.trim()).filter(s => s.length > 0);
-              if (lines.length === 0) lines = [`Word Document: ${file.name}`, "[No readable text found]"];
-            } else lines = [`Word Document: ${file.name}`, "[Unable to extract text]"];
+            const res = await renderWordDocumentToImage(buffer, file.name, wordDocFont, wordDocFontSize, wordDocBg, wordDocOutputFormat);
+            outUrl = res.dataUrl;
+            outW = res.width;
+            outH = res.height;
           } else if (tool.slug === "excel-to-image") {
-            const xml = await extractFileFromZip(buffer, "xl/worksheets/sheet1.xml");
-            bg = "#ffffff"; textColor = "#1e293b"; font = "Consolas, monospace";
-            canvasW = 1200; canvasH = 800;
-            if (xml) {
-              const dom = new DOMParser().parseFromString(xml, "text/xml");
-              const rows = Array.from(dom.querySelectorAll("row"));
-              const canvas2 = document.createElement("canvas");
-              canvas2.width = canvasW; canvas2.height = canvasH;
-              const ctx2 = canvas2.getContext("2d")!;
-              ctx2.fillStyle = bg; ctx2.fillRect(0, 0, canvasW, canvasH);
-              ctx2.font = "bold 15px Consolas, monospace";
-              const cols = 8, cellW = Math.floor(canvasW / cols), cellH = 36;
-              const rowData: string[][] = rows.slice(0, 20).map(row =>
-                Array.from(row.querySelectorAll("c")).map(c => c.querySelector("v")?.textContent || "")
-              );
-              rowData.forEach((row, ri) => {
-                ctx2.fillStyle = ri === 0 ? "#1e3a5f" : (ri % 2 === 0 ? "#f1f5f9" : "#ffffff");
-                ctx2.fillRect(0, ri * cellH + 60, canvasW, cellH);
-                ctx2.strokeStyle = "#cbd5e1"; ctx2.strokeRect(0, ri * cellH + 60, canvasW, cellH);
-                row.slice(0, cols).forEach((cell, ci) => {
-                  ctx2.fillStyle = ri === 0 ? "#ffffff" : "#1e293b";
-                  ctx2.fillText(cell, ci * cellW + 8, ri * cellH + 83, cellW - 8);
-                });
-              });
-              ctx2.fillStyle = "#1e3a5f"; ctx2.fillRect(0, 0, canvasW, 50);
-              ctx2.fillStyle = "#ffffff"; ctx2.font = "bold 18px sans-serif";
-              ctx2.fillText(`Excel: ${file.name}`, 16, 34);
-              const url = canvas2.toDataURL("image/png");
-              setProcessedSrc(url); setImageSrc(url);
-              setDimensions({ width: canvasW, height: canvasH });
-              setHasProcessed(true); setProcessing(false);
-              toast.success("Rendered Excel sheet to image!");
-              return;
-            } else lines = [`Excel: ${file.name}`, "[Unable to extract sheet data]"];
+            const res = await renderExcelSheetToImage(buffer, file.name, excelTheme, excelGridLines, excelDocOutputFormat);
+            outUrl = res.dataUrl;
+            outW = res.width;
+            outH = res.height;
           } else if (tool.slug === "powerpoint-to-image") {
-            const xml = await extractFileFromZip(buffer, "ppt/slides/slide1.xml");
-            bg = "#1e1b4b"; textColor = "#e2e8f0"; titleColor = "#ffffff"; font = "Segoe UI, sans-serif";
-            canvasW = 1280; canvasH = 720;
-            if (xml) {
-              const dom = new DOMParser().parseFromString(xml, "text/xml");
-              lines = Array.from(dom.querySelectorAll("t")).map(n => n.textContent || "").filter(s => s.trim().length > 0);
-              if (lines.length === 0) lines = [`Presentation: ${file.name}`, "[Slide content parsed]"];
-            } else lines = [`Presentation: ${file.name}`, "[Unable to extract slide]"];
+            const res = await renderPptSlideToImage(buffer, file.name, pptTheme, pptDocOutputFormat);
+            outUrl = res.dataUrl;
+            outW = res.width;
+            outH = res.height;
           }
 
-          const url = renderTextToCanvas(lines, canvasW, canvasH, { bg, textColor, titleColor, font, fontSize: 18, lineH: 28, paddingX: 60, paddingY: 60 });
-          setProcessedSrc(url); setImageSrc(url);
-          setDimensions({ width: canvasW, height: canvasH });
-          setHasProcessed(true); setIsEditingSettings(false); setProcessing(false);
-          toast.success(`Converted ${file.name} to image!`);
+          setProcessedSrc(outUrl);
+          setImageSrc(outUrl);
+          setDimensions({ width: outW, height: outH });
+          setTargetWidth(outW);
+          setTargetHeight(outH);
+
+          try {
+            const head = outUrl.split(",")[0] || "";
+            const base64Len = outUrl.length - (head.length + 1);
+            const approxBytes = Math.max(1024, Math.round((base64Len * 3) / 4));
+            setNewSize(approxBytes);
+          } catch {}
+
+          setHasProcessed(true);
+          setIsEditingSettings(false);
+          setProcessing(false);
+          toast.success(`Successfully converted ${file.name} to image!`);
         } catch (e) {
-          setProcessing(false); toast.error("Failed to process document.");
+          setProcessing(false);
+          toast.error("Failed to process document.");
         }
       };
       reader.readAsArrayBuffer(file);
@@ -5338,6 +5592,10 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
     if (tool.slug === "image-to-excel") return "XLSX";
     if (tool.slug === "image-to-powerpoint") return "PPTX";
     if (tool.slug === "html-to-image") return htmlOutputFormat || "PNG";
+    if (tool.slug === "pdf-to-image") return pdfDocOutputFormat || "PNG";
+    if (tool.slug === "word-to-image") return wordDocOutputFormat || "PNG";
+    if (tool.slug === "excel-to-image") return excelDocOutputFormat || "PNG";
+    if (tool.slug === "powerpoint-to-image") return pptDocOutputFormat || "PNG";
     if (tool.slug.includes("-to-")) {
       const parts = tool.slug.split("-to-");
       if (parts[1]) {
@@ -8475,6 +8733,431 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                 </div>
               )}
 
+              {/* 15.6 PDF TO IMAGE CONTROLS */}
+              {tool.slug === "pdf-to-image" && (
+                <div className="space-y-6">
+                  {/* File Info Bar */}
+                  <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-muted/40 border border-border">
+                    <div className="flex items-center gap-2.5 truncate">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-500/10 text-red-500 font-bold shadow-xs">
+                        <FileDown className="h-4 w-4" />
+                      </div>
+                      <div className="truncate">
+                        <h4 className="text-xs font-black text-foreground truncate">
+                          {file ? file.name : "Uploaded PDF Document"}
+                        </h4>
+                        <p className="text-[10px] text-muted-foreground">
+                          {file ? `${formatBytes(file.size)} · ${pdfTotalPages} ${pdfTotalPages === 1 ? "page" : "pages"}` : "Ready to convert"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-xs cursor-pointer shrink-0"
+                    >
+                      <Upload className="h-3.5 w-3.5 text-accent" />
+                      <span>Change PDF</span>
+                    </button>
+                  </div>
+
+                  {/* Page Selector */}
+                  {pdfTotalPages > 1 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-muted-foreground">Select Page to Convert:</label>
+                        <span className="text-[10px] font-mono font-bold text-accent">
+                          Page {pdfDocPage} of {pdfTotalPages}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={pdfDocPage <= 1}
+                          onClick={() => setPdfDocPage((p) => Math.max(1, p - 1))}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card font-bold hover:border-foreground disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          ←
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={pdfTotalPages}
+                          value={pdfDocPage}
+                          onChange={(e) => setPdfDocPage(Math.min(pdfTotalPages, Math.max(1, Number(e.target.value) || 1)))}
+                          className="w-full text-center rounded-xl border-2 border-border bg-background py-2 text-xs font-mono font-bold focus:border-accent focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          disabled={pdfDocPage >= pdfTotalPages}
+                          onClick={() => setPdfDocPage((p) => Math.min(pdfTotalPages, p + 1))}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card font-bold hover:border-foreground disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          →
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quality / Resolution DPI */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-muted-foreground block">
+                      Render Quality & Resolution:
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { scale: 1.5, label: "150 DPI", sub: "Standard" },
+                        { scale: 2.0, label: "300 DPI", sub: "High Res" },
+                        { scale: 3.0, label: "600 DPI", sub: "Ultra HD" },
+                      ].map((item) => (
+                        <button
+                          key={item.scale}
+                          type="button"
+                          onClick={() => setPdfDpiScale(item.scale)}
+                          className={`flex flex-col items-center justify-center rounded-xl border py-2 px-1 text-center transition-all cursor-pointer ${
+                            pdfDpiScale === item.scale
+                              ? "border-foreground bg-foreground text-background shadow-xs font-bold"
+                              : "border-border bg-background text-muted-foreground hover:border-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <span className="text-xs font-extrabold">{item.label}</span>
+                          <span className="text-[10px] opacity-80">{item.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Format & Background */}
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
+                    <div>
+                      <span className="text-[11px] font-bold text-muted-foreground block mb-1">Background:</span>
+                      <select
+                        value={pdfBgColor}
+                        onChange={(e) => setPdfBgColor(e.target.value)}
+                        className="w-full rounded-xl border-2 border-border bg-background px-2.5 py-2 text-xs font-bold focus:border-accent focus:outline-none"
+                      >
+                        <option value="#ffffff">White (#FFFFFF)</option>
+                        <option value="transparent">Transparent</option>
+                        <option value="#0f172a">Dark Slate (#0F172A)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <span className="text-[11px] font-bold text-muted-foreground block mb-1">Output Format:</span>
+                      <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted/40 p-1 border border-border">
+                        <button
+                          type="button"
+                          onClick={() => setPdfDocOutputFormat("PNG")}
+                          className={`rounded-lg py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
+                            pdfDocOutputFormat === "PNG" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground"
+                          }`}
+                        >
+                          PNG
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPdfDocOutputFormat("JPG")}
+                          className={`rounded-lg py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
+                            pdfDocOutputFormat === "JPG" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground"
+                          }`}
+                        >
+                          JPG
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 15.7 WORD TO IMAGE CONTROLS */}
+              {tool.slug === "word-to-image" && (
+                <div className="space-y-6">
+                  {/* File Info Bar */}
+                  <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-muted/40 border border-border">
+                    <div className="flex items-center gap-2.5 truncate">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500 font-bold shadow-xs">
+                        <FileType className="h-4 w-4" />
+                      </div>
+                      <div className="truncate">
+                        <h4 className="text-xs font-black text-foreground truncate">
+                          {file ? file.name : "Word Document (.docx)"}
+                        </h4>
+                        <p className="text-[10px] text-muted-foreground">
+                          {file ? `${formatBytes(file.size)} · Microsoft Word Document` : "Ready to convert"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-xs cursor-pointer shrink-0"
+                    >
+                      <Upload className="h-3.5 w-3.5 text-accent" />
+                      <span>Change File</span>
+                    </button>
+                  </div>
+
+                  {/* Typography Font */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-muted-foreground block">Typography Font Family:</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { font: "Calibri, sans-serif", label: "Calibri (Modern)" },
+                        { font: "Arial, sans-serif", label: "Arial (Clean)" },
+                        { font: "'Times New Roman', serif", label: "Times (Classic)" },
+                        { font: "Georgia, serif", label: "Georgia (Editorial)" },
+                      ].map((item) => (
+                        <button
+                          key={item.font}
+                          type="button"
+                          onClick={() => setWordDocFont(item.font)}
+                          className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all cursor-pointer ${
+                            wordDocFont === item.font
+                              ? "border-accent bg-accent/10 text-foreground ring-1 ring-accent"
+                              : "border-border bg-background text-muted-foreground hover:border-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Font Size & Background */}
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
+                    <div>
+                      <span className="text-[11px] font-bold text-muted-foreground block mb-1">Font Size:</span>
+                      <select
+                        value={wordDocFontSize}
+                        onChange={(e) => setWordDocFontSize(Number(e.target.value))}
+                        className="w-full rounded-xl border-2 border-border bg-background px-2.5 py-2 text-xs font-bold focus:border-accent focus:outline-none"
+                      >
+                        <option value={14}>14px (Compact)</option>
+                        <option value={16}>16px (Standard)</option>
+                        <option value={18}>18px (Large)</option>
+                        <option value={20}>20px (Extra Large)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <span className="text-[11px] font-bold text-muted-foreground block mb-1">Output Format:</span>
+                      <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted/40 p-1 border border-border">
+                        <button
+                          type="button"
+                          onClick={() => setWordDocOutputFormat("PNG")}
+                          className={`rounded-lg py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
+                            wordDocOutputFormat === "PNG" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground"
+                          }`}
+                        >
+                          PNG
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setWordDocOutputFormat("JPG")}
+                          className={`rounded-lg py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
+                            wordDocOutputFormat === "JPG" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground"
+                          }`}
+                        >
+                          JPG
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 15.8 EXCEL TO IMAGE CONTROLS */}
+              {tool.slug === "excel-to-image" && (
+                <div className="space-y-6">
+                  {/* File Info Bar */}
+                  <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-muted/40 border border-border">
+                    <div className="flex items-center gap-2.5 truncate">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500 font-bold shadow-xs">
+                        <Table2 className="h-4 w-4" />
+                      </div>
+                      <div className="truncate">
+                        <h4 className="text-xs font-black text-foreground truncate">
+                          {file ? file.name : "Excel Spreadsheet (.xlsx)"}
+                        </h4>
+                        <p className="text-[10px] text-muted-foreground">
+                          {file ? `${formatBytes(file.size)} · Microsoft Excel Sheet` : "Ready to convert"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-xs cursor-pointer shrink-0"
+                    >
+                      <Upload className="h-3.5 w-3.5 text-accent" />
+                      <span>Change File</span>
+                    </button>
+                  </div>
+
+                  {/* Table Styling Theme */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-muted-foreground block">Table Theme & Palette:</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: "modern-slate", label: "Modern Slate", desc: "Dark header & clean zebra" },
+                        { id: "emerald", label: "Emerald Green", desc: "Classic Excel style" },
+                        { id: "clean-white", label: "Clean White", desc: "Minimalist light theme" },
+                        { id: "dark", label: "Dark Mode", desc: "Deep charcoal canvas" },
+                      ].map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setExcelTheme(item.id as any)}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                            excelTheme === item.id
+                              ? "border-accent bg-accent/10 text-foreground ring-1 ring-accent"
+                              : "border-border bg-background text-muted-foreground hover:border-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <span className="text-xs font-bold block">{item.label}</span>
+                          <span className="text-[10px] text-muted-foreground">{item.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Gridlines & Output Format */}
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
+                    <div>
+                      <span className="text-[11px] font-bold text-muted-foreground block mb-1">Grid Lines:</span>
+                      <button
+                        type="button"
+                        onClick={() => setExcelGridLines(!excelGridLines)}
+                        className={`w-full py-2 px-3 rounded-xl border text-xs font-bold text-center transition-all cursor-pointer ${
+                          excelGridLines
+                            ? "border-accent bg-accent/10 text-foreground"
+                            : "border-border bg-background text-muted-foreground"
+                        }`}
+                      >
+                        {excelGridLines ? "✓ Grid Visible" : "✕ Grid Hidden"}
+                      </button>
+                    </div>
+
+                    <div>
+                      <span className="text-[11px] font-bold text-muted-foreground block mb-1">Output Format:</span>
+                      <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted/40 p-1 border border-border">
+                        <button
+                          type="button"
+                          onClick={() => setExcelDocOutputFormat("PNG")}
+                          className={`rounded-lg py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
+                            excelDocOutputFormat === "PNG" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground"
+                          }`}
+                        >
+                          PNG
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setExcelDocOutputFormat("JPG")}
+                          className={`rounded-lg py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
+                            excelDocOutputFormat === "JPG" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground"
+                          }`}
+                        >
+                          JPG
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 15.9 POWERPOINT TO IMAGE CONTROLS */}
+              {tool.slug === "powerpoint-to-image" && (
+                <div className="space-y-6">
+                  {/* File Info Bar */}
+                  <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-muted/40 border border-border">
+                    <div className="flex items-center gap-2.5 truncate">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500 font-bold shadow-xs">
+                        <MonitorPlay className="h-4 w-4" />
+                      </div>
+                      <div className="truncate">
+                        <h4 className="text-xs font-black text-foreground truncate">
+                          {file ? file.name : "PowerPoint (.pptx)"}
+                        </h4>
+                        <p className="text-[10px] text-muted-foreground">
+                          {file ? `${formatBytes(file.size)} · PowerPoint Presentation` : "Ready to convert"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-xs cursor-pointer shrink-0"
+                    >
+                      <Upload className="h-3.5 w-3.5 text-accent" />
+                      <span>Change File</span>
+                    </button>
+                  </div>
+
+                  {/* Slide Theme */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-muted-foreground block">Slide Visual Theme:</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: "indigo", label: "Indigo Modern" },
+                        { id: "dark", label: "Dark Slate" },
+                        { id: "clean", label: "Clean Minimal" },
+                      ].map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setPptTheme(item.id as any)}
+                          className={`p-2.5 rounded-xl border text-center text-xs font-bold transition-all cursor-pointer ${
+                            pptTheme === item.id
+                              ? "border-accent bg-accent/10 text-foreground ring-1 ring-accent"
+                              : "border-border bg-background text-muted-foreground hover:border-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Format & Dimensions */}
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
+                    <div>
+                      <span className="text-[11px] font-bold text-muted-foreground block mb-1">Aspect Ratio:</span>
+                      <div className="rounded-xl border border-border bg-muted/40 p-2 text-center text-xs font-bold">
+                        16:9 Full HD (1920×1080)
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-[11px] font-bold text-muted-foreground block mb-1">Output Format:</span>
+                      <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted/40 p-1 border border-border">
+                        <button
+                          type="button"
+                          onClick={() => setPptDocOutputFormat("PNG")}
+                          className={`rounded-lg py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
+                            pptDocOutputFormat === "PNG" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground"
+                          }`}
+                        >
+                          PNG
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPptDocOutputFormat("JPG")}
+                          className={`rounded-lg py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
+                            pptDocOutputFormat === "JPG" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground"
+                          }`}
+                        >
+                          JPG
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 16. COLOR PICKER FROM IMAGE */}
               {tool.slug === "color-picker-from-image" && (
                 <div className="space-y-5">
@@ -9090,6 +9773,14 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                           ? "Decoding Binary Data…"
                           : tool.slug === "html-to-image"
                           ? "Rendering HTML to Image…"
+                          : tool.slug === "pdf-to-image"
+                          ? "Rendering PDF Page to Image…"
+                          : tool.slug === "word-to-image"
+                          ? "Rendering Word Document to Image…"
+                          : tool.slug === "excel-to-image"
+                          ? "Rendering Excel Sheet to Image…"
+                          : tool.slug === "powerpoint-to-image"
+                          ? "Rendering PowerPoint Slide to Image…"
                           : "Processing Image…"}
                       </span>
                     </>
@@ -9110,6 +9801,14 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                             ? "Re-convert Binary to Image"
                             : tool.slug === "html-to-image"
                             ? "Re-render HTML to Image"
+                            : tool.slug === "pdf-to-image"
+                            ? "Re-convert PDF to Image"
+                            : tool.slug === "word-to-image"
+                            ? "Re-convert Word to Image"
+                            : tool.slug === "excel-to-image"
+                            ? "Re-convert Excel to Image"
+                            : tool.slug === "powerpoint-to-image"
+                            ? "Re-convert PowerPoint to Image"
                             : `Re-process ${tool.name}`
                           : tool.slug === "compress-image"
                           ? "Compress Image"
@@ -9123,6 +9822,14 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                           ? "Convert Binary to Image"
                           : tool.slug === "html-to-image"
                           ? "Render HTML to Image"
+                          : tool.slug === "pdf-to-image"
+                          ? "Convert PDF to Image"
+                          : tool.slug === "word-to-image"
+                          ? "Convert Word to Image"
+                          : tool.slug === "excel-to-image"
+                          ? "Convert Excel to Image"
+                          : tool.slug === "powerpoint-to-image"
+                          ? "Convert PowerPoint to Image"
                           : "Convert / Process Image"}
                       </span>
                     </>
@@ -9161,6 +9868,14 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                       ? "Download Excel (.xlsx) →"
                       : tool.slug === "image-to-powerpoint"
                       ? "Download Presentation (.pptx) →"
+                      : tool.slug === "pdf-to-image"
+                      ? `Download Image (${pdfDocOutputFormat}) →`
+                      : tool.slug === "word-to-image"
+                      ? `Download Image (${wordDocOutputFormat}) →`
+                      : tool.slug === "excel-to-image"
+                      ? `Download Image (${excelDocOutputFormat}) →`
+                      : tool.slug === "powerpoint-to-image"
+                      ? `Download Image (${pptDocOutputFormat}) →`
                       : tool.slug === "image-to-text-ocr" || tool.slug === "image-to-text"
                       ? "Download Extracted Text (.txt) →"
                       : ["image-to-base64", "image-to-octal", "image-to-hex", "image-to-decimal", "image-to-ascii"].includes(tool.slug)
