@@ -1136,11 +1136,11 @@ const buildXlsxFromImage = (dataUrl: string, imgW: number, imgH: number, filenam
 // ── 5. Image → PPTX (custom OOXML PowerPoint builder) ─────────────────────────
 const buildPptxFromImage = (dataUrl: string, imgW: number, imgH: number, filename: string): Blob => {
   const enc = new TextEncoder();
-  const isJpeg = dataUrl.startsWith("data:image/jpeg");
+  const isJpeg = dataUrl.startsWith("data:image/jpeg") || dataUrl.startsWith("data:image/jpg");
   const imgExt = isJpeg ? "jpeg" : "png";
   const contentType = isJpeg ? "image/jpeg" : "image/png";
 
-  const base64 = dataUrl.split(",")[1] ?? "";
+  const base64 = dataUrl.includes(",") ? (dataUrl.split(",")[1] ?? "") : dataUrl;
   const raw = atob(base64);
   const imgBuf = new ArrayBuffer(raw.length);
   const imgBytes = new Uint8Array(imgBuf);
@@ -1155,8 +1155,12 @@ const buildPptxFromImage = (dataUrl: string, imgW: number, imgH: number, filenam
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
-  <Default Extension="${imgExt}" ContentType="${contentType}"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Default Extension="jpeg" ContentType="image/jpeg"/>
+  <Default Extension="jpg" ContentType="image/jpeg"/>
   <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+  <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
+  <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
   <Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
 </Types>`;
 
@@ -1167,27 +1171,70 @@ const buildPptxFromImage = (dataUrl: string, imgW: number, imgH: number, filenam
 
   const presentationRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
-</Relationships>`;
-
-  const slideRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.${imgExt}"/>
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
 </Relationships>`;
 
   const presentation = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
-                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-                xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-  <p:sldMasterIdLst/>
+                xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:sldMasterIdLst>
+    <p:sldMasterId id="2147483648" r:id="rId1"/>
+  </p:sldMasterIdLst>
+  <p:sldIdLst>
+    <p:sldId id="256" r:id="rId2"/>
+  </p:sldIdLst>
   <p:sldSz cx="${slideW}" cy="${slideH}" type="screen16x9"/>
-  <p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst>
+  <p:notesSz cx="6858000" cy="9144000"/>
 </p:presentation>`;
 
+  const slideMaster = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldMaster xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+             xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+             xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
+    </p:spTree>
+  </p:cSld>
+  <p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>
+  <p:sldLayoutIdLst>
+    <p:sldLayoutId id="2147483649" r:id="rId1"/>
+  </p:sldLayoutIdLst>
+</p:sldMaster>`;
+
+  const slideMasterRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+</Relationships>`;
+
+  const slideLayout = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldLayout xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+             xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+             xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+             type="blank" preserve="1">
+  <p:cSld name="Blank">
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
+    </p:spTree>
+  </p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sldLayout>`;
+
+  const slideLayoutRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>
+</Relationships>`;
+
   // Scale image to fit within slide while preserving aspect ratio
-  const ratio = Math.min((slideW * 0.9) / (imgW * 9525), (slideH * 0.9) / (imgH * 9525));
-  const fitW = Math.round(imgW * 9525 * ratio);
-  const fitH = Math.round(imgH * 9525 * ratio);
+  const maxW = slideW * 0.92;
+  const maxH = slideH * 0.92;
+  const ratio = Math.min(maxW / (Math.max(1, imgW) * 9525), maxH / (Math.max(1, imgH) * 9525));
+  const fitW = Math.round(Math.max(1, imgW) * 9525 * ratio);
+  const fitH = Math.round(Math.max(1, imgH) * 9525 * ratio);
   const offX = Math.round((slideW - fitW) / 2);
   const offY = Math.round((slideH - fitH) / 2);
 
@@ -1200,19 +1247,43 @@ const buildPptxFromImage = (dataUrl: string, imgW: number, imgH: number, filenam
       <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
       <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${slideW}" cy="${slideH}"/><a:chOff x="0" y="0"/><a:chExt cx="${slideW}" cy="${slideH}"/></a:xfrm></p:grpSpPr>
       <p:pic>
-        <p:nvPicPr><p:cNvPr id="2" name="${safeFname}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>
-        <p:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>
-        <p:spPr><a:xfrm><a:off x="${offX}" y="${offY}"/><a:ext cx="${fitW}" cy="${fitH}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>
+        <p:nvPicPr>
+          <p:cNvPr id="2" name="${safeFname}"/>
+          <p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>
+          <p:nvPr/>
+        </p:nvPicPr>
+        <p:blipFill>
+          <a:blip r:embed="rId2"/>
+          <a:stretch><a:fillRect/></a:stretch>
+        </p:blipFill>
+        <p:spPr>
+          <a:xfrm>
+            <a:off x="${offX}" y="${offY}"/>
+            <a:ext cx="${fitW}" cy="${fitH}"/>
+          </a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+        </p:spPr>
       </p:pic>
     </p:spTree>
   </p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
 </p:sld>`;
+
+  const slideRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.${imgExt}"/>
+</Relationships>`;
 
   const files: { name: string; data: Uint8Array<ArrayBufferLike> }[] = [
     { name: "[Content_Types].xml", data: enc.encode(contentTypes) },
     { name: "_rels/.rels", data: enc.encode(rootRels) },
     { name: "ppt/presentation.xml", data: enc.encode(presentation) },
     { name: "ppt/_rels/presentation.xml.rels", data: enc.encode(presentationRels) },
+    { name: "ppt/slideMasters/slideMaster1.xml", data: enc.encode(slideMaster) },
+    { name: "ppt/slideMasters/_rels/slideMaster1.xml.rels", data: enc.encode(slideMasterRels) },
+    { name: "ppt/slideLayouts/slideLayout1.xml", data: enc.encode(slideLayout) },
+    { name: "ppt/slideLayouts/_rels/slideLayout1.xml.rels", data: enc.encode(slideLayoutRels) },
     { name: "ppt/slides/slide1.xml", data: enc.encode(slide) },
     { name: "ppt/slides/_rels/slide1.xml.rels", data: enc.encode(slideRels) },
     { name: `ppt/media/image1.${imgExt}`, data: imgBytes },
