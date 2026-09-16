@@ -34,6 +34,9 @@ import {
   Globe,
   Search,
   FileText,
+  FileDown,
+  Table2,
+  MonitorPlay,
   Binary,
   Cpu,
   Terminal,
@@ -1517,7 +1520,6 @@ const renderPdfToImage = async (
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(buffer),
       useSystemFonts: true,
-      isEvalSupported: false,
     });
 
     const timeoutPromise = new Promise<never>((_, reject) =>
