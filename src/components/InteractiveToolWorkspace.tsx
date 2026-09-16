@@ -216,37 +216,37 @@ const EDITOR_THEMES: Record<
     name: "VS Dark",
     bg: "#1e1e1e",
     gutterBg: "#252526",
-    gutterText: "#858585",
-    text: "#d4d4d4",
-    accent: "#007acc",
-    highlight: "rgba(255, 255, 0, 0.3)",
-    border: "#333333",
+    gutterText: "#94a3b8",
+    text: "#f8fafc",
+    accent: "#38bdf8",
+    highlight: "rgba(56, 189, 248, 0.3)",
+    border: "#3f3f46",
   },
   matrix: {
     name: "Hacker Matrix",
-    bg: "#0b1320",
-    gutterBg: "#070d18",
-    gutterText: "#166534",
-    text: "#22c55e",
-    accent: "#4ade80",
+    bg: "#050b14",
+    gutterBg: "#081426",
+    gutterText: "#4ade80",
+    text: "#86efac",
+    accent: "#22c55e",
     highlight: "rgba(34, 197, 94, 0.4)",
-    border: "#1e3a29",
+    border: "#166534",
   },
   cyberpunk: {
     name: "Cyberpunk Neon",
     bg: "#130521",
-    gutterBg: "#0d0217",
-    gutterText: "#831843",
-    text: "#f43f5e",
-    accent: "#06b6d4",
+    gutterBg: "#1e0836",
+    gutterText: "#f472b6",
+    text: "#fb7185",
+    accent: "#38bdf8",
     highlight: "rgba(244, 63, 94, 0.4)",
-    border: "#4c0519",
+    border: "#831843",
   },
   dracula: {
     name: "Dracula",
     bg: "#282a36",
     gutterBg: "#21222c",
-    gutterText: "#6272a4",
+    gutterText: "#a78bfa",
     text: "#f8f8f2",
     accent: "#bd93f9",
     highlight: "rgba(255, 121, 198, 0.35)",
@@ -256,7 +256,7 @@ const EDITOR_THEMES: Record<
     name: "Monokai",
     bg: "#272822",
     gutterBg: "#1e1f1c",
-    gutterText: "#75715e",
+    gutterText: "#e6db74",
     text: "#f8f8f2",
     accent: "#a6e22e",
     highlight: "rgba(230, 219, 116, 0.35)",
@@ -266,21 +266,21 @@ const EDITOR_THEMES: Record<
     name: "One Dark Pro",
     bg: "#282c34",
     gutterBg: "#21252b",
-    gutterText: "#5c6370",
-    text: "#abb2bf",
+    gutterText: "#94a3b8",
+    text: "#f1f5f9",
     accent: "#61afef",
     highlight: "rgba(97, 175, 239, 0.3)",
-    border: "#181a1f",
+    border: "#3e4451",
   },
   light: {
     name: "Light Clean",
     bg: "#ffffff",
     gutterBg: "#f8fafc",
-    gutterText: "#94a3b8",
+    gutterText: "#475569",
     text: "#0f172a",
     accent: "#2563eb",
     highlight: "rgba(254, 240, 138, 0.7)",
-    border: "#e2e8f0",
+    border: "#cbd5e1",
   },
 };
 
@@ -9335,7 +9335,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                   </div>
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-extrabold text-sm tracking-wide text-foreground">
+                      <span className="font-extrabold text-sm tracking-wide" style={{ color: EDITOR_THEMES[editorTheme].text }}>
                         {file?.name ? `${file.name.replace(/\.[^.]+$/, "")}.${binaryOutputMode === "C-Array" ? "h" : binaryOutputMode === "Hexadecimal" ? "hex" : binaryOutputMode === "Base64" ? "base64" : "bin"}` : "image_stream.bin"}
                       </span>
                       <span
@@ -9448,13 +9448,17 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                       type="button"
                       onClick={() => setEditorFontSize((prev) => Math.max(10, prev - 1))}
                       className="px-2 py-1 hover:bg-white/10 transition-colors font-bold text-xs cursor-pointer"
+                      style={{ color: EDITOR_THEMES[editorTheme].text }}
                       title="Decrease font size"
                     >
                       A-
                     </button>
                     <span
-                      className="px-1.5 text-[11px] font-mono border-x"
-                      style={{ borderColor: EDITOR_THEMES[editorTheme].border }}
+                      className="px-1.5 text-[11px] font-mono border-x font-bold"
+                      style={{
+                        borderColor: EDITOR_THEMES[editorTheme].border,
+                        color: EDITOR_THEMES[editorTheme].text,
+                      }}
                     >
                       {editorFontSize}px
                     </span>
@@ -9462,6 +9466,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                       type="button"
                       onClick={() => setEditorFontSize((prev) => Math.min(22, prev + 1))}
                       className="px-2 py-1 hover:bg-white/10 transition-colors font-bold text-xs cursor-pointer"
+                      style={{ color: EDITOR_THEMES[editorTheme].text }}
                       title="Increase font size"
                     >
                       A+
@@ -9480,7 +9485,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                     }}
                   >
                     {(Object.keys(EDITOR_THEMES) as EditorThemeKey[]).map((tk) => (
-                      <option key={tk} value={tk}>
+                      <option key={tk} value={tk} style={{ backgroundColor: "#1e1e1e", color: "#ffffff" }}>
                         {EDITOR_THEMES[tk].name}
                       </option>
                     ))}
@@ -9569,14 +9574,15 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                   style={{
                     borderColor: EDITOR_THEMES[editorTheme].border,
                     backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                    color: EDITOR_THEMES[editorTheme].text,
                   }}
                 >
                   <ShieldCheck className="h-3.5 w-3.5" style={{ color: EDITOR_THEMES[editorTheme].accent }} />
-                  <span className="font-bold opacity-75">Header:</span>
+                  <span className="font-bold opacity-80" style={{ color: EDITOR_THEMES[editorTheme].gutterText }}>Header:</span>
                   <span className="font-extrabold" style={{ color: EDITOR_THEMES[editorTheme].accent }}>
                     {binaryStats.magic.format}
                   </span>
-                  <span className="text-[10px] opacity-70 font-mono">[{binaryStats.magic.magicHex}]</span>
+                  <span className="text-[10px] opacity-75 font-mono">[{binaryStats.magic.magicHex}]</span>
                 </div>
 
                 {/* Shannon Entropy */}
@@ -9585,14 +9591,15 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                   style={{
                     borderColor: EDITOR_THEMES[editorTheme].border,
                     backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                    color: EDITOR_THEMES[editorTheme].text,
                   }}
                 >
                   <Activity className="h-3.5 w-3.5 text-amber-400" />
-                  <span className="font-bold opacity-75">Shannon Entropy:</span>
+                  <span className="font-bold opacity-80" style={{ color: EDITOR_THEMES[editorTheme].gutterText }}>Shannon Entropy:</span>
                   <span className="font-extrabold text-amber-400">
                     {binaryStats.entropy} / 8.000
                   </span>
-                  <span className="text-[10px] opacity-70">
+                  <span className="text-[10px] opacity-75">
                     {binaryStats.entropy > 7.5 ? "(High Randomness · Compressed)" : binaryStats.entropy > 4 ? "(Moderate Structure)" : "(Low Randomness · Sparse)"}
                   </span>
                 </div>
@@ -9603,14 +9610,15 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                   style={{
                     borderColor: EDITOR_THEMES[editorTheme].border,
                     backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                    color: EDITOR_THEMES[editorTheme].text,
                   }}
                 >
                   <Binary className="h-3.5 w-3.5 text-emerald-400" />
-                  <span className="font-bold opacity-75">Bit Balance:</span>
+                  <span className="font-bold opacity-80" style={{ color: EDITOR_THEMES[editorTheme].gutterText }}>Bit Balance:</span>
                   <span className="font-extrabold text-emerald-400">
                     {binaryStats.bitDensity}% [1s] · {100 - binaryStats.bitDensity}% [0s]
                   </span>
-                  <span className="text-[10px] opacity-70 font-mono">
+                  <span className="text-[10px] opacity-75 font-mono">
                     (0s: {binaryStats.zeroCount.toLocaleString()} | 1s: {binaryStats.oneCount.toLocaleString()})
                   </span>
                 </div>
@@ -9621,11 +9629,12 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                   style={{
                     borderColor: EDITOR_THEMES[editorTheme].border,
                     backgroundColor: EDITOR_THEMES[editorTheme].bg,
+                    color: EDITOR_THEMES[editorTheme].text,
                   }}
                 >
                   <Cpu className="h-3.5 w-3.5" style={{ color: EDITOR_THEMES[editorTheme].accent }} />
-                  <span className="font-bold opacity-75">Grouping:</span>
-                  <span className="font-extrabold">{binaryBitDepth}</span>
+                  <span className="font-bold opacity-80" style={{ color: EDITOR_THEMES[editorTheme].gutterText }}>Grouping:</span>
+                  <span className="font-extrabold" style={{ color: EDITOR_THEMES[editorTheme].text }}>{binaryBitDepth}</span>
                 </div>
               </div>
             </>
@@ -9693,6 +9702,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                     type="button"
                     onClick={() => setEditorSearchQuery("")}
                     className="p-1 hover:bg-white/10 rounded cursor-pointer opacity-70 hover:opacity-100"
+                    style={{ color: EDITOR_THEMES[editorTheme].text }}
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -9728,16 +9738,17 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
 
                 {/* Quick Presets */}
                 <div className="hidden md:flex items-center gap-1 text-[10px]">
-                  <span className="opacity-60 font-bold">Presets:</span>
+                  <span className="opacity-75 font-bold" style={{ color: EDITOR_THEMES[editorTheme].gutterText }}>Presets:</span>
                   {["00000000", "11111111", "0100", "89 50", "FF D8"].map((preset) => (
                     <button
                       key={preset}
                       type="button"
                       onClick={() => setEditorSearchQuery(preset)}
-                      className="px-1.5 py-0.5 rounded border hover:opacity-100 opacity-75 transition-all cursor-pointer font-mono"
+                      className="px-1.5 py-0.5 rounded border hover:opacity-100 opacity-80 transition-all cursor-pointer font-mono font-semibold"
                       style={{
                         borderColor: EDITOR_THEMES[editorTheme].border,
                         backgroundColor: EDITOR_THEMES[editorTheme].gutterBg,
+                        color: EDITOR_THEMES[editorTheme].text,
                       }}
                     >
                       {preset}
@@ -9770,7 +9781,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                   )
                 ),
               }).map((_, i) => (
-                <div key={i} className="opacity-60">
+                <div key={i} className="opacity-70 font-semibold">
                   {i + 1}
                 </div>
               ))}
@@ -9795,37 +9806,57 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
 
           {/* 5. Bottom Status Bar */}
           <div
-            className="flex items-center justify-between gap-4 px-4 py-1.5 border-t text-[11px] font-mono shrink-0 select-none"
+            className="flex items-center justify-between gap-4 px-4 py-2 border-t text-[11px] font-mono shrink-0 select-none"
             style={{
               borderColor: EDITOR_THEMES[editorTheme].border,
               backgroundColor: EDITOR_THEMES[editorTheme].gutterBg,
-              color: EDITOR_THEMES[editorTheme].gutterText,
+              color: EDITOR_THEMES[editorTheme].text,
             }}
           >
             {/* Left Status Info */}
             <div className="flex items-center gap-3 overflow-x-auto">
-              <span className="flex items-center gap-1.5 text-foreground font-bold">
-                <Terminal className="h-3 w-3" style={{ color: EDITOR_THEMES[editorTheme].accent }} />
+              <span className="flex items-center gap-1.5 font-bold" style={{ color: EDITOR_THEMES[editorTheme].text }}>
+                <Terminal className="h-3.5 w-3.5" style={{ color: EDITOR_THEMES[editorTheme].accent }} />
                 <span>Binary Code Lab</span>
               </span>
-              <span>·</span>
-              <span>Mode: <strong className="text-foreground">{binaryOutputMode}</strong></span>
-              <span>·</span>
-              <span>Delimiter: <strong className="text-foreground">{binaryDelimiter}</strong></span>
-              <span>·</span>
-              <span>Depth: <strong className="text-foreground">{binaryBitDepth}</strong></span>
-              <span>·</span>
-              <span>Encoding: <strong className="text-foreground">UTF-8 / Raw Stream</strong></span>
+              <span className="opacity-40">·</span>
+              <span className="flex items-center gap-1">
+                <span className="opacity-80" style={{ color: EDITOR_THEMES[editorTheme].gutterText }}>Mode:</span>
+                <strong className="font-extrabold" style={{ color: EDITOR_THEMES[editorTheme].accent }}>
+                  {binaryOutputMode}
+                </strong>
+              </span>
+              <span className="opacity-40">·</span>
+              <span className="flex items-center gap-1">
+                <span className="opacity-80" style={{ color: EDITOR_THEMES[editorTheme].gutterText }}>Delimiter:</span>
+                <strong className="font-extrabold" style={{ color: EDITOR_THEMES[editorTheme].accent }}>
+                  {binaryDelimiter}
+                </strong>
+              </span>
+              <span className="opacity-40">·</span>
+              <span className="flex items-center gap-1">
+                <span className="opacity-80" style={{ color: EDITOR_THEMES[editorTheme].gutterText }}>Depth:</span>
+                <strong className="font-extrabold" style={{ color: EDITOR_THEMES[editorTheme].accent }}>
+                  {binaryBitDepth}
+                </strong>
+              </span>
+              <span className="opacity-40">·</span>
+              <span className="flex items-center gap-1">
+                <span className="opacity-80" style={{ color: EDITOR_THEMES[editorTheme].gutterText }}>Encoding:</span>
+                <strong className="font-extrabold" style={{ color: EDITOR_THEMES[editorTheme].accent }}>
+                  UTF-8 / Raw Stream
+                </strong>
+              </span>
             </div>
 
             {/* Right Integrity Info & Status Bar Close */}
             <div className="flex items-center gap-3 shrink-0">
               <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
-                <Check className="h-3 w-3 text-emerald-400" />
+                <Check className="h-3.5 w-3.5 text-emerald-400" />
                 <span>100% Full Dataset Loaded</span>
               </span>
-              <span>·</span>
-              <span>
+              <span className="opacity-40">·</span>
+              <span className="font-extrabold" style={{ color: EDITOR_THEMES[editorTheme].text }}>
                 {((fullBinaryOutputText || binaryOutputText || "").length).toLocaleString()} chars
               </span>
               <button
