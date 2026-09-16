@@ -3214,19 +3214,6 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
     if (tool.slug === "convert-to-jpg") {
       setTargetFormat("image/jpeg");
     }
-    if (tool.slug === "html-to-image" && !imageSrc) {
-      setHtmlCodeText(SAMPLE_VISUAL_TEST);
-      setHtmlRenderWidth(860);
-      setHtmlRenderHeight(740);
-      setHtmlBgColor("auto");
-      renderHtmlToImage(SAMPLE_VISUAL_TEST, 860, 740, "auto", "PNG")
-        .then((dataUrl) => {
-          setImageSrc(dataUrl);
-          setDimensions({ width: 860, height: 740 });
-          setHasProcessed(false);
-        })
-        .catch(() => {});
-    }
     if (tool.slug === "binary-to-image" && !imageSrc) {
       const initialText = SAMPLE_BINARY_INVADER;
       setInputConvertText(initialText);
@@ -5601,7 +5588,6 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       <canvas ref={canvasRef} className="hidden" />
 
       {!imageSrc && !file && ![
-        "html-to-image",
         "text-to-image", "binary-to-image", "ascii-to-image",
         "base64-to-image", "hex-to-image", "octal-to-image", "decimal-to-image",
       ].includes(tool.slug) ? (
@@ -5623,7 +5609,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
           </div>
 
           <h2 className="mt-8 font-display text-3xl font-extrabold md:text-4xl text-foreground">
-            {tool.slug === "pdf-to-image"
+            {tool.slug === "html-to-image"
+              ? "Select HTML File or Drag & Drop HTML Here"
+              : tool.slug === "pdf-to-image"
               ? "Select PDF File or Drag & Drop PDF Here"
               : tool.slug === "word-to-image"
               ? "Select Word Document (.docx) or Drag & Drop Here"
@@ -5639,17 +5627,56 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
             <span className="font-extrabold text-foreground">{tool.outputs}</span>
           </p>
 
-          <div className="mt-8 inline-flex items-center gap-3 rounded-full bg-foreground px-10 py-5 text-base font-extrabold text-background shadow-2xl transition-all group-hover:scale-105">
-            {tool.slug === "pdf-to-image"
-              ? "Select PDF File"
-              : tool.slug === "word-to-image"
-              ? "Select Word Document"
-              : tool.slug === "excel-to-image"
-              ? "Select Excel Spreadsheet"
-              : tool.slug === "powerpoint-to-image"
-              ? "Select PowerPoint Presentation"
-              : "Select Image File"}{" "}
-            <span aria-hidden>→</span>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                fileInputRef.current?.click();
+              }}
+              className="inline-flex items-center gap-3 rounded-full bg-foreground px-8 sm:px-10 py-4 sm:py-5 text-base font-extrabold text-background shadow-2xl transition-all hover:scale-105 cursor-pointer"
+            >
+              {tool.slug === "html-to-image"
+                ? "Select HTML File"
+                : tool.slug === "pdf-to-image"
+                ? "Select PDF File"
+                : tool.slug === "word-to-image"
+                ? "Select Word Document"
+                : tool.slug === "excel-to-image"
+                ? "Select Excel Spreadsheet"
+                : tool.slug === "powerpoint-to-image"
+                ? "Select PowerPoint Presentation"
+                : "Select Image File"}{" "}
+              <span aria-hidden>→</span>
+            </button>
+
+            {tool.slug === "html-to-image" && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFile(null);
+                  setHtmlCodeText(SAMPLE_VISUAL_TEST);
+                  setHtmlInputMode("paste");
+                  setProcessing(true);
+                  renderHtmlToImage(SAMPLE_VISUAL_TEST, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat)
+                    .then((dataUrl) => {
+                      setImageSrc(dataUrl);
+                      setDimensions({ width: htmlRenderWidth, height: htmlRenderHeight });
+                      setHasProcessed(false);
+                      setIsEditingSettings(true);
+                      setProcessing(false);
+                    })
+                    .catch(() => {
+                      setProcessing(false);
+                    });
+                }}
+                className="inline-flex items-center gap-2.5 rounded-full border-2 border-border bg-card px-7 py-4 sm:py-5 text-sm sm:text-base font-extrabold text-foreground shadow-lg hover:border-foreground hover:bg-secondary transition-all hover:scale-105 cursor-pointer"
+              >
+                <FileText className="h-5 w-5 text-accent" />
+                <span>Plain Text Option</span>
+              </button>
+            )}
           </div>
 
           <p className="mt-4 text-xs font-bold text-muted-foreground">
@@ -8221,192 +8248,126 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
               {/* 15.5 HTML TO IMAGE CONTROLS */}
               {tool.slug === "html-to-image" && (
                 <div className="space-y-6">
-                  {/* Mode Selector Switcher */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-muted-foreground block">
-                      Input Source Option:
-                    </label>
-                    <div className="grid grid-cols-2 gap-2 rounded-2xl bg-muted/40 p-1.5 border border-border">
-                      <button
-                        type="button"
-                        onClick={() => setHtmlInputMode("upload")}
-                        className={`flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-extrabold transition-all ${
-                          htmlInputMode === "upload"
-                            ? "bg-foreground text-background shadow-md"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        <Upload className="h-3.5 w-3.5" />
-                        <span>Upload HTML File</span>
-                      </button>
+                  {/* Top Bar: Input Mode / File Indicator & Upload Button */}
+                  <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-muted/40 border border-border">
+                    <div className="flex items-center gap-2.5 truncate">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground font-bold shadow-xs">
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <div className="truncate">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-black text-foreground truncate">
+                            {file ? file.name : "Plain Text / Raw HTML"}
+                          </h4>
+                          <span className="rounded-full bg-accent/15 text-accent border border-accent/30 px-2 py-0.2 text-[9px] font-bold font-mono">
+                            {htmlCodeText.length.toLocaleString()} chars
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          {file ? `${formatBytes(file.size)} · Uploaded HTML file` : "Editable Plain Text / HTML Code"}
+                        </p>
+                      </div>
+                    </div>
 
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
-                        onClick={() => setHtmlInputMode("paste")}
-                        className={`flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-extrabold transition-all ${
-                          htmlInputMode === "paste"
-                            ? "bg-foreground text-background shadow-md"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-xs cursor-pointer"
+                        title="Upload an HTML file from your computer"
                       >
-                        <Code2 className="h-3.5 w-3.5" />
-                        <span>Paste HTML Code</span>
+                        <Upload className="h-3.5 w-3.5 text-accent" />
+                        <span>{file ? "Change File" : "Upload HTML File"}</span>
                       </button>
                     </div>
                   </div>
 
-                  {/* OPTION 1: Upload HTML File */}
-                  {htmlInputMode === "upload" && (
-                    <div className="space-y-4">
-                      {/* Uploaded File Header Card */}
-                      {file ? (
-                        <div className="rounded-2xl border-2 border-accent/40 bg-accent/5 p-4 flex items-center justify-between shadow-xs">
-                          <div className="flex items-center gap-3 truncate">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground font-bold shadow-xs">
-                              <FileType className="h-5 w-5" />
-                            </div>
-                            <div className="truncate">
-                              <h4 className="text-xs font-extrabold text-foreground truncate">
-                                {file.name}
-                              </h4>
-                              <p className="text-[11px] text-muted-foreground">
-                                {formatBytes(file.size)} · {htmlCodeText.split('\n').length} lines of HTML
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="shrink-0 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-xs"
-                          >
-                            Change File
-                          </button>
-                        </div>
-                      ) : (
-                        <div
-                          onClick={() => fileInputRef.current?.click()}
-                          onDragOver={handleDragOver}
-                          onDragLeave={handleDragLeave}
-                          onDrop={handleDrop}
-                          className="group cursor-pointer rounded-2xl border-2 border-dashed border-border bg-background/50 p-6 text-center hover:border-accent hover:bg-accent/5 transition-all"
+                  {/* HTML & CSS Code Editor */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-muted-foreground block">
+                        HTML & CSS Code Editor:
+                      </label>
+                      <span className="text-[10px] font-mono font-bold text-muted-foreground">
+                        {htmlCodeText.split("\n").length} lines
+                      </span>
+                    </div>
+
+                    <textarea
+                      rows={8}
+                      value={htmlCodeText}
+                      onChange={(e) => setHtmlCodeText(e.target.value)}
+                      placeholder="Paste or write HTML & CSS code here..."
+                      className="w-full rounded-2xl border-2 border-border bg-background p-3.5 text-xs font-mono leading-relaxed focus:border-accent focus:outline-none"
+                    />
+
+                    {/* Quick Sample Presets */}
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[11px] font-bold text-muted-foreground block">Quick Sample Templates:</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHtmlCodeText(SAMPLE_VISUAL_TEST);
+                            setHtmlRenderWidth(860);
+                            setHtmlRenderHeight(740);
+                            setHtmlBgColor("auto");
+                          }}
+                          className="rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
                         >
-                          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10 text-accent group-hover:scale-110 transition-transform">
-                            <FileType className="h-6 w-6" />
-                          </div>
-                          <h4 className="mt-3 text-sm font-extrabold text-foreground">
-                            Click or Drop .html File Here
-                          </h4>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Supports .html, .htm, or .txt file input
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Loaded HTML Code Display & Editor */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs font-bold text-muted-foreground">
-                          <span>Loaded HTML Code ({file ? file.name : "Uploaded File"}):</span>
-                          <span className="font-mono text-[10px]">{htmlCodeText.length} chars</span>
-                        </div>
-                        <textarea
-                          rows={7}
-                          value={htmlCodeText}
-                          onChange={(e) => setHtmlCodeText(e.target.value)}
-                          placeholder="HTML code from file will appear here..."
-                          className="w-full rounded-2xl border-2 border-border bg-background p-3.5 text-xs font-mono leading-relaxed focus:border-accent focus:outline-none"
-                        />
+                          ✨ Visual QA Test
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHtmlCodeText(SAMPLE_OG_CARD);
+                            setHtmlRenderWidth(1200);
+                            setHtmlRenderHeight(630);
+                            setHtmlBgColor("#0f172a");
+                          }}
+                          className="rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
+                        >
+                          🎨 OG Card
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHtmlCodeText(SAMPLE_BADGE);
+                            setHtmlRenderWidth(600);
+                            setHtmlRenderHeight(300);
+                            setHtmlBgColor("#0f172a");
+                          }}
+                          className="rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
+                        >
+                          🏷️ Product Badge
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHtmlCodeText(SAMPLE_INVOICE);
+                            setHtmlRenderWidth(800);
+                            setHtmlRenderHeight(600);
+                            setHtmlBgColor("#ffffff");
+                          }}
+                          className="rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
+                        >
+                          🧾 Invoice
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHtmlCodeText(SAMPLE_CODE_BOX);
+                            setHtmlRenderWidth(800);
+                            setHtmlRenderHeight(450);
+                            setHtmlBgColor("#090d16");
+                          }}
+                          className="rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
+                        >
+                          💻 Code Card
+                        </button>
                       </div>
                     </div>
-                  )}
-
-                  {/* OPTION 2: Paste HTML Code */}
-                  {htmlInputMode === "paste" && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold text-muted-foreground block">
-                          HTML & CSS Code Editor
-                        </label>
-                        <span className="text-[10px] font-mono font-bold text-muted-foreground">
-                          {htmlCodeText.length} chars
-                        </span>
-                      </div>
-
-                      <textarea
-                        rows={7}
-                        value={htmlCodeText}
-                        onChange={(e) => setHtmlCodeText(e.target.value)}
-                        placeholder="Paste or write HTML & CSS code here..."
-                        className="w-full rounded-2xl border-2 border-border bg-background p-3.5 text-xs font-mono leading-relaxed focus:border-accent focus:outline-none"
-                      />
-
-                      {/* Quick Sample Presets */}
-                      <div className="space-y-1.5">
-                        <span className="text-[11px] font-bold text-muted-foreground block">Quick Sample Templates:</span>
-                        <div className="flex flex-wrap gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setHtmlCodeText(SAMPLE_VISUAL_TEST);
-                              setHtmlRenderWidth(860);
-                              setHtmlRenderHeight(740);
-                              setHtmlBgColor("auto");
-                            }}
-                            className="rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-bold hover:border-accent hover:text-accent transition-all"
-                          >
-                            ✨ Visual QA Test
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setHtmlCodeText(SAMPLE_OG_CARD);
-                              setHtmlRenderWidth(1200);
-                              setHtmlRenderHeight(630);
-                              setHtmlBgColor("#0f172a");
-                            }}
-                            className="rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-bold hover:border-accent hover:text-accent transition-all"
-                          >
-                            🎨 OG Card
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setHtmlCodeText(SAMPLE_BADGE);
-                              setHtmlRenderWidth(600);
-                              setHtmlRenderHeight(300);
-                              setHtmlBgColor("#0f172a");
-                            }}
-                            className="rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-bold hover:border-accent hover:text-accent transition-all"
-                          >
-                            🏷️ Product Badge
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setHtmlCodeText(SAMPLE_INVOICE);
-                              setHtmlRenderWidth(800);
-                              setHtmlRenderHeight(600);
-                              setHtmlBgColor("#ffffff");
-                            }}
-                            className="rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-bold hover:border-accent hover:text-accent transition-all"
-                          >
-                            🧾 Invoice
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setHtmlCodeText(SAMPLE_CODE_BOX);
-                              setHtmlRenderWidth(800);
-                              setHtmlRenderHeight(450);
-                              setHtmlBgColor("#090d16");
-                            }}
-                            className="rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-bold hover:border-accent hover:text-accent transition-all"
-                          >
-                            💻 Code Card
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  </div>
 
                   {/* Canvas Dimensions */}
                   <div className="space-y-3 pt-2 border-t border-border">
