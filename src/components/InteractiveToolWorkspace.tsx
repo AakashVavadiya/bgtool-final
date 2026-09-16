@@ -27,6 +27,7 @@ import {
   X,
   Code2,
   AlertCircle,
+  ArrowLeft,
   ArrowRight,
   FolderUp,
   Languages,
@@ -3251,8 +3252,8 @@ const renderHtmlToImage = async (
     container.id = containerId;
     container.className = "bgtool-html-render-container";
     container.style.position = "fixed";
-    container.style.left = "0";
-    container.style.top = "0";
+    container.style.left = "0px";
+    container.style.top = "0px";
     container.style.width = `${width}px`;
     container.style.height = `${height}px`;
     container.style.minWidth = `${width}px`;
@@ -3261,13 +3262,15 @@ const renderHtmlToImage = async (
     container.style.maxHeight = `${height}px`;
     container.style.overflow = "hidden";
     container.style.zIndex = "-99999";
-    container.style.opacity = "0.001";
+    container.style.opacity = "1";
     container.style.pointerEvents = "none";
     container.style.visibility = "visible";
     container.style.transform = "translateZ(0)";
     container.style.boxSizing = "border-box";
     container.style.margin = "0";
     container.style.padding = "0";
+    container.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+    container.style.color = "#0f172a";
 
     // Parse the input HTML
     const parser = new DOMParser();
@@ -3332,6 +3335,8 @@ const renderHtmlToImage = async (
       } else {
         container.style.backgroundColor = bgColor;
       }
+    } else {
+      container.style.backgroundColor = "#ffffff";
     }
 
     document.body.appendChild(container);
@@ -3687,6 +3692,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
   }, [hasProcessed, isEditingSettings]);
 
   // 14. HTML to Image State
+  const [htmlLandingMode, setHtmlLandingMode] = useState<"upload" | "plain_text">("upload");
   const [htmlInputMode, setHtmlInputMode] = useState<"upload" | "paste">("upload");
   const [htmlCodeText, setHtmlCodeText] = useState<string>("");
   const [htmlRenderWidth, setHtmlRenderWidth] = useState<number>(860);
@@ -5850,98 +5856,245 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         "text-to-image", "binary-to-image", "ascii-to-image",
         "base64-to-image", "hex-to-image", "octal-to-image", "decimal-to-image",
       ].includes(tool.slug) ? (
-        /* Standalone Centered Drag & Drop Upload Zone */
-        <div
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`group cursor-pointer flex flex-col items-center justify-center text-center rounded-3xl border-3 border-dashed px-8 py-24 sm:py-32 w-full transition-all duration-300 ${
-            isDraggingFile
-              ? "border-accent bg-accent/10 scale-[1.01] shadow-2xl"
-              : "border-border bg-card/60 hover:border-foreground hover:bg-card shadow-lg"
-          }`}
-        >
-          <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-foreground text-background shadow-xl transition-all group-hover:scale-110">
-            <Upload className="h-10 w-10" />
-            <span className="absolute -inset-1 rounded-3xl bg-foreground/20 blur-lg animate-pulse" />
-          </div>
+        tool.slug === "html-to-image" && htmlLandingMode === "plain_text" ? (
+          /* Plain Text / HTML Code Direct Input Card with Next Button */
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-border bg-card p-6 sm:p-10 w-full max-w-4xl mx-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3.5 self-start mb-6 w-full">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-foreground text-background shadow-md">
+                <FileText className="h-6 w-6 text-accent" />
+              </div>
+              <div>
+                <h2 className="font-display text-2xl sm:text-3xl font-extrabold text-foreground">
+                  Paste or Write HTML / Plain Text
+                </h2>
+                <p className="text-xs sm:text-sm text-muted-foreground font-semibold mt-0.5">
+                  Type custom HTML, CSS styling, or plain text to render directly into a high-resolution PNG or JPG image
+                </p>
+              </div>
+            </div>
 
-          <h2 className="mt-8 font-display text-3xl font-extrabold md:text-4xl text-foreground">
-            {tool.slug === "html-to-image"
-              ? "Select HTML File or Drag & Drop HTML Here"
-              : tool.slug === "pdf-to-image"
-              ? "Select PDF File or Drag & Drop PDF Here"
-              : tool.slug === "word-to-image"
-              ? "Select Word Document (.docx) or Drag & Drop Here"
-              : tool.slug === "excel-to-image"
-              ? "Select Excel Spreadsheet (.xlsx) or Drag & Drop Here"
-              : tool.slug === "powerpoint-to-image"
-              ? "Select PowerPoint (.pptx) or Drag & Drop Here"
-              : "Select File or Drag & Drop Image Here"}
-          </h2>
+            <div className="w-full space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+                  HTML Code / Text Input:
+                </label>
+                <span className="text-[11px] font-mono font-bold text-accent">
+                  {htmlCodeText.length.toLocaleString()} characters · {htmlCodeText.split("\n").length} lines
+                </span>
+              </div>
 
-          <p className="mt-3 max-w-md text-sm font-semibold text-muted-foreground md:text-base">
-            Accepts <span className="font-extrabold text-foreground">{tool.accepts}</span> · Returns{" "}
-            <span className="font-extrabold text-foreground">{tool.outputs}</span>
-          </p>
+              <textarea
+                rows={10}
+                value={htmlCodeText}
+                onChange={(e) => setHtmlCodeText(e.target.value)}
+                placeholder={`Paste or type HTML code or plain text here...\n\nExample:\n<div style="padding: 40px; background: linear-gradient(135deg, #4f46e5, #06b6d4); color: white; border-radius: 24px; font-family: system-ui, sans-serif; text-align: center;">\n  <h1 style="font-size: 32px; font-weight: 800; margin: 0 0 8px 0;">HTML to Image Studio</h1>\n  <p style="font-size: 16px; opacity: 0.9; margin: 0;">Instant client-side rendering</p>\n</div>`}
+                className="w-full rounded-2xl border-2 border-border bg-background p-4 text-xs sm:text-sm font-mono leading-relaxed focus:border-accent focus:outline-none shadow-inner"
+              />
 
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                fileInputRef.current?.click();
-              }}
-              className="inline-flex items-center gap-3 rounded-full bg-foreground px-8 sm:px-10 py-4 sm:py-5 text-base font-extrabold text-background shadow-2xl transition-all hover:scale-105 cursor-pointer"
-            >
-              {tool.slug === "html-to-image"
-                ? "Select HTML File"
-                : tool.slug === "pdf-to-image"
-                ? "Select PDF File"
-                : tool.slug === "word-to-image"
-                ? "Select Word Document"
-                : tool.slug === "excel-to-image"
-                ? "Select Excel Spreadsheet"
-                : tool.slug === "powerpoint-to-image"
-                ? "Select PowerPoint Presentation"
-                : "Select Image File"}{" "}
-              <span aria-hidden>→</span>
-            </button>
+              {/* Sample Templates Quick-Load */}
+              <div className="space-y-1.5 pt-1">
+                <span className="text-[11px] font-bold text-muted-foreground block">
+                  Quick Sample Templates:
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHtmlCodeText(SAMPLE_VISUAL_TEST);
+                      setHtmlRenderWidth(860);
+                      setHtmlRenderHeight(740);
+                      setHtmlBgColor("auto");
+                    }}
+                    className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
+                  >
+                    ✨ Visual QA Test
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHtmlCodeText(SAMPLE_OG_CARD);
+                      setHtmlRenderWidth(1200);
+                      setHtmlRenderHeight(630);
+                      setHtmlBgColor("#0f172a");
+                    }}
+                    className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
+                  >
+                    🎨 OG Card
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHtmlCodeText(SAMPLE_BADGE);
+                      setHtmlRenderWidth(600);
+                      setHtmlRenderHeight(300);
+                      setHtmlBgColor("#0f172a");
+                    }}
+                    className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
+                  >
+                    🏷️ Product Badge
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHtmlCodeText(SAMPLE_INVOICE);
+                      setHtmlRenderWidth(800);
+                      setHtmlRenderHeight(600);
+                      setHtmlBgColor("#ffffff");
+                    }}
+                    className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
+                  >
+                    🧾 Invoice
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHtmlCodeText(SAMPLE_CODE_BOX);
+                      setHtmlRenderWidth(800);
+                      setHtmlRenderHeight(450);
+                      setHtmlBgColor("#090d16");
+                    }}
+                    className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
+                  >
+                    💻 Code Box
+                  </button>
+                </div>
+              </div>
+            </div>
 
-            {tool.slug === "html-to-image" && (
+            {/* Action Buttons: Back & Next */}
+            <div className="mt-8 flex flex-wrap items-center justify-between w-full gap-4 pt-4 border-t border-border">
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
+                onClick={() => setHtmlLandingMode("upload")}
+                className="inline-flex items-center gap-2 rounded-full border-2 border-border bg-background px-6 py-3.5 text-sm font-extrabold text-muted-foreground hover:text-foreground hover:border-foreground transition-all cursor-pointer"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back to Upload File</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={processing}
+                onClick={() => {
+                  if (!htmlCodeText.trim()) {
+                    toast.error("Please enter or paste HTML code or text before proceeding.");
+                    return;
+                  }
                   setFile(null);
-                  setHtmlCodeText(SAMPLE_VISUAL_TEST);
                   setHtmlInputMode("paste");
                   setProcessing(true);
-                  renderHtmlToImage(SAMPLE_VISUAL_TEST, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat)
+                  renderHtmlToImage(htmlCodeText, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat)
                     .then((dataUrl) => {
                       setImageSrc(dataUrl);
                       setDimensions({ width: htmlRenderWidth, height: htmlRenderHeight });
                       setHasProcessed(false);
                       setIsEditingSettings(true);
                       setProcessing(false);
+                      toast.success("HTML loaded! Review live preview and settings.");
                     })
-                    .catch(() => {
+                    .catch((err) => {
                       setProcessing(false);
+                      toast.error("Failed to render HTML. Check your code syntax.");
+                      console.error(err);
                     });
                 }}
-                className="inline-flex items-center gap-2.5 rounded-full border-2 border-border bg-card px-7 py-4 sm:py-5 text-sm sm:text-base font-extrabold text-foreground shadow-lg hover:border-foreground hover:bg-secondary transition-all hover:scale-105 cursor-pointer"
+                className="inline-flex items-center gap-3 rounded-full bg-foreground px-9 py-3.5 text-base font-black text-background shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
               >
-                <FileText className="h-5 w-5 text-accent" />
-                <span>Plain Text Option</span>
+                {processing ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Rendering...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Next</span>
+                    <ArrowRight className="h-5 w-5" />
+                  </>
+                )}
               </button>
-            )}
+            </div>
           </div>
+        ) : (
+          /* Standalone Centered Drag & Drop Upload Zone */
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`group cursor-pointer flex flex-col items-center justify-center text-center rounded-3xl border-3 border-dashed px-8 py-24 sm:py-32 w-full transition-all duration-300 ${
+              isDraggingFile
+                ? "border-accent bg-accent/10 scale-[1.01] shadow-2xl"
+                : "border-border bg-card/60 hover:border-foreground hover:bg-card shadow-lg"
+            }`}
+          >
+            <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-foreground text-background shadow-xl transition-all group-hover:scale-110">
+              <Upload className="h-10 w-10" />
+              <span className="absolute -inset-1 rounded-3xl bg-foreground/20 blur-lg animate-pulse" />
+            </div>
 
-          <p className="mt-4 text-xs font-bold text-muted-foreground">
-            🔒 100% Free · Client-side processing · No file size limits
-          </p>
-        </div>
+            <h2 className="mt-8 font-display text-3xl font-extrabold md:text-4xl text-foreground">
+              {tool.slug === "html-to-image"
+                ? "Select HTML File or Drag & Drop HTML Here"
+                : tool.slug === "pdf-to-image"
+                ? "Select PDF File or Drag & Drop PDF Here"
+                : tool.slug === "word-to-image"
+                ? "Select Word Document (.docx) or Drag & Drop Here"
+                : tool.slug === "excel-to-image"
+                ? "Select Excel Spreadsheet (.xlsx) or Drag & Drop Here"
+                : tool.slug === "powerpoint-to-image"
+                ? "Select PowerPoint (.pptx) or Drag & Drop Here"
+                : "Select File or Drag & Drop Image Here"}
+            </h2>
+
+            <p className="mt-3 max-w-md text-sm font-semibold text-muted-foreground md:text-base">
+              Accepts <span className="font-extrabold text-foreground">{tool.accepts}</span> · Returns{" "}
+              <span className="font-extrabold text-foreground">{tool.outputs}</span>
+            </p>
+
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                className="inline-flex items-center gap-3 rounded-full bg-foreground px-8 sm:px-10 py-4 sm:py-5 text-base font-extrabold text-background shadow-2xl transition-all hover:scale-105 cursor-pointer"
+              >
+                {tool.slug === "html-to-image"
+                  ? "Select HTML File"
+                  : tool.slug === "pdf-to-image"
+                  ? "Select PDF File"
+                  : tool.slug === "word-to-image"
+                  ? "Select Word Document"
+                  : tool.slug === "excel-to-image"
+                  ? "Select Excel Spreadsheet"
+                  : tool.slug === "powerpoint-to-image"
+                  ? "Select PowerPoint Presentation"
+                  : "Select Image File"}{" "}
+                <span aria-hidden>→</span>
+              </button>
+
+              {tool.slug === "html-to-image" && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setHtmlLandingMode("plain_text");
+                    setHtmlCodeText("");
+                  }}
+                  className="inline-flex items-center gap-2.5 rounded-full border-2 border-border bg-card px-7 py-4 sm:py-5 text-sm sm:text-base font-extrabold text-foreground shadow-lg hover:border-foreground hover:bg-secondary transition-all hover:scale-105 cursor-pointer"
+                >
+                  <FileText className="h-5 w-5 text-accent" />
+                  <span>Plain Text Option</span>
+                </button>
+              )}
+            </div>
+
+            <p className="mt-4 text-xs font-bold text-muted-foreground">
+              🔒 100% Free · Client-side processing · No file size limits
+            </p>
+          </div>
+        )
       ) : hasProcessed && !isEditingSettings ? (
         /* Dedicated Processed View for All Tools */
         <div className="flex flex-col gap-6 w-full max-w-5xl mx-auto animate-in fade-in zoom-in-95 duration-300">
