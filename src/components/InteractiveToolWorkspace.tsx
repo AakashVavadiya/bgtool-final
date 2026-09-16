@@ -3371,17 +3371,18 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
   }, [hasProcessed, isEditingSettings]);
 
   // 14. HTML to Image State
-  const [htmlInputMode, setHtmlInputMode] = useState<"upload" | "paste">("paste");
-  const [htmlCodeText, setHtmlCodeText] = useState<string>(SAMPLE_VISUAL_TEST);
+  const [htmlInputMode, setHtmlInputMode] = useState<"upload" | "paste">("upload");
+  const [htmlCodeText, setHtmlCodeText] = useState<string>("");
   const [htmlRenderWidth, setHtmlRenderWidth] = useState<number>(860);
   const [htmlRenderHeight, setHtmlRenderHeight] = useState<number>(740);
   const [htmlBgColor, setHtmlBgColor] = useState<string>("auto");
   const [htmlOutputFormat, setHtmlOutputFormat] = useState<"PNG" | "JPG">("PNG");
 
-  // Debounced live canvas preview for HTML to Image
+  // Debounced live canvas preview for HTML to Image (only runs when tool workspace is active)
   useEffect(() => {
     if (tool.slug !== "html-to-image") return;
     if (!htmlCodeText.trim()) return;
+    if (!imageSrc && !file) return;
 
     const timer = setTimeout(() => {
       renderHtmlToImage(htmlCodeText, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat)
@@ -3393,7 +3394,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [tool.slug, htmlCodeText, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat]);
+  }, [tool.slug, htmlCodeText, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat, imageSrc, file]);
 
   // 15. Text to Image State
   const [txtImgWidth, setTxtImgWidth] = useState<number>(1200);
