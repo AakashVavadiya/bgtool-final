@@ -327,12 +327,35 @@ const tryRawSvgFallback = (
   reject: (err: any) => void
 ) => {
   try {
-    const cleanBody = rawHtml.replace(/<!DOCTYPE[^>]*>/gi, "").replace(/<html[^>]*>/gi, "").replace(/<\/html>/gi, "");
+    const parser = new DOMParser();
+    const parsedDoc = parser.parseFromString(rawHtml, "text/html");
+    const serializer = new XMLSerializer();
+
+    // Extract styles and link tags
+    const styleTags = Array.from(parsedDoc.querySelectorAll("style, link[rel='stylesheet']"))
+      .map((s) => serializer.serializeToString(s))
+      .join("\n");
+
+    let bodyInner = "";
+    if (parsedDoc.body && parsedDoc.body.childNodes.length > 0) {
+      bodyInner = Array.from(parsedDoc.body.childNodes)
+        .map((n) => serializer.serializeToString(n))
+        .join("");
+    } else {
+      bodyInner = rawHtml
+        .replace(/<!DOCTYPE[^>]*>/gi, "")
+        .replace(/<html[^>]*>/gi, "")
+        .replace(/<\/html>/gi, "")
+        .replace(/<body[^>]*>/gi, "")
+        .replace(/<\/body>/gi, "");
+    }
+
     const bgStyle = bgColor === "transparent" ? "" : `background-color: ${bgColor};`;
     const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
       <foreignObject width="100%" height="100%">
-        <div xmlns="http://www.w3.org/1999/xhtml" style="width: 100%; height: 100%; box-sizing: border-box; ${bgStyle}">
-          ${cleanBody}
+        <div xmlns="http://www.w3.org/1999/xhtml" style="width: ${width}px; height: ${height}px; box-sizing: border-box; margin: 0; padding: 0; overflow: hidden; ${bgStyle}">
+          ${styleTags}
+          ${bodyInner}
         </div>
       </foreignObject>
     </svg>`;
@@ -341,11 +364,16 @@ const tryRawSvgFallback = (
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
+      const scale = 2;
       const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = width * scale;
+      canvas.height = height * scale;
       const ctx = canvas.getContext("2d");
       if (!ctx) return reject("Canvas context error");
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.scale(scale, scale);
+
       if (bgColor !== "transparent") {
         ctx.fillStyle = bgColor;
         ctx.fillRect(0, 0, width, height);
@@ -354,7 +382,7 @@ const tryRawSvgFallback = (
       const dataUrl = format === "JPG" ? canvas.toDataURL("image/jpeg", 0.95) : canvas.toDataURL("image/png");
       resolve(dataUrl);
     };
-    img.onerror = (err) => reject(err);
+    img.onerror = (err) => reject(err || new Error("SVG rendering failed"));
     img.src = encoded;
   } catch (err) {
     reject(err);
@@ -2861,91 +2889,164 @@ const renderHtmlToImage = async (
   width: number,
   height: number,
   bgColor: string,
-  format: "PNG" | "JPG"
+  format: "PNG" | "JPG" = "PNG"
 ): Promise<string> => {
-  // 1. Create a hidden, off-screen container attached to DOM for accurate layout and style calculation
-  const container = document.createElement("div");
-  container.style.position = "fixed";
-  container.style.left = "-99999px";
-  container.style.top = "0";
-  container.style.width = `${width}px`;
-  container.style.height = `${height}px`;
-  container.style.maxWidth = `${width}px`;
-  container.style.maxHeight = `${height}px`;
-  container.style.overflow = "hidden";
-  container.style.backgroundColor = bgColor === "transparent" ? "transparent" : bgColor;
-  container.style.zIndex = "-9999";
-  container.style.boxSizing = "border-box";
-  container.style.margin = "0";
-  container.style.padding = "0";
+  return new Promise<string>(async (resolve, reject) => {
+    // 1. Create a sandboxed iframe attached to DOM for style/layout accuracy
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.top = "0";
+    iframe.style.left = "0";
+    iframe.style.width = `${width}px`;
+    iframe.style.height = `${height}px`;
+    iframe.style.border = "none";
+    iframe.style.margin = "0";
+    iframe.style.padding = "0";
+    iframe.style.zIndex = "-99999";
+    iframe.style.opacity = "0.001";
+    iframe.style.pointerEvents = "none";
+    iframe.style.visibility = "visible";
 
-  // Parse HTML to support full HTML5 documents or raw snippets
-  const parser = new DOMParser();
-  const parsedDoc = parser.parseFromString(html, "text/html");
+    const cleanBg = bgColor === "transparent" ? "transparent" : bgColor;
+    const isFullDoc = /<html[\s\S]*<\/html>/i.test(html) || /<!DOCTYPE[\s\S]*>/i.test(html);
 
-  // Extract head styles and links
-  const headElements = Array.from(parsedDoc.head.childNodes);
-  const headWrapper = document.createElement("div");
-  headElements.forEach((el) => {
+    let docHtml = "";
+    if (isFullDoc) {
+      docHtml = html;
+    } else {
+      docHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=${width}, initial-scale=1.0" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: ${width}px;
+      height: ${height}px;
+      min-width: ${width}px;
+      min-height: ${height}px;
+      max-width: ${width}px;
+      max-height: ${height}px;
+      overflow: hidden;
+      background-color: ${cleanBg};
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+  </style>
+</head>
+<body style="background-color: ${cleanBg}; width: ${width}px; height: ${height}px; margin: 0; padding: 0; overflow: hidden;">
+  ${html}
+</body>
+</html>`;
+    }
+
+    let isCleanedUp = false;
+    const cleanup = () => {
+      if (isCleanedUp) return;
+      isCleanedUp = true;
+      if (iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+      tryRawSvgFallback(html, width, height, cleanBg, format, resolve, reject);
+    }, 7000);
+
+    iframe.onload = async () => {
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!doc || !doc.body) {
+          throw new Error("Unable to access iframe document");
+        }
+
+        doc.body.style.width = `${width}px`;
+        doc.body.style.height = `${height}px`;
+        doc.body.style.margin = "0";
+        doc.body.style.padding = "0";
+        doc.body.style.overflow = "hidden";
+        if (cleanBg !== "transparent") {
+          doc.body.style.backgroundColor = cleanBg;
+        }
+
+        // Wait for web fonts if any
+        if (doc.fonts && doc.fonts.ready) {
+          try {
+            await doc.fonts.ready;
+          } catch {
+            // non-fatal
+          }
+        }
+
+        // Wait for all images in the HTML to load
+        const imgElements = Array.from(doc.querySelectorAll("img"));
+        if (imgElements.length > 0) {
+          await Promise.all(
+            imgElements.map((img) => {
+              if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+              return new Promise((res) => {
+                img.onload = () => res(null);
+                img.onerror = () => res(null);
+                setTimeout(() => res(null), 2500);
+              });
+            })
+          );
+        }
+
+        // Short settlement for layout reflow
+        await new Promise((r) => setTimeout(r, 100));
+
+        const htmlToImageLib = await import("html-to-image");
+        const options: any = {
+          width,
+          height,
+          canvasWidth: width * 2,
+          canvasHeight: height * 2,
+          pixelRatio: 2,
+          cacheBust: true,
+          skipAutoScale: true,
+        };
+        if (cleanBg !== "transparent") {
+          options.backgroundColor = cleanBg;
+        }
+
+        let dataUrl: string;
+        if (format === "JPG") {
+          dataUrl = await htmlToImageLib.toJpeg(doc.body, { ...options, quality: 0.95 });
+        } else {
+          dataUrl = await htmlToImageLib.toPng(doc.body, options);
+        }
+
+        clearTimeout(timer);
+        cleanup();
+        resolve(dataUrl);
+      } catch (err) {
+        console.warn("Iframe html-to-image failed, falling back to SVG canvas:", err);
+        clearTimeout(timer);
+        cleanup();
+        tryRawSvgFallback(html, width, height, cleanBg, format, resolve, reject);
+      }
+    };
+
+    document.body.appendChild(iframe);
     try {
-      headWrapper.appendChild(el.cloneNode(true));
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (doc) {
+        doc.open();
+        doc.write(docHtml);
+        doc.close();
+      } else {
+        iframe.srcdoc = docHtml;
+      }
     } catch {
-      // ignore
+      iframe.srcdoc = docHtml;
     }
   });
-  container.appendChild(headWrapper);
-
-  // Body container
-  const bodyWrapper = document.createElement("div");
-  bodyWrapper.style.width = "100%";
-  bodyWrapper.style.height = "100%";
-  bodyWrapper.style.boxSizing = "border-box";
-  if (bgColor !== "transparent") {
-    bodyWrapper.style.backgroundColor = bgColor;
-  }
-
-  if (parsedDoc.body && parsedDoc.body.innerHTML.trim()) {
-    bodyWrapper.innerHTML = parsedDoc.body.innerHTML;
-  } else {
-    bodyWrapper.innerHTML = html;
-  }
-  container.appendChild(bodyWrapper);
-  document.body.appendChild(container);
-
-  try {
-    // Micro-delay to allow CSS styles and font measurements to resolve
-    await new Promise((r) => setTimeout(r, 60));
-
-    const htmlToImageLib = await import("html-to-image");
-    const options: any = {
-      width,
-      height,
-      pixelRatio: 2, // High-DPI crisp rendering
-      cacheBust: true,
-      skipAutoScale: true,
-    };
-    if (bgColor && bgColor !== "transparent") {
-      options.backgroundColor = bgColor;
-    }
-
-    let dataUrl: string;
-    if (format === "JPG") {
-      dataUrl = await htmlToImageLib.toJpeg(container, { ...options, quality: 0.95 });
-    } else {
-      dataUrl = await htmlToImageLib.toPng(container, options);
-    }
-
-    return dataUrl;
-  } catch (primaryErr) {
-    console.warn("html-to-image primary engine error, falling back to SVG canvas:", primaryErr);
-    return new Promise((resolve, reject) => {
-      tryRawSvgFallback(html, width, height, bgColor, format, resolve, reject);
-    });
-  } finally {
-    if (container.parentNode) {
-      container.parentNode.removeChild(container);
-    }
-  }
 };
 
 /**
@@ -3235,6 +3336,23 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
   const [htmlRenderHeight, setHtmlRenderHeight] = useState<number>(630);
   const [htmlBgColor, setHtmlBgColor] = useState<string>("#0f172a");
   const [htmlOutputFormat, setHtmlOutputFormat] = useState<"PNG" | "JPG">("PNG");
+
+  // Debounced live canvas preview for HTML to Image
+  useEffect(() => {
+    if (tool.slug !== "html-to-image") return;
+    if (!htmlCodeText.trim()) return;
+
+    const timer = setTimeout(() => {
+      renderHtmlToImage(htmlCodeText, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat)
+        .then((url) => {
+          setImageSrc(url);
+          setDimensions({ width: htmlRenderWidth, height: htmlRenderHeight });
+        })
+        .catch(() => {});
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [tool.slug, htmlCodeText, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat]);
 
   // 15. Text to Image State
   const [txtImgWidth, setTxtImgWidth] = useState<number>(1200);
@@ -4127,24 +4245,34 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
   const processImage = () => {
     // 0. Handle HTML to Image tool
     if (tool.slug === "html-to-image") {
-      if (!htmlCodeText.trim()) {
-        toast.error("Please enter HTML code or upload an HTML file first!");
-        return;
-      }
+      const code = htmlCodeText.trim() || SAMPLE_OG_CARD;
       setProcessing(true);
-      renderHtmlToImage(htmlCodeText, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat)
+      renderHtmlToImage(code, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat)
         .then((dataUrl) => {
           setProcessedSrc(dataUrl);
           setImageSrc(dataUrl);
           setDimensions({ width: htmlRenderWidth, height: htmlRenderHeight });
+          setTargetWidth(htmlRenderWidth);
+          setTargetHeight(htmlRenderHeight);
+
+          // Calculate approximate byte size from dataUrl base64
+          try {
+            const head = dataUrl.split(",")[0] || "";
+            const base64Len = dataUrl.length - (head.length + 1);
+            const approxBytes = Math.max(1024, Math.round((base64Len * 3) / 4));
+            setNewSize(approxBytes);
+          } catch {
+            // ignore
+          }
+
           setHasProcessed(true);
           setIsEditingSettings(false);
           setProcessing(false);
-          toast.success("Converted HTML to Image successfully!");
+          toast.success("Rendered HTML to image successfully!");
         })
         .catch((err) => {
           setProcessing(false);
-          toast.error("Failed to render HTML to Image. Check your HTML syntax.");
+          toast.error("Failed to render HTML to image. Check HTML syntax.");
           console.error(err);
         });
       return;
@@ -4378,26 +4506,6 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         setProcessing(false);
         return;
       }
-    }
-
-    if (tool.slug === "html-to-image") {
-      const code = htmlCodeText.trim() || SAMPLE_OG_CARD;
-      setProcessing(true);
-      renderHtmlToImage(code, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat)
-        .then((dataUrl) => {
-          setProcessedSrc(dataUrl);
-          setImageSrc(dataUrl);
-          setDimensions({ width: htmlRenderWidth, height: htmlRenderHeight });
-          setHasProcessed(true);
-          setIsEditingSettings(false);
-          setProcessing(false);
-          toast.success("Rendered HTML to image successfully!");
-        })
-        .catch(() => {
-          setProcessing(false);
-          toast.error("Failed to render HTML. Check HTML syntax.");
-        });
-      return;
     }
 
     if (!imageSrc) return;
