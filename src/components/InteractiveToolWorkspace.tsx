@@ -79,6 +79,41 @@ const rgbToHsl = (r: number, g: number, b: number) => {
   return `hsl(${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%)`;
 };
 
+const SAMPLE_VISUAL_TEST = `<div style="width: 100%; min-height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #eef2ff; display: flex; justify-content: center; align-items: center; padding: 40px 20px; box-sizing: border-box;">
+  <div style="background: #ffffff; border-radius: 28px; box-shadow: 0 25px 50px -12px rgba(99, 102, 241, 0.15), 0 0 0 1px rgba(226, 232, 240, 0.8); max-width: 820px; width: 100%; padding: 44px; box-sizing: border-box;">
+    <div style="display: inline-block; padding: 6px 14px; background: #e0e7ff; color: #4338ca; font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; border-radius: 9999px; margin-bottom: 20px;">HTML &rarr; IMAGE TEST</div>
+    <h1 style="font-size: 38px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; margin: 0 0 12px 0; line-height: 1.2;">Visual Rendering Test</h1>
+    <p style="font-size: 15px; line-height: 1.6; color: #64748b; margin: 0 0 32px 0;">This HTML file is designed to test fonts, colors, gradients, spacing, borders, shadows, emoji, and multilingual text in your converter.</p>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-bottom: 28px;">
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 18px; padding: 22px; box-sizing: border-box;">
+        <div style="font-size: 20px; font-weight: 900; color: #4f46e5; margin-bottom: 10px;">01</div>
+        <div style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">Typography</div>
+        <div style="font-size: 12px; line-height: 1.5; color: #64748b;">Heading, paragraph and italic text.</div>
+      </div>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 18px; padding: 22px; box-sizing: border-box;">
+        <div style="font-size: 20px; font-weight: 900; color: #4f46e5; margin-bottom: 10px;">02</div>
+        <div style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">Layout</div>
+        <div style="font-size: 12px; line-height: 1.5; color: #64748b;">Cards, grid, padding and alignment.</div>
+      </div>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 18px; padding: 22px; box-sizing: border-box;">
+        <div style="font-size: 20px; font-weight: 900; color: #4f46e5; margin-bottom: 10px;">03</div>
+        <div style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">Effects</div>
+        <div style="font-size: 12px; line-height: 1.5; color: #64748b;">Rounded corners and soft shadows.</div>
+      </div>
+    </div>
+    <div style="background: #f5f3ff; border-left: 4px solid #6366f1; border-radius: 14px; padding: 18px 24px; margin-bottom: 24px; font-style: italic; color: #312e81; font-size: 14px; line-height: 1.6; box-sizing: border-box;">
+      &ldquo;A good HTML-to-image converter should preserve the visual structure accurately &mdash; including spacing, fonts and CSS effects.&rdquo;
+    </div>
+    <div style="font-size: 13px; color: #334155; margin-bottom: 24px; padding-top: 8px;">
+      Multilingual test: नमस्ते • ગુજરાતી • हिन्दी • العربية • 日本語 • 한국어
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 18px; border-top: 1px solid #f1f5f9; font-size: 11px; font-weight: 600; color: #94a3b8;">
+      <span>Converter QA Test</span>
+      <span>&copy; 2026</span>
+    </div>
+  </div>
+</div>`;
+
 const SAMPLE_OG_CARD = `<div style="width: 100%; height: 100%; padding: 60px; background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); color: #ffffff; font-family: system-ui, sans-serif; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
   <div>
     <span style="background: rgba(99, 102, 241, 0.2); border: 1px solid #6366f1; color: #818cf8; padding: 6px 16px; border-radius: 9999px; font-size: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">HTML to Image</span>
@@ -2888,163 +2923,176 @@ const renderHtmlToImage = async (
   html: string,
   width: number,
   height: number,
-  bgColor: string,
+  bgColor: string = "auto",
   format: "PNG" | "JPG" = "PNG"
 ): Promise<string> => {
   return new Promise<string>(async (resolve, reject) => {
-    // 1. Create a sandboxed iframe attached to DOM for style/layout accuracy
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.top = "0";
-    iframe.style.left = "0";
-    iframe.style.width = `${width}px`;
-    iframe.style.height = `${height}px`;
-    iframe.style.border = "none";
-    iframe.style.margin = "0";
-    iframe.style.padding = "0";
-    iframe.style.zIndex = "-99999";
-    iframe.style.opacity = "0.001";
-    iframe.style.pointerEvents = "none";
-    iframe.style.visibility = "visible";
+    // 1. Create a scoped container attached to document.body
+    const containerId = "html-render-sandbox-" + Math.random().toString(36).substring(2, 9);
+    const container = document.createElement("div");
+    container.id = containerId;
+    container.className = "bgtool-html-render-container";
+    container.style.position = "fixed";
+    container.style.left = "0";
+    container.style.top = "0";
+    container.style.width = `${width}px`;
+    container.style.height = `${height}px`;
+    container.style.minWidth = `${width}px`;
+    container.style.minHeight = `${height}px`;
+    container.style.maxWidth = `${width}px`;
+    container.style.maxHeight = `${height}px`;
+    container.style.overflow = "hidden";
+    container.style.zIndex = "-99999";
+    container.style.opacity = "0.001";
+    container.style.pointerEvents = "none";
+    container.style.visibility = "visible";
+    container.style.transform = "translateZ(0)";
+    container.style.boxSizing = "border-box";
+    container.style.margin = "0";
+    container.style.padding = "0";
 
-    const cleanBg = bgColor === "transparent" ? "transparent" : bgColor;
-    const isFullDoc = /<html[\s\S]*<\/html>/i.test(html) || /<!DOCTYPE[\s\S]*>/i.test(html);
+    // Parse the input HTML
+    const parser = new DOMParser();
+    const parsedDoc = parser.parseFromString(html, "text/html");
 
-    let docHtml = "";
-    if (isFullDoc) {
-      docHtml = html;
+    // Extract all <style> elements and transform `body` / `html` selectors to target our container
+    const styleTags = Array.from(parsedDoc.querySelectorAll("style"));
+    const injectedStyles: HTMLStyleElement[] = [];
+
+    styleTags.forEach((s) => {
+      try {
+        let cssText = s.textContent || "";
+        // Replace body and html root selectors with container ID selector
+        cssText = cssText
+          .replace(/(^|[,\s{}])html\s*([,{])/gi, `$1#${containerId}$2`)
+          .replace(/(^|[,\s{}])body\s*([,{])/gi, `$1#${containerId}$2`);
+
+        const newStyle = document.createElement("style");
+        newStyle.setAttribute("data-bgtool-render-style", containerId);
+        newStyle.textContent = cssText;
+        document.head.appendChild(newStyle);
+        injectedStyles.push(newStyle);
+      } catch {
+        // ignore
+      }
+    });
+
+    // Extract link stylesheets
+    const linkTags = Array.from(parsedDoc.querySelectorAll("link[rel='stylesheet']"));
+    linkTags.forEach((l) => {
+      try {
+        const newLink = l.cloneNode(true) as HTMLLinkElement;
+        newLink.setAttribute("data-bgtool-render-style", containerId);
+        document.head.appendChild(newLink);
+      } catch {
+        // ignore
+      }
+    });
+
+    // Extract body content and inline styles
+    if (parsedDoc.body) {
+      const bodyStyleAttr = parsedDoc.body.getAttribute("style");
+      if (bodyStyleAttr) {
+        container.setAttribute("style", `${container.getAttribute("style") || ""}; ${bodyStyleAttr}`);
+        container.style.width = `${width}px`;
+        container.style.height = `${height}px`;
+        container.style.overflow = "hidden";
+      }
+      const bodyClassAttr = parsedDoc.body.getAttribute("class");
+      if (bodyClassAttr) {
+        container.className = `${container.className} ${bodyClassAttr}`;
+      }
+      container.innerHTML = parsedDoc.body.innerHTML;
     } else {
-      docHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=${width}, initial-scale=1.0" />
-  <style>
-    *, *::before, *::after { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: ${width}px;
-      height: ${height}px;
-      min-width: ${width}px;
-      min-height: ${height}px;
-      max-width: ${width}px;
-      max-height: ${height}px;
-      overflow: hidden;
-      background-color: ${cleanBg};
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
+      container.innerHTML = html;
     }
-  </style>
-</head>
-<body style="background-color: ${cleanBg}; width: ${width}px; height: ${height}px; margin: 0; padding: 0; overflow: hidden;">
-  ${html}
-</body>
-</html>`;
+
+    // Apply explicit background color if specified
+    if (bgColor && bgColor !== "auto") {
+      if (bgColor === "transparent") {
+        container.style.backgroundColor = "transparent";
+      } else {
+        container.style.backgroundColor = bgColor;
+      }
     }
+
+    document.body.appendChild(container);
 
     let isCleanedUp = false;
     const cleanup = () => {
       if (isCleanedUp) return;
       isCleanedUp = true;
-      if (iframe.parentNode) {
-        iframe.parentNode.removeChild(iframe);
+      if (container.parentNode) {
+        container.parentNode.removeChild(container);
       }
+      // Remove temporary injected styles
+      const tempStyles = document.querySelectorAll(`[data-bgtool-render-style="${containerId}"]`);
+      tempStyles.forEach((el) => el.parentNode?.removeChild(el));
     };
 
     const timer = setTimeout(() => {
       cleanup();
-      tryRawSvgFallback(html, width, height, cleanBg, format, resolve, reject);
+      tryRawSvgFallback(html, width, height, bgColor, format, resolve, reject);
     }, 7000);
 
-    iframe.onload = async () => {
-      try {
-        const doc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (!doc || !doc.body) {
-          throw new Error("Unable to access iframe document");
-        }
-
-        doc.body.style.width = `${width}px`;
-        doc.body.style.height = `${height}px`;
-        doc.body.style.margin = "0";
-        doc.body.style.padding = "0";
-        doc.body.style.overflow = "hidden";
-        if (cleanBg !== "transparent") {
-          doc.body.style.backgroundColor = cleanBg;
-        }
-
-        // Wait for web fonts if any
-        if (doc.fonts && doc.fonts.ready) {
-          try {
-            await doc.fonts.ready;
-          } catch {
-            // non-fatal
-          }
-        }
-
-        // Wait for all images in the HTML to load
-        const imgElements = Array.from(doc.querySelectorAll("img"));
-        if (imgElements.length > 0) {
-          await Promise.all(
-            imgElements.map((img) => {
-              if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-              return new Promise((res) => {
-                img.onload = () => res(null);
-                img.onerror = () => res(null);
-                setTimeout(() => res(null), 2500);
-              });
-            })
-          );
-        }
-
-        // Short settlement for layout reflow
-        await new Promise((r) => setTimeout(r, 100));
-
-        const htmlToImageLib = await import("html-to-image");
-        const options: any = {
-          width,
-          height,
-          canvasWidth: width * 2,
-          canvasHeight: height * 2,
-          pixelRatio: 2,
-          cacheBust: true,
-          skipAutoScale: true,
-        };
-        if (cleanBg !== "transparent") {
-          options.backgroundColor = cleanBg;
-        }
-
-        let dataUrl: string;
-        if (format === "JPG") {
-          dataUrl = await htmlToImageLib.toJpeg(doc.body, { ...options, quality: 0.95 });
-        } else {
-          dataUrl = await htmlToImageLib.toPng(doc.body, options);
-        }
-
-        clearTimeout(timer);
-        cleanup();
-        resolve(dataUrl);
-      } catch (err) {
-        console.warn("Iframe html-to-image failed, falling back to SVG canvas:", err);
-        clearTimeout(timer);
-        cleanup();
-        tryRawSvgFallback(html, width, height, cleanBg, format, resolve, reject);
-      }
-    };
-
-    document.body.appendChild(iframe);
     try {
-      const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (doc) {
-        doc.open();
-        doc.write(docHtml);
-        doc.close();
-      } else {
-        iframe.srcdoc = docHtml;
+      // 1. Wait for web fonts to load
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch {
+          // non-fatal
+        }
       }
-    } catch {
-      iframe.srcdoc = docHtml;
+
+      // 2. Wait for images inside container to load
+      const imgElements = Array.from(container.querySelectorAll("img"));
+      if (imgElements.length > 0) {
+        await Promise.all(
+          imgElements.map((img) => {
+            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+            return new Promise((res) => {
+              img.onload = () => res(null);
+              img.onerror = () => res(null);
+              setTimeout(() => res(null), 2500);
+            });
+          })
+        );
+      }
+
+      // 3. Short settlement delay for layout / CSS reflow
+      await new Promise((r) => setTimeout(r, 120));
+
+      const htmlToImageLib = await import("html-to-image");
+      const options: any = {
+        width,
+        height,
+        canvasWidth: width * 2,
+        canvasHeight: height * 2,
+        pixelRatio: 2,
+        cacheBust: true,
+        skipAutoScale: true,
+      };
+
+      if (bgColor && bgColor !== "auto" && bgColor !== "transparent") {
+        options.backgroundColor = bgColor;
+      }
+
+      let dataUrl: string;
+      if (format === "JPG") {
+        dataUrl = await htmlToImageLib.toJpeg(container, { ...options, quality: 0.95 });
+      } else {
+        dataUrl = await htmlToImageLib.toPng(container, options);
+      }
+
+      clearTimeout(timer);
+      cleanup();
+      resolve(dataUrl);
+    } catch (err) {
+      console.warn("Scoped container html-to-image failed, falling back to SVG:", err);
+      clearTimeout(timer);
+      cleanup();
+      tryRawSvgFallback(html, width, height, bgColor, format, resolve, reject);
     }
   });
 };
@@ -3165,11 +3213,14 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       setTargetFormat("image/jpeg");
     }
     if (tool.slug === "html-to-image" && !imageSrc) {
-      setHtmlCodeText(SAMPLE_OG_CARD);
-      renderHtmlToImage(SAMPLE_OG_CARD, 1200, 630, "#0f172a", "PNG")
+      setHtmlCodeText(SAMPLE_VISUAL_TEST);
+      setHtmlRenderWidth(860);
+      setHtmlRenderHeight(740);
+      setHtmlBgColor("auto");
+      renderHtmlToImage(SAMPLE_VISUAL_TEST, 860, 740, "auto", "PNG")
         .then((dataUrl) => {
           setImageSrc(dataUrl);
-          setDimensions({ width: 1200, height: 630 });
+          setDimensions({ width: 860, height: 740 });
           setHasProcessed(false);
         })
         .catch(() => {});
@@ -3331,10 +3382,10 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
 
   // 14. HTML to Image State
   const [htmlInputMode, setHtmlInputMode] = useState<"upload" | "paste">("paste");
-  const [htmlCodeText, setHtmlCodeText] = useState<string>(SAMPLE_OG_CARD);
-  const [htmlRenderWidth, setHtmlRenderWidth] = useState<number>(1200);
-  const [htmlRenderHeight, setHtmlRenderHeight] = useState<number>(630);
-  const [htmlBgColor, setHtmlBgColor] = useState<string>("#0f172a");
+  const [htmlCodeText, setHtmlCodeText] = useState<string>(SAMPLE_VISUAL_TEST);
+  const [htmlRenderWidth, setHtmlRenderWidth] = useState<number>(860);
+  const [htmlRenderHeight, setHtmlRenderHeight] = useState<number>(740);
+  const [htmlBgColor, setHtmlBgColor] = useState<string>("auto");
   const [htmlOutputFormat, setHtmlOutputFormat] = useState<"PNG" | "JPG">("PNG");
 
   // Debounced live canvas preview for HTML to Image
@@ -8292,6 +8343,18 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                           <button
                             type="button"
                             onClick={() => {
+                              setHtmlCodeText(SAMPLE_VISUAL_TEST);
+                              setHtmlRenderWidth(860);
+                              setHtmlRenderHeight(740);
+                              setHtmlBgColor("auto");
+                            }}
+                            className="rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-bold hover:border-accent hover:text-accent transition-all"
+                          >
+                            ✨ Visual QA Test
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
                               setHtmlCodeText(SAMPLE_OG_CARD);
                               setHtmlRenderWidth(1200);
                               setHtmlRenderHeight(630);
@@ -8347,6 +8410,13 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-muted-foreground">Output Image Dimensions:</label>
                       <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => { setHtmlRenderWidth(860); setHtmlRenderHeight(740); }}
+                          className="text-[10px] font-bold px-2 py-0.5 rounded border border-border hover:bg-muted"
+                        >
+                          860x740
+                        </button>
                         <button
                           type="button"
                           onClick={() => { setHtmlRenderWidth(1200); setHtmlRenderHeight(630); }}
@@ -8406,6 +8476,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                         onChange={(e) => setHtmlBgColor(e.target.value)}
                         className="w-full rounded-xl border-2 border-border bg-background px-2.5 py-2 text-xs font-bold focus:border-accent focus:outline-none"
                       >
+                        <option value="auto">Auto (From HTML Code)</option>
                         <option value="#ffffff">White (#FFFFFF)</option>
                         <option value="#0f172a">Dark Slate (#0F172A)</option>
                         <option value="#090d16">Dark Charcoal (#090D16)</option>
