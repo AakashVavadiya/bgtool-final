@@ -3064,12 +3064,12 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       setTargetFormat("image/jpeg");
     }
     if (tool.slug === "html-to-image" && !imageSrc) {
+      setHtmlCodeText(SAMPLE_OG_CARD);
       renderHtmlToImage(SAMPLE_OG_CARD, 1200, 630, "#0f172a", "PNG")
         .then((dataUrl) => {
-          setProcessedSrc(dataUrl);
           setImageSrc(dataUrl);
           setDimensions({ width: 1200, height: 630 });
-          setHasProcessed(true);
+          setHasProcessed(false);
         })
         .catch(() => {});
     }
@@ -3082,10 +3082,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         pixelScale: 20,
       });
       if (url) {
-        setProcessedSrc(url);
         setImageSrc(url);
         setDimensions({ width: 11 * 20, height: 8 * 20 });
-        setHasProcessed(true);
+        setHasProcessed(false);
       }
     }
   }, [tool.slug]);
@@ -3462,10 +3461,10 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
           setProcessing(true);
           renderHtmlToImage(text, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat)
             .then((dataUrl) => {
-              setProcessedSrc(dataUrl);
               setImageSrc(dataUrl);
               setDimensions({ width: htmlRenderWidth, height: htmlRenderHeight });
-              setHasProcessed(true);
+              setHasProcessed(false);
+              setIsEditingSettings(true);
               setProcessing(false);
             })
             .catch(() => {
@@ -4379,6 +4378,26 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         setProcessing(false);
         return;
       }
+    }
+
+    if (tool.slug === "html-to-image") {
+      const code = htmlCodeText.trim() || SAMPLE_OG_CARD;
+      setProcessing(true);
+      renderHtmlToImage(code, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat)
+        .then((dataUrl) => {
+          setProcessedSrc(dataUrl);
+          setImageSrc(dataUrl);
+          setDimensions({ width: htmlRenderWidth, height: htmlRenderHeight });
+          setHasProcessed(true);
+          setIsEditingSettings(false);
+          setProcessing(false);
+          toast.success("Rendered HTML to image successfully!");
+        })
+        .catch(() => {
+          setProcessing(false);
+          toast.error("Failed to render HTML. Check HTML syntax.");
+        });
+      return;
     }
 
     if (!imageSrc) return;
@@ -8925,6 +8944,8 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                           ? ocrProgressStatus || "Extracting Text with OCR…"
                           : tool.slug === "binary-to-image"
                           ? "Decoding Binary Data…"
+                          : tool.slug === "html-to-image"
+                          ? "Rendering HTML to Image…"
                           : "Processing Image…"}
                       </span>
                     </>
@@ -8943,6 +8964,8 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                             ? "Re-extract Text (OCR)"
                             : tool.slug === "binary-to-image"
                             ? "Re-convert Binary to Image"
+                            : tool.slug === "html-to-image"
+                            ? "Re-render HTML to Image"
                             : `Re-process ${tool.name}`
                           : tool.slug === "compress-image"
                           ? "Compress Image"
@@ -8954,6 +8977,8 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                           ? "Extract Text with OCR"
                           : tool.slug === "binary-to-image"
                           ? "Convert Binary to Image"
+                          : tool.slug === "html-to-image"
+                          ? "Render HTML to Image"
                           : "Convert / Process Image"}
                       </span>
                     </>
