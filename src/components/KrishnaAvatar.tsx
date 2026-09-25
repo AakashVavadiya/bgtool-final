@@ -11,11 +11,11 @@ export function KarudiAvatar({ size = "md", className = "" }: Props) {
   const [imgError, setImgError] = useState(false);
 
   const containerSize = {
-    sm: "h-7 w-7 rounded-xl",
-    md: "h-9 w-9 rounded-xl",
-    lg: "h-12 w-12 rounded-2xl",
-    xl: "h-20 w-20 rounded-3xl",
-    "2xl": "h-28 w-28 rounded-[2rem]",
+    sm: "h-7 w-7 rounded-full",
+    md: "h-9 w-9 rounded-full",
+    lg: "h-12 w-12 rounded-full",
+    xl: "h-20 w-20 rounded-full",
+    "2xl": "h-28 w-28 rounded-full",
   }[size];
 
   const fontSize = {
@@ -36,9 +36,9 @@ export function KarudiAvatar({ size = "md", className = "" }: Props) {
 
   return (
     <div
-      className={`relative flex shrink-0 items-center justify-center bg-gradient-to-tr from-accent via-orange-500 to-amber-400 p-[2px] shadow-lg shadow-accent/25 transition-all hover:scale-105 ${containerSize} ${className}`}
+      className={`relative flex shrink-0 items-center justify-center transition-all hover:scale-105 ${containerSize} ${className}`}
     >
-      <div className={`flex h-full w-full items-center justify-center bg-black/90 text-foreground overflow-hidden ${containerSize}`}>
+      <div className={`flex h-full w-full items-center justify-center bg-black text-foreground overflow-hidden rounded-full shadow-xs`}>
         {!imgError ? (
           <img
             src={karudiKLogo}
@@ -48,7 +48,7 @@ export function KarudiAvatar({ size = "md", className = "" }: Props) {
           />
         ) : (
           <span className={`font-display font-extrabold tracking-tighter text-white select-none ${fontSize}`}>
-            K<span className="text-accent">.</span>
+            K<span className="text-white">.</span>
           </span>
         )}
       </div>

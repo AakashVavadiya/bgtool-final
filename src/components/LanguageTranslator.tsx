@@ -111,7 +111,7 @@ export function LanguageTranslator({ variant = "header" }: LanguageTranslatorPro
       {/* ── Dropdown / Modal Popover ───────────────────────────────────── */}
       {isOpen && (
         <div
-          className={`absolute right-0 z-50 mt-2 w-84 sm:w-96 rounded-2xl border-2 border-border bg-card p-4 text-foreground shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 ${
+          className={`absolute right-0 z-50 mt-2 w-[calc(100vw-2rem)] max-w-[360px] sm:w-96 rounded-2xl border-2 border-border bg-card p-4 text-foreground shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 ${
             variant === "footer" ? "bottom-full mb-2" : "top-full"
           }`}
           style={{ maxHeight: "calc(100vh - 120px)", overflowY: "auto" }}

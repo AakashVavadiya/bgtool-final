@@ -1,4 +1,4 @@
-import { Crown, Aperture, Package, User, Wand2, type LucideIcon } from "lucide-react";
+import { Crown, Scissors, RefreshCw, Sparkles, BookOpen, type LucideIcon } from "lucide-react";
 
 export type BgModel = {
   id: string;
@@ -14,56 +14,76 @@ export const bgModels: BgModel[] = [
   {
     id: "karudi",
     name: "Karudi 1.0 Prime",
-    specialty: "Flagship Master Engine",
+    specialty: "Universal Master Orchestrator",
     icon: Crown,
-    quality: "Unified Ultra-High Precision Prime Model",
+    quality: "Universal Multi-Model Engine",
     blurb:
-      "Our flagship Karudi 1.0 Prime neural engine combining sub-pixel hair matting, 4K studio clarity, e-commerce product precision, and low-light recovery into a single supreme pass.",
+      "Our universal master engine that intelligently routes and orchestrates all specialized models (Ganga, Brahmaputra, Narmada, Saraswati) according to your exact task to deliver the best result.",
     traits: [
-      "Karudi 1.0 Prime intelligence",
-      "Sub-pixel alpha matting",
-      "4K Ultra-HD precision",
-      "Zero-loss edge preservation",
+      "Universal intelligent task routing",
+      "Multi-model pipeline coordination",
+      "Dynamic cross-model synthesis",
+      "Adaptive output optimization",
     ],
   },
   {
     id: "ganga",
     name: "Ganga",
-    specialty: "Blurry image clean",
-    icon: Aperture,
-    quality: "Finds an edge where there isn't one",
+    specialty: "Background Removal Process",
+    icon: Scissors,
+    quality: "Sub-Pixel Alpha Cutout Engine",
     blurb:
-      "Trained on motion blur, low light and soft focus. Reconstructs a believable boundary instead of chewing into the subject.",
-    traits: ["Motion-blur aware", "Low-light recovery", "Deconvolution pass built in"],
+      "Dedicated neural background removal engine specialized in subject isolation, fine edge reconstruction, flyaway hair preservation, and clean transparent cutouts.",
+    traits: [
+      "Sub-pixel alpha matting",
+      "Fine hair, fur & edge retention",
+      "Motion blur & low-light subject recovery",
+      "4K transparent PNG generation",
+    ],
   },
   {
     id: "brahmaputra",
     name: "Brahmaputra",
-    specialty: "Object & product",
-    icon: Package,
-    quality: "Catalogue-grade hard edges",
+    specialty: "Format Conversion & Transformation",
+    icon: RefreshCw,
+    quality: "Ultra-Fast Media Transcoding",
     blurb:
-      "Razor-clean silhouettes for e-commerce: reflective packaging, glassware, jewellery and shadow separation done properly.",
-    traits: ["Reflection & glass handling", "Contact-shadow keep or drop", "Straight-line fidelity"],
+      "High-speed conversion engine built for converting images and media formats (e.g. Convert to JPG, PNG, WebP, AVIF), color profile preservation, and bulk optimization.",
+    traits: [
+      "Universal format conversion (JPG/PNG/WebP)",
+      "Balanced & lossless compression",
+      "High-throughput batch conversions",
+      "sRGB & P3 color fidelity",
+    ],
   },
   {
     id: "narmada",
     name: "Narmada",
-    specialty: "Human subjects",
-    icon: User,
-    quality: "Every strand of hair survives",
+    specialty: "Processing & Generative Outputs",
+    icon: Sparkles,
+    quality: "OCR, AI Summary & Meme Generation",
     blurb:
-      "A matting model tuned entirely on people — flyaway hair, fur collars, lace and skin edges against busy backdrops.",
-    traits: ["Strand-level hair matting", "Skin-tone safe", "Group photo support"],
+      "Versatile processing engine delivering diverse smart outputs: multilingual OCR text extraction from images, automated AI summarization, and creative meme generation.",
+    traits: [
+      "Multilingual OCR text extraction",
+      "Intelligent AI text & doc summarization",
+      "Contextual meme & caption generator",
+      "Structured output formatting",
+    ],
   },
   {
     id: "saraswati",
     name: "Saraswati",
-    specialty: "Add effects",
-    icon: Wand2,
-    quality: "Cut out, then art-direct",
+    specialty: "Research & Deep Knowledge Suite",
+    icon: BookOpen,
+    quality: "Analytical Query & Insight Engine",
     blurb:
-      "Removes the background and immediately restyles it — studio gradients, soft shadows, glow, colour grading and backdrops.",
-    traits: ["Auto drop shadow", "Studio backdrop presets", "Relight & colour grade"],
+      "Advanced research engine tailored for deep knowledge queries, document interrogation, structured analytical insights, and factual data extraction.",
+    traits: [
+      "Deep research & query investigation",
+      "Document interrogation & Q&A",
+      "Factual data & citation synthesis",
+      "Structured knowledge reporting",
+    ],
   },
 ];

@@ -17,13 +17,14 @@ import { NotFoundPage } from "@/components/NotFoundPage";
 import { ErrorPage } from "@/components/ErrorPage";
 import { Telemetry } from "@/lib/telemetry";
 import { initWebsiteTranslator } from "@/lib/translator";
+import { FestivalOffersDialog } from "@/components/FestivalOffersDialog";
+import { RestrictedUserDialog } from "@/components/RestrictedUserDialog";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { name: "google", content: "notranslate" },
       { title: "BG Remover Magic | Free Background Removal & Image Tools" },
       { name: "description", content: "Free online background removal, upscaling, compression, and image editing tools." },
       { name: "author", content: "BG Remover Magic" },
@@ -55,11 +56,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className="notranslate" translate="no">
+    <html lang="en">
       <head>
         <HeadContent />
       </head>
       <body>
+        <div id="google_translate_element" style={{ display: "none" }} className="notranslate" aria-hidden="true" />
         {children}
         <Scripts />
       </body>
@@ -86,6 +88,11 @@ function RootComponent() {
 
     // Global Error & Promise Rejection listener to auto-send crash logs to Admin
     const handleGlobalError = (event: ErrorEvent) => {
+      const msg = event.message || "";
+      if (msg.includes("Hydration failed") || msg.includes("hydrating") || msg.includes("Minified React error #418")) {
+        return; // Filter out non-fatal React hydration warnings
+      }
+
       import("@/admin/lib/admin-store").then(({ AdminStore }) => {
         AdminStore.addErrorLog({
           url: window.location.pathname,
@@ -123,11 +130,15 @@ function RootComponent() {
     };
   }, [currentPath]);
 
+  const isAdminRoute = currentPath.startsWith("/admin");
+
   return (
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
       <Toaster />
+      <FestivalOffersDialog />
+      {!isAdminRoute && <RestrictedUserDialog />}
     </QueryClientProvider>
   );
 }

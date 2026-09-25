@@ -1,8 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Faq } from "@/components/Faq";
+import { AdminStore, type PurchasePlanConfig } from "@/admin/lib/admin-store";
+import { openFestivalOffersDialog } from "@/components/FestivalOffersDialog";
+import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
+import { Sparkles, Gift, Zap } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -65,6 +69,18 @@ const planFeatures = [
 
 function Pricing() {
   const [pack, setPack] = useState("5");
+  const [activeOffer, setActiveOffer] = useState<PurchasePlanConfig | null>(() => AdminStore.getActiveFestivalOffer());
+
+  useEffect(() => {
+    const update = () => setActiveOffer(AdminStore.getActiveFestivalOffer());
+    window.addEventListener(REALTIME_EVENT_NAME, update);
+    window.addEventListener("storage", update);
+    AdminStore.fetchPlansFromServer().then(() => setActiveOffer(AdminStore.getActiveFestivalOffer()));
+    return () => {
+      window.removeEventListener(REALTIME_EVENT_NAME, update);
+      window.removeEventListener("storage", update);
+    };
+  }, []);
 
   const selectedPack = payg.find((p) => String(p.credits) === pack) ?? { credits: 5, price: 199 };
 
@@ -95,6 +111,83 @@ function Pricing() {
       </section>
 
       <section className="px-5 py-16 md:px-10 md:py-20">
+        {activeOffer && (
+          <div className="mb-12 overflow-hidden rounded-3xl border-2 border-amber-500/40 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-card p-6 sm:p-8 shadow-xl shadow-amber-500/10">
+            <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
+              <div className="flex flex-col sm:flex-row items-center gap-6">
+                <div className="relative h-28 w-28 sm:h-36 sm:w-48 shrink-0 overflow-hidden rounded-2xl border border-amber-500/30 bg-muted">
+                  <img
+                    src={activeOffer.imageUrl || "/images/festival-offer-banner.jpg"}
+                    alt={activeOffer.name}
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = "/images/celebration-gift-banner.jpg";
+                    }}
+                  />
+                  <span className="absolute top-2 left-2 rounded-full bg-amber-500 px-2 py-0.5 font-mono text-[9px] font-extrabold uppercase text-slate-950 shadow-xs">
+                    Festival
+                  </span>
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-rose-600 px-2.5 py-0.5 font-mono text-[10px] font-extrabold text-white shadow-xs">
+                      {activeOffer.badge || "LIMITED TIME OFFER"}
+                    </span>
+                    <span className="text-xs font-bold text-amber-500 flex items-center gap-1">
+                      <Sparkles className="h-3.5 w-3.5 fill-current" />
+                      Special Festive Pack
+                    </span>
+                  </div>
+                  <h2 className="mt-2 font-display text-2xl sm:text-3xl font-black text-foreground">
+                    {activeOffer.name}
+                  </h2>
+                  <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
+                    {activeOffer.tagline || "Exclusive limited-time festive discount!"}
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <span className="font-mono text-2xl sm:text-3xl font-black text-foreground">
+                      ₹{activeOffer.priceINR.toLocaleString("en-IN")}
+                    </span>
+                    {activeOffer.originalPriceINR && (
+                      <span className="font-mono text-sm text-muted-foreground line-through">
+                        ₹{activeOffer.originalPriceINR.toLocaleString("en-IN")}
+                      </span>
+                    )}
+                    <span className="rounded-lg bg-amber-500/20 px-2.5 py-1 font-mono text-xs font-bold text-amber-500 flex items-center gap-1">
+                      <Zap className="h-3.5 w-3.5 fill-current" />
+                      {(activeOffer.credits + (activeOffer.bonusCredits || 0)).toLocaleString()} Credits
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleBuy(
+                      activeOffer.credits + (activeOffer.bonusCredits || 0),
+                      activeOffer.name,
+                      activeOffer.priceINR
+                    )
+                  }
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full bg-amber-500 px-7 py-3.5 text-sm font-black text-slate-950 shadow-lg shadow-amber-500/25 hover:bg-amber-400 hover:scale-[1.02] transition-all cursor-pointer"
+                >
+                  <Gift className="h-4 w-4" />
+                  <span>Claim Offer ({inr(activeOffer.priceINR)})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={openFestivalOffersDialog}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-full border border-border bg-card px-5 py-3.5 text-xs font-bold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                >
+                  <span>View Details</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid items-start gap-5 lg:grid-cols-4">
           {/* Free */}
           <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-7">

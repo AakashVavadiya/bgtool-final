@@ -46,6 +46,7 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 import { execSync, spawn } from "child_process";
 import path from "path";
+import fs from "fs";
 
 function getPythonCommand(): string {
   const pythonPath = process.env["PYTHON_PATH"];
@@ -162,6 +163,265 @@ export default {
             headers: { "Content-Type": "application/json" },
           }
         );
+      }
+    }
+
+    if (url.pathname === "/api/remove-watermark") {
+      try {
+        const bodyText = await request.text();
+        let pythonResponse: Response;
+        try {
+          pythonResponse = await fetch("http://127.0.0.1:5001/remove-watermark", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: bodyText,
+          });
+        } catch {
+          console.warn("[Server] Python watermark backend unreachable. Auto-spawning port 5001...");
+          const pyCmd = getPythonCommand();
+          const serverScript = path.join(process.cwd(), "scripts", "watermark_server.py");
+          const child = spawn(pyCmd, [serverScript, "5001"], { detached: true, stdio: "ignore" });
+          child.unref();
+          for (let i = 0; i < 10; i++) {
+            await new Promise((r) => setTimeout(r, 800));
+            try {
+              const ping = await fetch("http://127.0.0.1:5001/ping");
+              if (ping.ok) break;
+            } catch {}
+          }
+          pythonResponse = await fetch("http://127.0.0.1:5001/remove-watermark", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: bodyText,
+          });
+        }
+        return pythonResponse;
+      } catch (err: any) {
+        console.error("Proxy error /api/remove-watermark:", err);
+        return new Response(
+          JSON.stringify({ success: false, error: "Watermark Engine is busy. Please try again in a few moments." }),
+          { status: 502, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    if (url.pathname === "/api/blur-face" || url.pathname === "/api/detect-faces") {
+      try {
+        const bodyText = await request.text();
+        const targetPath = url.pathname === "/api/detect-faces" ? "/detect-faces" : "/blur-face";
+        let pythonResponse: Response;
+        try {
+          pythonResponse = await fetch(`http://127.0.0.1:5001${targetPath}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: bodyText,
+          });
+        } catch {
+          console.warn("[Server] Python face blur backend unreachable. Auto-spawning port 5001...");
+          const pyCmd = getPythonCommand();
+          const serverScript = path.join(process.cwd(), "scripts", "watermark_server.py");
+          const child = spawn(pyCmd, [serverScript, "5001"], { detached: true, stdio: "ignore" });
+          child.unref();
+          for (let i = 0; i < 10; i++) {
+            await new Promise((r) => setTimeout(r, 800));
+            try {
+              const ping = await fetch("http://127.0.0.1:5001/ping");
+              if (ping.ok) break;
+            } catch {}
+          }
+          pythonResponse = await fetch(`http://127.0.0.1:5001${targetPath}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: bodyText,
+          });
+        }
+        return pythonResponse;
+      } catch (err: any) {
+        console.error(`Proxy error ${url.pathname}:`, err);
+        return new Response(
+          JSON.stringify({ success: false, error: "Face Blur Engine is busy. Please try again in a few moments." }),
+          { status: 502, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    if (url.pathname === "/api/contact") {
+      const dataDir = path.join(process.cwd(), "data");
+      const filePath = path.join(dataDir, "contact-inquiries.json");
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+      if (!fs.existsSync(filePath)) {
+        fs.writeFileSync(filePath, "[]", "utf-8");
+      }
+
+      if (request.method === "GET") {
+        try {
+          const content = fs.readFileSync(filePath, "utf-8");
+          return new Response(content || "[]", {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch {
+          return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+      }
+
+      if (request.method === "POST") {
+        try {
+          const body = (await request.json()) as any;
+          let current: any[] = [];
+          try {
+            if (fs.existsSync(filePath)) {
+              current = JSON.parse(fs.readFileSync(filePath, "utf-8") || "[]");
+            }
+          } catch {
+            current = [];
+          }
+
+          const newTicket = {
+            id: `TCK_${Math.floor(100 + Math.random() * 900)}`,
+            name: body.name || "Anonymous",
+            email: body.email || "",
+            subject: body.subject || "General Inquiry",
+            message: body.message || "",
+            toolContext: body.toolContext || "",
+            createdAt: new Date().toISOString().replace("T", " ").slice(0, 16),
+            status: "open",
+            priority: "medium",
+            replies: [],
+          };
+
+          current.unshift(newTicket);
+          fs.writeFileSync(filePath, JSON.stringify(current, null, 2), "utf-8");
+
+          return new Response(JSON.stringify({ success: true, ticket: newTicket }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: any) {
+          return new Response(JSON.stringify({ success: false, error: err.message }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
+
+    if (url.pathname === "/api/tools-config") {
+      const dataDir = path.join(process.cwd(), "data");
+      const filePath = path.join(dataDir, "tools-config.json");
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+      if (!fs.existsSync(filePath)) {
+        fs.writeFileSync(filePath, "[]", "utf-8");
+      }
+
+      if (request.method === "GET") {
+        try {
+          const content = fs.readFileSync(filePath, "utf-8");
+          return new Response(content || "[]", {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch {
+          return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+      }
+
+      if (request.method === "POST") {
+        try {
+          const body = await request.json();
+          fs.writeFileSync(filePath, JSON.stringify(body, null, 2), "utf-8");
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: any) {
+          return new Response(JSON.stringify({ success: false, error: err.message }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
+
+    if (url.pathname === "/api/plans-config") {
+      const dataDir = path.join(process.cwd(), "data");
+      const filePath = path.join(dataDir, "plans-config.json");
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+
+      if (request.method === "GET") {
+        try {
+          if (!fs.existsSync(filePath)) {
+            return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+          }
+          const content = fs.readFileSync(filePath, "utf-8");
+          return new Response(content || "[]", {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch {
+          return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+      }
+
+      if (request.method === "POST") {
+        try {
+          const body = await request.json();
+          fs.writeFileSync(filePath, JSON.stringify(body, null, 2), "utf-8");
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: any) {
+          return new Response(JSON.stringify({ success: false, error: err.message }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
+
+    if (url.pathname === "/api/users") {
+      const dataDir = path.join(process.cwd(), "data");
+      const filePath = path.join(dataDir, "users.json");
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+
+      if (request.method === "GET") {
+        try {
+          if (!fs.existsSync(filePath)) {
+            return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+          }
+          const content = fs.readFileSync(filePath, "utf-8");
+          return new Response(content || "[]", {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch {
+          return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+      }
+
+      if (request.method === "POST") {
+        try {
+          const body = await request.json();
+          fs.writeFileSync(filePath, JSON.stringify(body, null, 2), "utf-8");
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: any) {
+          return new Response(JSON.stringify({ success: false, error: err.message }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
       }
     }
 

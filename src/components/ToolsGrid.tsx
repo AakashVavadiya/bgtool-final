@@ -1,9 +1,23 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
 import { tools, TOOL_CATEGORIES, type ToolCategory } from "@/lib/tools";
+import { AdminStore } from "@/admin/lib/admin-store";
+import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
 
 export function ToolsGrid() {
   const [selectedCategory, setSelectedCategory] = useState<"All" | ToolCategory>("All");
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    AdminStore.syncToolsConfigFromServer().then(() => setTick((t) => t + 1));
+    const handleUpdate = () => setTick((t) => t + 1);
+    window.addEventListener(REALTIME_EVENT_NAME, handleUpdate);
+    window.addEventListener("storage", handleUpdate);
+    return () => {
+      window.removeEventListener(REALTIME_EVENT_NAME, handleUpdate);
+      window.removeEventListener("storage", handleUpdate);
+    };
+  }, []);
 
   const filteredTools =
     selectedCategory === "All"
@@ -21,11 +35,11 @@ export function ToolsGrid() {
             the toolkit
           </p>
           <h2 className="mt-6 font-display text-3xl font-medium leading-[1.05] md:text-6xl">
-            Twenty-six tools<span className="text-accent">.</span> One tab.
+            130+ tools<span className="text-accent">.</span> One tab.
           </h2>
           <p className="mt-6 max-w-xl text-sm leading-relaxed text-muted-foreground md:text-base">
-            Everything that happens to an image after the shutter — compress, convert, clean,
-            upscale — in one consistent place.
+            Image processing, PDF management, document conversion, and creative utilities —
+            everything in one consistent place.
           </p>
         </div>
 
@@ -81,7 +95,11 @@ export function ToolsGrid() {
               </span>
 
               {/* Tag top right */}
-              {t.tag ? (
+              {!AdminStore.isToolEnabled(t.slug) ? (
+                <span className="absolute right-4 top-4 rounded-full bg-amber-500/10 border border-amber-500/25 px-2.5 py-1 text-[0.625rem] font-bold tracking-wide text-amber-600 dark:text-amber-400">
+                  Maintenance
+                </span>
+              ) : t.tag ? (
                 <span className="absolute right-4 top-4 rounded-full bg-accent px-2.5 py-1 text-[0.625rem] font-semibold tracking-wide text-accent-foreground">
                   {t.tag}
                 </span>
@@ -97,8 +115,14 @@ export function ToolsGrid() {
               <p className="mt-2 line-clamp-2 text-xs text-muted-foreground leading-relaxed">
                 {t.blurb}
               </p>
-              <span className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-all duration-500 group-hover:gap-3 group-hover:text-foreground">
-                Open tool <span aria-hidden>→</span>
+              <span
+                className={`mt-4 inline-flex items-center gap-1.5 text-xs font-medium transition-all duration-500 group-hover:gap-3 ${
+                  !AdminStore.isToolEnabled(t.slug)
+                    ? "text-amber-600 dark:text-amber-400 font-semibold"
+                    : "text-muted-foreground group-hover:text-foreground"
+                }`}
+              >
+                {!AdminStore.isToolEnabled(t.slug) ? "Under Maintenance" : "Open tool"} <span aria-hidden>→</span>
               </span>
             </Link>
           );

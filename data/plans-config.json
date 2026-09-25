@@ -1,0 +1,98 @@
+[
+  {
+    "id": "festival-mega-offer",
+    "name": "Festive Mega Creator Offer 🎉",
+    "tagline": "Exclusive limited-time festive discount with +150 bonus credits!",
+    "badge": "🔥 60% OFF FESTIVAL SPECIAL",
+    "type": "festival",
+    "credits": 500,
+    "bonusCredits": 150,
+    "priceINR": 999,
+    "originalPriceINR": 2499,
+    "billingPeriod": "one-time",
+    "features": [
+      "650 Total Credits (500 + 150 Extra Bonus)",
+      "Ultra HD 4K Outputs on All 30+ Tools",
+      "Full Access to AI Background Removal & Upscaling",
+      "Lifetime Validity — Credits Never Expire",
+      "Dedicated High-Speed Processing Engine",
+      "Commercial Use License Included"
+    ],
+    "imageUrl": "/images/festival-offer-banner.jpg",
+    "isFestivalOffer": true,
+    "showInFestivalDialog": true,
+    "dialogTitle": "Special Festival Celebration Offer! 🎉",
+    "dialogSubtitle": "Celebrate with 60% OFF & 150 extra bonus credits on our top-tier Creator Pack.",
+    "expiresAt": "Limited Time",
+    "active": true,
+    "sortOrder": 0
+  },
+  {
+    "id": "pack-payg-popular",
+    "name": "Pay-as-you-go 75 Pack",
+    "tagline": "One-off credits that never expire",
+    "badge": "Most Flexible",
+    "type": "pack",
+    "credits": 75,
+    "bonusCredits": 0,
+    "priceINR": 2499,
+    "originalPriceINR": 2999,
+    "billingPeriod": "one-time",
+    "features": [
+      "75 high-speed credits",
+      "Pay only for what you process",
+      "Credits never expire",
+      "All 30+ conversion and editing tools"
+    ],
+    "imageUrl": "/images/celebration-gift-banner.jpg",
+    "isFestivalOffer": false,
+    "showInFestivalDialog": false,
+    "active": true,
+    "sortOrder": 1
+  },
+  {
+    "id": "sub-lite",
+    "name": "Lite Monthly",
+    "tagline": "Ideal for light creators and freelancers",
+    "badge": "Starter",
+    "type": "subscription",
+    "credits": 40,
+    "bonusCredits": 0,
+    "priceINR": 499,
+    "originalPriceINR": 699,
+    "billingPeriod": "month",
+    "features": [
+      "40 credits every month",
+      "AI photo editor & background removal",
+      "Erase & restore brush tools",
+      "Max quality exports"
+    ],
+    "isFestivalOffer": false,
+    "showInFestivalDialog": false,
+    "active": true,
+    "sortOrder": 2
+  },
+  {
+    "id": "sub-pro",
+    "name": "Pro Monthly",
+    "tagline": "Maximum performance for studios & power users",
+    "badge": "Most Popular",
+    "type": "subscription",
+    "credits": 200,
+    "bonusCredits": 0,
+    "priceINR": 1999,
+    "originalPriceINR": 2499,
+    "billingPeriod": "month",
+    "features": [
+      "200 credits every month",
+      "Priority GPU processing pipeline",
+      "Bulk editing ⚡",
+      "All AI models and 4K ultra downloads",
+      "24/7 dedicated support"
+    ],
+    "isFestivalOffer": false,
+    "showInFestivalDialog": false,
+    "active": true,
+    "sortOrder": 3
+  }
+]

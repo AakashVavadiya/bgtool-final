@@ -1,11 +1,19 @@
+import { useState, useEffect } from "react";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { getTool, tools } from "@/lib/tools";
 import { RemovalProcess } from "@/components/RemovalProcess";
 import { InteractiveToolWorkspace } from "@/components/InteractiveToolWorkspace";
+import { PdfToolWorkspace } from "@/components/PdfToolWorkspace";
 import { BgModels } from "@/components/BgModels";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
-import { CheckCircle2 } from "lucide-react";
+import { ToolMaintenanceDialog } from "@/components/ToolMaintenanceDialog";
+import { AdminStore } from "@/admin/lib/admin-store";
+import { AuthUser } from "@/lib/auth-user";
+import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
+import { CheckCircle2, ShieldAlert, Wrench } from "lucide-react";
+
+import { ToolLimitReachedDialog } from "@/components/ToolLimitReachedDialog";
 
 export const Route = createFileRoute("/tools/$slug")({
   loader: ({ params }) => {
@@ -42,22 +50,184 @@ function ToolPage() {
 
   if (!tool) return null;
 
+  const [isEnabled, setIsEnabled] = useState(() => AdminStore.isToolEnabled(slug));
+  const [showMaintenanceModal, setShowMaintenanceModal] = useState(() => !AdminStore.isToolEnabled(slug));
+  const [dailyStatus, setDailyStatus] = useState(() => AdminStore.checkDailyToolLimit(slug));
+  const [showLimitModal, setShowLimitModal] = useState(() => AdminStore.checkDailyToolLimit(slug).reached);
+  const [isRestricted, setIsRestricted] = useState(() => AuthUser.isUserRestricted());
+
+  useEffect(() => {
+    setIsRestricted(AuthUser.isUserRestricted());
+    AdminStore.syncToolsConfigFromServer().then(() => {
+      const enabled = AdminStore.isToolEnabled(slug);
+      setIsEnabled(enabled);
+      if (!enabled) setShowMaintenanceModal(true);
+      const ds = AdminStore.checkDailyToolLimit(slug);
+      setDailyStatus(ds);
+      if (ds.reached) setShowLimitModal(true);
+      setIsRestricted(AuthUser.isUserRestricted());
+    });
+
+    const handleUpdate = () => {
+      setIsRestricted(AuthUser.isUserRestricted());
+      const enabled = AdminStore.isToolEnabled(slug);
+      setIsEnabled(enabled);
+      if (!enabled) {
+        setShowMaintenanceModal(true);
+      }
+      const ds = AdminStore.checkDailyToolLimit(slug);
+      setDailyStatus(ds);
+      if (ds.reached) {
+        setShowLimitModal(true);
+      }
+    };
+
+    window.addEventListener(REALTIME_EVENT_NAME, handleUpdate);
+    window.addEventListener("storage", handleUpdate);
+    window.addEventListener("bg:show_restricted_dialog", handleUpdate);
+    return () => {
+      window.removeEventListener(REALTIME_EVENT_NAME, handleUpdate);
+      window.removeEventListener("storage", handleUpdate);
+      window.removeEventListener("bg:show_restricted_dialog", handleUpdate);
+    };
+  }, [slug]);
+
   const Icon = tool.icon;
   const isBgRemover = tool.slug === "remove-background";
   const sameCat = tools.filter((t) => t.category === tool.category && t.slug !== tool.slug);
   const otherCat = tools.filter((t) => t.category !== tool.category && t.slug !== tool.slug);
   const related = [...sameCat, ...otherCat].slice(0, 4);
   const seo = tool.seo;
+  const creditCost = AdminStore.getToolCreditCost(tool.slug);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col justify-between">
       <div>
         <SiteHeader />
 
+        {/* Maintenance Dialog Popup */}
+        <ToolMaintenanceDialog
+          isOpen={!isEnabled && showMaintenanceModal}
+          onClose={() => setShowMaintenanceModal(false)}
+          toolName={tool.name}
+          toolSlug={tool.slug}
+        />
+
+        {/* Daily Limit Reached Dialog Popup */}
+        <ToolLimitReachedDialog
+          isOpen={dailyStatus.reached && showLimitModal}
+          onClose={() => setShowLimitModal(false)}
+          toolName={tool.name}
+          limit={dailyStatus.limit}
+          usedToday={dailyStatus.usedToday}
+        />
+
         {/* ─── UPLOAD ZONE & WORKSPACE ─────────────────────────────────────── */}
-        <section className="grain border-b border-border px-4 py-4 md:px-8 md:py-6">
-          {isBgRemover ? (
+        <section className="grain border-b border-border px-4 py-4 md:px-8 md:py-6 relative">
+          {isRestricted ? (
+            <div className="relative rounded-3xl border border-destructive/40 bg-destructive/5 p-8 sm:p-14 text-center my-4 overflow-hidden shadow-sm">
+              <div className="max-w-lg mx-auto space-y-4">
+                <div className="inline-flex items-center gap-2 rounded-full border border-destructive/30 bg-destructive/10 px-4 py-1.5 text-xs font-bold text-destructive">
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                  <span>Account Restricted</span>
+                </div>
+                <h3 className="font-display text-2xl sm:text-3xl font-extrabold text-foreground">
+                  Access Restricted
+                </h3>
+                <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                  You cannot use Bg. because you have violated our terms and conditions.
+                </p>
+                <div className="pt-3 flex flex-wrap justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent("bg:show_restricted_dialog"))}
+                    className="rounded-2xl bg-destructive px-5 py-3 text-xs font-bold text-white shadow-xs hover:opacity-90 transition-all cursor-pointer inline-flex items-center gap-2"
+                  >
+                    <ShieldAlert className="h-3.5 w-3.5" />
+                    <span>View Violation Notice</span>
+                  </button>
+                  <Link
+                    to="/contact"
+                    className="rounded-2xl border border-border bg-card px-5 py-3 text-xs font-bold text-muted-foreground hover:text-foreground transition-all flex items-center"
+                  >
+                    Contact Support
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ) : !isEnabled ? (
+            <div className="relative rounded-3xl border border-amber-500/30 bg-amber-500/5 p-8 sm:p-14 text-center my-4 overflow-hidden shadow-sm">
+              <div className="max-w-lg mx-auto space-y-4">
+                <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+                  <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                  <span>Scheduled Tool Maintenance</span>
+                </div>
+                <h3 className="font-display text-2xl sm:text-3xl font-extrabold text-foreground">
+                  {tool.name} is Currently Offline
+                </h3>
+                <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                  This tool is right now under maintenance and upgradation mode. Our engineering team is currently upgrading the processing model to deliver faster speeds, higher resolution limits, and superior quality output.
+                </p>
+                <div className="pt-3 flex flex-wrap justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowMaintenanceModal(true)}
+                    className="rounded-2xl bg-foreground px-5 py-3 text-xs font-bold text-background shadow-xs hover:opacity-90 transition-all cursor-pointer inline-flex items-center gap-2"
+                  >
+                    <Wrench className="h-3.5 w-3.5" />
+                    <span>View Maintenance Notice</span>
+                  </button>
+                  <Link
+                    to="/"
+                    hash="tools"
+                    className="rounded-2xl border border-border bg-card px-5 py-3 text-xs font-bold text-muted-foreground hover:text-foreground transition-all flex items-center"
+                  >
+                    Explore Active Tools
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ) : dailyStatus.reached ? (
+            <div className="relative rounded-3xl border border-amber-500/30 bg-amber-500/5 p-8 sm:p-14 text-center my-4 overflow-hidden shadow-sm">
+              <div className="max-w-lg mx-auto space-y-4">
+                <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+                  <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                  <span>Daily Quota Reached</span>
+                </div>
+                <h3 className="font-display text-2xl sm:text-3xl font-extrabold text-foreground">
+                  Daily Usage Limit Reached ({dailyStatus.usedToday} of {dailyStatus.limit})
+                </h3>
+                <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                  You have reached the maximum allowed daily runs ({dailyStatus.limit}/day) for {tool.name} on this device. Your quota will automatically reset tonight at midnight.
+                </p>
+                <div className="pt-3 flex flex-wrap justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowLimitModal(true)}
+                    className="rounded-2xl bg-foreground px-5 py-3 text-xs font-bold text-background shadow-xs hover:opacity-90 transition-all cursor-pointer"
+                  >
+                    View Quota Details
+                  </button>
+                  <Link
+                    to="/pricing"
+                    className="rounded-2xl bg-accent px-5 py-3 text-xs font-bold text-white shadow-xs hover:opacity-90 transition-all flex items-center"
+                  >
+                    Upgrade Plan
+                  </Link>
+                  <Link
+                    to="/"
+                    hash="tools"
+                    className="rounded-2xl border border-border bg-card px-5 py-3 text-xs font-bold text-muted-foreground hover:text-foreground transition-all flex items-center"
+                  >
+                    Other Tools
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ) : isBgRemover ? (
             <RemovalProcess />
+          ) : tool.category === "PDF Tools" ? (
+            <PdfToolWorkspace tool={tool} />
           ) : (
             <InteractiveToolWorkspace tool={tool} />
           )}
@@ -92,16 +262,26 @@ function ToolPage() {
             {/* Stats row */}
             <div className="mt-4 flex flex-wrap justify-center gap-4">
               <div className="flex items-center gap-2 rounded-full border border-border bg-card/60 px-4 py-2 text-sm font-medium">
+                <span className="text-muted-foreground">Credit Cost:</span>
+                <span className="font-semibold text-accent">
+                  {creditCost === 0 ? "Free (0 Credits)" : `${creditCost} Credit${creditCost === 1 ? "" : "s"}`}
+                </span>
+              </div>
+              {dailyStatus.limit > 0 && (
+                <div className="flex items-center gap-2 rounded-full border border-border bg-card/60 px-4 py-2 text-sm font-medium">
+                  <span className="text-muted-foreground">Daily Limit:</span>
+                  <span className={`font-semibold ${dailyStatus.reached ? "text-destructive" : "text-foreground"}`}>
+                    {dailyStatus.usedToday} / {dailyStatus.limit} used today
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center gap-2 rounded-full border border-border bg-card/60 px-4 py-2 text-sm font-medium">
                 <span className="text-muted-foreground">Accepts:</span>
                 <span className="font-semibold">{tool.accepts}</span>
               </div>
               <div className="flex items-center gap-2 rounded-full border border-border bg-card/60 px-4 py-2 text-sm font-medium">
                 <span className="text-muted-foreground">Returns:</span>
                 <span className="font-semibold">{tool.outputs}</span>
-              </div>
-              <div className="flex items-center gap-2 rounded-full border border-border bg-card/60 px-4 py-2 text-sm font-medium">
-                <span className="text-muted-foreground">Price:</span>
-                <span className="font-semibold text-accent">Free forever</span>
               </div>
             </div>
           </div>

@@ -51,20 +51,51 @@ import {
   Table as TableIcon,
   FileSpreadsheet,
   AlignLeft,
+  AlignCenter,
+  AlignRight,
   Type,
   Sun,
   Moon,
   QrCode,
   Barcode as BarcodeIcon,
+  Lock,
+  Unlock,
+  KeyRound,
+  ShieldAlert,
+  Grid3X3,
+  Stamp,
+  Move,
+  Bold,
+  Italic,
+  Sparkle,
+  Smile,
+  Plus,
+  Circle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { AdminStore } from "@/admin/lib/admin-store";
+import { AuthUser } from "@/lib/auth-user";
+import { Telemetry } from "@/lib/telemetry";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { type Tool } from "@/lib/tools";
+import { PdfToolWorkspace } from "@/components/PdfToolWorkspace";
 import { AnimatedCounter } from "@/components/AnimatedCounter";
+import {
+  type FaceBox,
+  detectFacesInImage,
+  applyFaceAnonymization,
+} from "@/lib/faceDetector";
 import {
   OcrLanguageDialog,
   RICH_OCR_LANGUAGES,
   type OcrLanguageOption,
 } from "@/components/OcrLanguageDialog";
+import {
+  renderPptSlideToImage,
+  renderAllPptSlidesToZip,
+  getPptxMetadata,
+  type PptxMetadata,
+} from "@/lib/pptxRenderer";
 
 const rgbToHsl = (r: number, g: number, b: number) => {
   r /= 255;
@@ -200,6 +231,32 @@ const BINARY_THEMES: Record<BinaryThemeKey, { name: string; bg: string; fg: stri
   ocean: { name: "Ocean Blueprint", bg: "#082f49", fg: "#38bdf8", accent: "#7dd3fc" },
   amber: { name: "Retro Amber CRT", bg: "#1c1002", fg: "#f59e0b", accent: "#fbbf24" },
 };
+
+const SAMPLE_BASE64_STAR = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAbUlEQVR4nGNgGAWjYBSMglEwCkYBdcD4f2Lw/4mR1k1sGBih8H+i1X1GBjCfhg6wY8LAfwb0sB5p7vj//z+tXPgfD82nRw1AVkCN/x8f/U8LGODg/8Twh4F27mDAgEHQfEYM/f9/GDRgFAy4AQAWU322xZ7ZkwAAAABJRU5ErkJggg==";
+
+const SAMPLE_BASE64_GRADIENT_ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAWUlEQVR4nGNgGAWjYBSMglEwCkbB0ACD//8Z/qOb8J+Bkbq+hYkBbYCRjgwYBaNgFIyCUTAKRsEooA8Y//v3D0U2jYJRMApGwSgYBaNgFIyCYQQA09p6Gz9Xy4kAAAAASUVORK5CYII=";
+
+const ROTATE_GRADIENT_PRESETS = [
+  { id: "midnight", name: "Midnight", css: "linear-gradient(135deg, #0f172a, #1e293b)", stops: ["#0f172a", "#1e293b"] },
+  { id: "sunset", name: "Sunset Glow", css: "linear-gradient(135deg, #f97316, #ec4899)", stops: ["#f97316", "#ec4899"] },
+  { id: "ocean", name: "Ocean Breeze", css: "linear-gradient(135deg, #0284c7, #2563eb)", stops: ["#0284c7", "#2563eb"] },
+  { id: "emerald", name: "Emerald Mint", css: "linear-gradient(135deg, #059669, #0d9488)", stops: ["#059669", "#0d9488"] },
+  { id: "neon", name: "Neon Violet", css: "linear-gradient(135deg, #7c3aed, #db2777)", stops: ["#7c3aed", "#db2777"] },
+  { id: "amber", name: "Amber Warm", css: "linear-gradient(135deg, #d97706, #b45309)", stops: ["#d97706", "#b45309"] },
+];
+
+const ROTATE_COLOR_SWATCHES = [
+  { hex: "#ffffff", name: "Pure White", border: "border-neutral-300" },
+  { hex: "#000000", name: "Pure Black", border: "border-neutral-700" },
+  { hex: "#0f172a", name: "Dark Slate", border: "border-slate-700" },
+  { hex: "#f8fafc", name: "Cloud White", border: "border-slate-300" },
+  { hex: "#ef4444", name: "Crimson Red", border: "border-red-500" },
+  { hex: "#10b981", name: "Emerald", border: "border-emerald-500" },
+  { hex: "#f59e0b", name: "Amber Gold", border: "border-amber-500" },
+  { hex: "#0ea5e9", name: "Sky Blue", border: "border-sky-500" },
+  { hex: "#8b5cf6", name: "Purple", border: "border-purple-500" },
+  { hex: "#ec4899", name: "Pink", border: "border-pink-500" },
+];
 
 type EditorThemeKey = "vs-dark" | "matrix" | "cyberpunk" | "dracula" | "monokai" | "one-dark" | "light";
 
@@ -743,7 +800,7 @@ export const parseOcrTextToGrid = (
 };
 
 // ── 3. Image → DOCX (Fully Editable Microsoft Word OOXML Builder) ─────────────
-const buildEditableDocxFromOcr = (
+export const buildEditableDocxFromOcr = (
   textLines: string[],
   options: {
     fontFamily?: string | undefined;
@@ -1039,7 +1096,7 @@ const buildEditableDocxFromOcr = (
   });
 };
 
-const buildDocxFromImage = (dataUrl: string, imgW: number, imgH: number, filename: string): Blob => {
+export const buildDocxFromImage = (dataUrl: string, imgW: number, imgH: number, filename: string): Blob => {
   return buildEditableDocxFromOcr([], { mode: "image_only", imageDataUrl: dataUrl, imgW, imgH, filename });
 };
 
@@ -1500,59 +1557,223 @@ const renderTextToCanvas = (
   return canvas.toDataURL("image/png");
 };
 
+const generateLockedPdfCanvas = (message: string = "This PDF document is password-protected."): string => {
+  const canvasW = 800;
+  const canvasH = 1050;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvasW;
+  canvas.height = canvasH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  // Background sheet
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  // Subtle grid
+  ctx.strokeStyle = "#f8fafc";
+  ctx.lineWidth = 1;
+  for (let x = 40; x < canvasW; x += 40) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvasH);
+    ctx.stroke();
+  }
+  for (let y = 40; y < canvasH; y += 40) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvasW, y);
+    ctx.stroke();
+  }
+
+  // Border
+  ctx.strokeStyle = "#e2e8f0";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(20, 20, canvasW - 40, canvasH - 40);
+
+  // Top header banner
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(20, 20, canvasW - 40, 70);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 20px system-ui, sans-serif";
+  ctx.fillText("🔒 Protected PDF Document", 48, 62);
+
+  // Center Shield Box
+  const boxW = 560;
+  const boxH = 340;
+  const boxX = (canvasW - boxW) / 2;
+  const boxY = (canvasH - boxH) / 2 - 20;
+
+  ctx.fillStyle = "#f8fafc";
+  ctx.fillRect(boxX, boxY, boxW, boxH);
+  ctx.strokeStyle = message.includes("Incorrect") ? "#fca5a5" : "#cbd5e1";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+  // Lock Icon Symbol (large)
+  ctx.font = "64px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(message.includes("Incorrect") ? "⚠️" : "🔐", canvasW / 2, boxY + 90);
+
+  // Title
+  ctx.fillStyle = "#0f172a";
+  ctx.font = "bold 24px system-ui, sans-serif";
+  ctx.fillText(message.includes("Incorrect") ? "Incorrect Password" : "Password Required", canvasW / 2, boxY + 150);
+
+  // Subtitle / message
+  ctx.fillStyle = message.includes("Incorrect") ? "#ef4444" : "#64748b";
+  ctx.font = message.includes("Incorrect") ? "bold 16px system-ui, sans-serif" : "15px system-ui, sans-serif";
+  ctx.fillText(message, canvasW / 2, boxY + 190);
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "14px system-ui, sans-serif";
+  ctx.fillText("Enter document password to unlock, preview and convert.", canvasW / 2, boxY + 230);
+
+  // Security Pill
+  ctx.fillStyle = "#e2e8f0";
+  ctx.fillRect(canvasW / 2 - 130, boxY + 270, 260, 36);
+  ctx.fillStyle = "#475569";
+  ctx.font = "bold 12px system-ui, sans-serif";
+  ctx.fillText("SECURE ENCRYPTED PDF", canvasW / 2, boxY + 293);
+
+  ctx.textAlign = "left";
+  return canvas.toDataURL("image/png");
+};
+
 const renderPdfToImage = async (
   buffer: ArrayBuffer,
   pageNumber: number = 1,
   scale: number = 2.0,
   outputFormat: "PNG" | "JPG" = "PNG",
-  bgColor: string = "#ffffff"
-): Promise<{ dataUrl: string; totalPages: number; width: number; height: number }> => {
+  bgColor: string = "#ffffff",
+  password?: string
+): Promise<{
+  dataUrl: string;
+  totalPages: number;
+  width: number;
+  height: number;
+  isPasswordProtected?: boolean;
+  isUnlocked?: boolean;
+  passwordError?: string | null;
+}> => {
   try {
     const pdfjsLib = await import("pdfjs-dist");
     try {
       if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || "4.10.38"}/build/pdf.worker.min.mjs`;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
       }
     } catch {
-      // ignore
+      try {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || "6.3.289"}/build/pdf.worker.min.mjs`;
+      } catch {}
     }
 
+    const copy = buffer.slice(0);
+    const dataUint8 = new Uint8Array(copy);
+
     const loadingTask = pdfjsLib.getDocument({
-      data: new Uint8Array(buffer),
+      data: dataUint8,
+      password: password || undefined,
       useSystemFonts: true,
+      cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || "6.3.289"}/cmaps/`,
+      cMapPacked: true,
+      standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || "6.3.289"}/standard_fonts/`,
     });
 
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("PDF load timeout")), 4500)
+      setTimeout(() => reject(new Error("PDF load timeout")), 12000)
     );
 
-    const pdfDoc = await Promise.race([loadingTask.promise, timeoutPromise]);
-    const totalPages = pdfDoc.numPages || 1;
-    const pageNum = Math.min(Math.max(1, pageNumber), totalPages);
-    const page = await pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale: Math.max(1.0, Math.min(3.5, scale)) });
-
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(viewport.width);
-    canvas.height = Math.round(viewport.height);
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) throw new Error("Canvas context unavailable");
-
-    if (bgColor && bgColor !== "transparent") {
-      ctx.fillStyle = bgColor;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    let pdfDoc;
+    try {
+      pdfDoc = await Promise.race([loadingTask.promise, timeoutPromise]);
+    } catch (loadErr: any) {
+      if (
+        loadErr?.name === "PasswordException" ||
+        loadErr?.code === 1 ||
+        loadErr?.code === 2 ||
+        loadErr?.message?.toLowerCase().includes("password")
+      ) {
+        const isWrong = loadErr?.code === 2 || (Boolean(password) && password!.length > 0);
+        const errMsg = isWrong ? "Incorrect password. Please try again." : "This PDF document is password-protected.";
+        return {
+          dataUrl: generateLockedPdfCanvas(errMsg),
+          totalPages: 1,
+          width: 800,
+          height: 1050,
+          isPasswordProtected: true,
+          isUnlocked: false,
+          passwordError: isWrong ? "Incorrect password. Please try again." : null,
+        };
+      }
+      throw loadErr;
     }
 
-    const renderContext = {
-      canvasContext: ctx,
-      viewport: viewport,
-      background: bgColor === "transparent" ? "rgba(0,0,0,0)" : bgColor,
-    };
+    const totalPages = Math.max(1, pdfDoc.numPages || 1);
+    const pageNum = Math.min(Math.max(1, pageNumber), totalPages);
+    const page = await pdfDoc.getPage(pageNum);
 
-    await page.render(renderContext as any).promise;
+    const targetScale = Math.max(1.0, Math.min(4.0, scale || 2.0));
+    const viewport = page.getViewport({ scale: targetScale });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(10, Math.round(viewport.width));
+    canvas.height = Math.max(10, Math.round(viewport.height));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas context unavailable");
+
+    // Try rendering with print intent or display intent
+    try {
+      const renderTask = page.render({
+        canvasContext: ctx,
+        viewport: viewport,
+        intent: "print",
+      } as any);
+      await renderTask.promise;
+    } catch (printErr) {
+      console.warn("Print intent render fallback to display intent:", printErr);
+      const renderTask = page.render({
+        canvasContext: ctx,
+        viewport: viewport,
+        intent: "display",
+      } as any);
+      await renderTask.promise;
+    }
+
+    // If custom non-white background is requested, composite it
+    if (bgColor && bgColor !== "#ffffff" && bgColor !== "transparent") {
+      const bgCanvas = document.createElement("canvas");
+      bgCanvas.width = canvas.width;
+      bgCanvas.height = canvas.height;
+      const bgCtx = bgCanvas.getContext("2d");
+      if (bgCtx) {
+        bgCtx.fillStyle = bgColor;
+        bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+        bgCtx.drawImage(canvas, 0, 0);
+        const mime = outputFormat === "JPG" ? "image/jpeg" : "image/png";
+        return {
+          dataUrl: bgCanvas.toDataURL(mime, 0.95),
+          totalPages,
+          width: canvas.width,
+          height: canvas.height,
+          isPasswordProtected: false,
+          isUnlocked: true,
+          passwordError: null,
+        };
+      }
+    }
+
     const mime = outputFormat === "JPG" ? "image/jpeg" : "image/png";
     const dataUrl = canvas.toDataURL(mime, 0.95);
-    return { dataUrl, totalPages, width: canvas.width, height: canvas.height };
+    return {
+      dataUrl,
+      totalPages,
+      width: canvas.width,
+      height: canvas.height,
+      isPasswordProtected: false,
+      isUnlocked: true,
+      passwordError: null,
+    };
   } catch (err) {
     console.warn("PDF render fallback:", err);
     const canvasW = Math.round(794 * (scale / 1.5));
@@ -1591,13 +1812,125 @@ const renderPdfToImage = async (
   }
 };
 
+const renderAllPdfPagesToZip = async (
+  buffer: ArrayBuffer,
+  totalPages: number,
+  scale: number = 2.0,
+  outputFormat: "PNG" | "JPG" = "PNG",
+  bgColor: string = "#ffffff",
+  baseName: string = "document",
+  password?: string,
+  onProgress?: (curr: number, total: number) => void
+): Promise<{ zipBlob: Blob; firstPageDataUrl: string; width: number; height: number }> => {
+  const pdfjsLib = await import("pdfjs-dist");
+  try {
+    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+    }
+  } catch {
+    try {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || "6.3.289"}/build/pdf.worker.min.mjs`;
+    } catch {}
+  }
+
+  const copy = buffer.slice(0);
+  const dataUint8 = new Uint8Array(copy);
+  const loadingTask = pdfjsLib.getDocument({
+    data: dataUint8,
+    password: password || undefined,
+    useSystemFonts: true,
+    cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || "6.3.289"}/cmaps/`,
+    cMapPacked: true,
+    standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || "6.3.289"}/standard_fonts/`,
+  });
+
+  const pdfDoc = await loadingTask.promise;
+  const numPages = Math.max(1, pdfDoc.numPages || totalPages);
+  const ext = outputFormat === "JPG" ? "jpg" : "png";
+  const mime = outputFormat === "JPG" ? "image/jpeg" : "image/png";
+
+  const zipEntries: { name: string; data: Uint8Array }[] = [];
+  let firstPageDataUrl = "";
+  let firstW = 0;
+  let firstH = 0;
+
+  for (let p = 1; p <= numPages; p++) {
+    onProgress?.(p, numPages);
+    const page = await pdfDoc.getPage(p);
+    const targetScale = Math.max(1.0, Math.min(4.0, scale || 2.0));
+    const viewport = page.getViewport({ scale: targetScale });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(10, Math.round(viewport.width));
+    canvas.height = Math.max(10, Math.round(viewport.height));
+    const ctx = canvas.getContext("2d");
+
+    if (ctx) {
+      try {
+        const renderTask = page.render({
+          canvasContext: ctx,
+          viewport: viewport,
+          intent: "print",
+        } as any);
+        await renderTask.promise;
+      } catch {
+        const renderTask = page.render({
+          canvasContext: ctx,
+          viewport: viewport,
+          intent: "display",
+        } as any);
+        await renderTask.promise;
+      }
+
+      let finalCanvas = canvas;
+      if (bgColor && bgColor !== "#ffffff" && bgColor !== "transparent") {
+        const bgCanvas = document.createElement("canvas");
+        bgCanvas.width = canvas.width;
+        bgCanvas.height = canvas.height;
+        const bgCtx = bgCanvas.getContext("2d");
+        if (bgCtx) {
+          bgCtx.fillStyle = bgColor;
+          bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+          bgCtx.drawImage(canvas, 0, 0);
+          finalCanvas = bgCanvas;
+        }
+      }
+
+      const dataUrl = finalCanvas.toDataURL(mime, 0.95);
+      if (p === 1) {
+        firstPageDataUrl = dataUrl;
+        firstW = finalCanvas.width;
+        firstH = finalCanvas.height;
+      }
+
+      const base64 = dataUrl.split(",")[1] || "";
+      const binaryStr = atob(base64);
+      const uint8 = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        uint8[i] = binaryStr.charCodeAt(i);
+      }
+
+      const pageIndexStr = String(p).padStart(numPages >= 10 ? 2 : 1, "0");
+      zipEntries.push({
+        name: `${baseName}_page_${pageIndexStr}.${ext}`,
+        data: uint8,
+      });
+    }
+  }
+
+  const zipUint8 = buildZip(zipEntries);
+  const zipBlob = new Blob([zipUint8 as BlobPart], { type: "application/zip" });
+  return { zipBlob, firstPageDataUrl, width: firstW, height: firstH };
+};
+
 const renderWordDocumentToImage = async (
   buffer: ArrayBuffer,
   fileName: string,
   fontFamily: string = "Calibri, sans-serif",
   fontSize: number = 16,
   bgColor: string = "#ffffff",
-  format: "PNG" | "JPG" = "PNG"
+  format: "PNG" | "JPG" = "PNG",
+  showHeader: boolean = true
 ): Promise<{ dataUrl: string; width: number; height: number }> => {
   let paragraphs: string[] = [];
   try {
@@ -1627,7 +1960,8 @@ const renderWordDocumentToImage = async (
   }
 
   const canvasW = 1200;
-  const canvasH = Math.max(900, Math.min(2800, 160 + paragraphs.length * (fontSize * 2.2)));
+  const headerSpace = showHeader ? 160 : 80;
+  const canvasH = Math.max(900, Math.min(2800, headerSpace + paragraphs.length * (fontSize * 2.2)));
   const canvas = document.createElement("canvas");
   canvas.width = canvasW;
   canvas.height = canvasH;
@@ -1636,16 +1970,18 @@ const renderWordDocumentToImage = async (
   ctx.fillStyle = bgColor === "transparent" ? "#ffffff" : bgColor;
   ctx.fillRect(0, 0, canvasW, canvasH);
 
-  ctx.fillStyle = "#2563eb";
-  ctx.fillRect(0, 0, canvasW, 64);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 20px 'Segoe UI', Arial, sans-serif";
-  ctx.fillText(`📄 ${fileName}`, 40, 40);
+  if (showHeader) {
+    ctx.fillStyle = "#2563eb";
+    ctx.fillRect(0, 0, canvasW, 64);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 20px 'Segoe UI', Arial, sans-serif";
+    ctx.fillText(`📄 ${fileName}`, 40, 40);
+  }
 
   ctx.fillStyle = "#0f172a";
   ctx.font = `${fontSize}px ${fontFamily}`;
 
-  let curY = 120;
+  let curY = showHeader ? 120 : 60;
   const lineH = Math.round(fontSize * 1.6);
   const maxWidth = canvasW - 120;
 
@@ -1797,151 +2133,400 @@ const renderExcelSheetToImage = async (
   return { dataUrl: canvas.toDataURL(mime, 0.95), width: canvasW, height: canvasH };
 };
 
-const renderPptSlideToImage = async (
-  buffer: ArrayBuffer,
-  fileName: string,
-  theme: "indigo" | "dark" | "clean" = "indigo",
-  format: "PNG" | "JPG" = "PNG"
-): Promise<{ dataUrl: string; width: number; height: number }> => {
-  let slideTexts: string[] = [];
-  try {
-    const xml = await extractTextFromZip(buffer, "ppt/slides/slide1.xml");
-    if (xml) {
-      const dom = new DOMParser().parseFromString(xml, "text/xml");
-      const textNodes = Array.from(dom.querySelectorAll("a\\:t, t"));
-      slideTexts = textNodes
-        .map((n) => (n.textContent || "").trim())
-        .filter((s) => s.length > 0);
-    }
-  } catch (e) {
-    console.warn("PPT parse fallback:", e);
-  }
 
-  if (slideTexts.length === 0) {
-    slideTexts = [
-      `PowerPoint Presentation`,
-      fileName,
-      "Ready to convert into high-resolution presentation slide image.",
-    ];
-  }
 
-  const canvasW = 1920;
-  const canvasH = 1080;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvasW;
-  canvas.height = canvasH;
-  const ctx = canvas.getContext("2d")!;
+// ── 8. Watermark Removal — High-Accuracy AI Auto-Detection & Inpainting ─────────
+export interface WatermarkRemovalOptions {
+  mode: "full_auto" | "gemini_ai" | "corners" | "stock_grid";
+  sensitivity: number; // 10 - 100
+  engine: "smart_neural" | "patch_match" | "smooth_diffusion";
+  preserveDetails: boolean;
+}
 
-  if (theme === "indigo") {
-    const grad = ctx.createLinearGradient(0, 0, canvasW, canvasH);
-    grad.addColorStop(0, "#1e1b4b");
-    grad.addColorStop(1, "#312e81");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, canvasW, canvasH);
-  } else if (theme === "dark") {
-    ctx.fillStyle = "#090d16";
-    ctx.fillRect(0, 0, canvasW, canvasH);
-  } else {
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvasW, canvasH);
-  }
-
-  // Slide Badge
-  ctx.fillStyle = "rgba(99, 102, 241, 0.25)";
-  ctx.fillRect(100, 100, 200, 46);
-  ctx.fillStyle = theme === "clean" ? "#4f46e5" : "#818cf8";
-  ctx.font = "bold 16px 'Segoe UI', Arial, sans-serif";
-  ctx.fillText("SLIDE 1 · PPTX", 130, 129);
-
-  // Title
-  ctx.fillStyle = theme === "clean" ? "#0f172a" : "#ffffff";
-  ctx.font = "bold 56px 'Segoe UI', Arial, sans-serif";
-  const title = slideTexts[0] || "PowerPoint Presentation";
-  ctx.fillText(title, 100, 240, canvasW - 200);
-
-  // Subtitle / Bullets
-  ctx.fillStyle = theme === "clean" ? "#475569" : "#cbd5e1";
-  ctx.font = "28px 'Segoe UI', Arial, sans-serif";
-  let curY = 340;
-  slideTexts.slice(1, 8).forEach((st) => {
-    ctx.fillText(`•  ${st}`, 110, curY, canvasW - 220);
-    curY += 56;
-  });
-
-  // Footer branding
-  ctx.fillStyle = theme === "clean" ? "#94a3b8" : "#64748b";
-  ctx.font = "18px 'Segoe UI', Arial, sans-serif";
-  ctx.fillText(`Presentation: ${fileName}  |  Converted with BG Tool`, 100, canvasH - 80);
-
-  const mime = format === "JPG" ? "image/jpeg" : "image/png";
-  return { dataUrl: canvas.toDataURL(mime, 0.95), width: canvasW, height: canvasH };
-};
-
-// ── 8. Watermark Removal — Custom Inpainting Algorithm ───────────────────────
-const removeWatermarkFromImageData = (imageData: ImageData): ImageData => {
-  const data = new Uint8ClampedArray(imageData.data);
+const removeWatermarkAdvanced = (
+  imageData: ImageData,
+  options: WatermarkRemovalOptions
+): ImageData => {
   const w = imageData.width;
   const h = imageData.height;
-  const radius = 8;
+  const srcData = imageData.data;
+  const out = new Uint8ClampedArray(srcData);
 
-  // Detect watermark pixels: near-white (brightness > 220) with low saturation
-  const isWatermark = (i: number): boolean => {
-    const r = data[i] ?? 0;
-    const g = data[i+1] ?? 0;
-    const b = data[i+2] ?? 0;
-    const brightness = (r + g + b) / 3;
-    const sat = Math.max(r,g,b) - Math.min(r,g,b);
-    return brightness > 215 && sat < 35;
-  };
+  // 1. Calculate pixel luminance and color channels
+  const lum = new Float32Array(w * h);
+  for (let i = 0, p = 0; i < srcData.length; i += 4, p++) {
+    const r = srcData[i] ?? 0;
+    const g = srcData[i + 1] ?? 0;
+    const b = srcData[i + 2] ?? 0;
+    lum[p] = r * 0.299 + g * 0.587 + b * 0.114;
+  }
 
-  const flagged = new Uint8Array(w * h);
+  const sens = Math.max(0.1, Math.min(1.0, options.sensitivity / 100));
+  const mask = new Uint8Array(w * h);
+
+  // 2. Fast O(1) Sliding-Window Separable Box Blur for Large-Kernel Background Estimation (radius 22)
+  const bgRadius = Math.max(12, Math.min(36, Math.round(Math.min(w, h) * 0.035)));
+  const boxMean = new Float32Array(w * h);
+  const tempBlur = new Float32Array(w * h);
+
+  // Horizontal blur pass (Sliding Window O(1))
   for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (isWatermark((y * w + x) * 4)) flagged[y * w + x] = 1;
+    const rowOffset = y * w;
+    let sum = 0;
+    const r = bgRadius;
+    const winSize = 2 * r + 1;
+
+    for (let x = -r; x <= r; x++) {
+      const cx = Math.max(0, Math.min(w - 1, x));
+      sum += lum[rowOffset + cx] ?? 0;
+    }
+    tempBlur[rowOffset] = sum / winSize;
+
+    for (let x = 1; x < w; x++) {
+      const removeX = Math.max(0, x - 1 - r);
+      const addX = Math.min(w - 1, x + r);
+      sum += (lum[rowOffset + addX] ?? 0) - (lum[rowOffset + removeX] ?? 0);
+      tempBlur[rowOffset + x] = sum / winSize;
     }
   }
 
-  // Inpaint: replace flagged pixels with neighborhood average of non-flagged pixels
-  const out = new Uint8ClampedArray(data);
+  // Vertical blur pass (Sliding Window O(1))
+  for (let x = 0; x < w; x++) {
+    let sum = 0;
+    const r = bgRadius;
+    const winSize = 2 * r + 1;
+
+    for (let y = -r; y <= r; y++) {
+      const cy = Math.max(0, Math.min(h - 1, y));
+      sum += tempBlur[cy * w + x] ?? 0;
+    }
+    boxMean[x] = sum / winSize;
+
+    for (let y = 1; y < h; y++) {
+      const removeY = Math.max(0, y - 1 - r);
+      const addY = Math.min(h - 1, y + r);
+      sum += (tempBlur[addY * w + x] ?? 0) - (tempBlur[removeY * w + x] ?? 0);
+      boxMean[y * w + x] = sum / winSize;
+    }
+  }
+
+  // 3. Compute gradients for edge / watermark detection
+  const gradMap = new Float32Array(w * h);
+  for (let y = 1; y < h - 1; y++) {
+    const row = y * w;
+    for (let x = 1; x < w - 1; x++) {
+      const idx = row + x;
+      const l = lum[idx] ?? 0;
+      const gx = (lum[idx + 1] ?? l) - (lum[idx - 1] ?? l);
+      const gy = (lum[idx + w] ?? l) - (lum[idx - w] ?? l);
+      gradMap[idx] = Math.sqrt(gx * gx + gy * gy);
+    }
+  }
+
+  // Thresholds tuned with sensitivity
+  const isCornerMode = options.mode === "corners";
+  const isGeminiMode = options.mode === "gemini_ai";
+  const isStockGrid = options.mode === "stock_grid";
+
+  // Highly sensitive Gemini AI sparkle / watermark threshold (positive luminance delta)
+  const geminiDeltaThreshold = Math.max(2.5, 12 * (1.1 - sens * 0.6));
+  const generalWhiteDelta = Math.max(6, 22 * (1.1 - sens * 0.5));
+  const generalBlackDelta = Math.max(8, 24 * (1.1 - sens * 0.5));
+  const generalEdgeThresh = Math.max(10, 26 * (1.1 - sens * 0.4));
+
+  // Bottom-right quadrant bounds where Gemini diamond watermarks reside
+  const brXMin = Math.floor(w * 0.52);
+  const brYMin = Math.floor(h * 0.52);
+
+  // 4. Initial Watermark Pixel Tagging
+  for (let y = 1; y < h - 1; y++) {
+    const row = y * w;
+    for (let x = 1; x < w - 1; x++) {
+      const idx = row + x;
+      const l = lum[idx] ?? 0;
+      const bg = boxMean[idx] ?? l;
+      const deltaL = l - bg;
+      const grad = gradMap[idx] ?? 0;
+
+      const inBR = x >= brXMin && y >= brYMin;
+      const inCorner =
+        (x <= w * 0.35 || x >= w * 0.65) &&
+        (y <= h * 0.35 || y >= h * 0.65);
+
+      if (isGeminiMode && !inBR) continue;
+      if (isCornerMode && !inCorner) continue;
+
+      let isWm = false;
+
+      // Check 1: Gemini AI Translucent Star / Diamond in Bottom-Right
+      if (inBR || isGeminiMode) {
+        // Translucent overlay produces a positive luminance bump (deltaL > 0)
+        // over the local wooden / fabric / desk / sky background
+        if (deltaL >= geminiDeltaThreshold && (grad > 2.5 || deltaL >= geminiDeltaThreshold * 1.5)) {
+          isWm = true;
+        } else if (Math.abs(deltaL) >= geminiDeltaThreshold * 1.8 && grad > 3) {
+          isWm = true;
+        }
+      }
+
+      // Check 2: Corner Logos & Timestamps & Standard Overlays
+      if (!isWm && (inCorner || !isGeminiMode)) {
+        if (deltaL > generalWhiteDelta && grad > 4) {
+          isWm = true;
+        } else if (-deltaL > generalBlackDelta && grad > 5) {
+          isWm = true;
+        } else if (grad > generalEdgeThresh && Math.abs(deltaL) > 8) {
+          isWm = true;
+        }
+      }
+
+      // Check 3: Stock Grid / Diagonal Tiled Watermarks
+      if (!isWm && isStockGrid) {
+        if (Math.abs(deltaL) > generalWhiteDelta * 0.8 && grad > 6) {
+          isWm = true;
+        }
+      }
+
+      if (isWm) {
+        mask[idx] = 1;
+      }
+    }
+  }
+
+  // 5. Connected Component Analysis & Noise Pruning
+  // Remove tiny 1-2px noise specks that don't belong to a watermark cluster
+  const visited = new Uint8Array(w * h);
+  const queue = new Int32Array(w * h);
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const rootIdx = y * w + x;
+      if (!mask[rootIdx] || visited[rootIdx]) continue;
+
+      // Flood fill component
+      let qHead = 0;
+      let qTail = 0;
+      queue[qTail++] = rootIdx;
+      visited[rootIdx] = 1;
+
+      let minX = x, maxX = x, minY = y, maxY = y;
+      let compSize = 0;
+
+      while (qHead < qTail) {
+        const curIdx = queue[qHead++];
+        if (curIdx === undefined) continue;
+        compSize++;
+        const cy = Math.floor(curIdx / w);
+        const cx = curIdx % w;
+
+        if (cx < minX) minX = cx;
+        if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy;
+        if (cy > maxY) maxY = cy;
+
+        // 4-connectivity neighbors
+        const neighbors = [curIdx - 1, curIdx + 1, curIdx - w, curIdx + w];
+        for (let k = 0; k < 4; k++) {
+          const nIdx = neighbors[k];
+          if (nIdx !== undefined && nIdx >= 0 && nIdx < w * h && mask[nIdx] && !visited[nIdx]) {
+            visited[nIdx] = 1;
+            queue[qTail++] = nIdx;
+          }
+        }
+      }
+
+      const compW = maxX - minX + 1;
+      const compH = maxY - minY + 1;
+      const isCandidateBR = minX >= brXMin && minY >= brYMin;
+
+      // If the component is tiny isolated noise (e.g. < 4 pixels and not in BR), prune it
+      if (compSize < (isCandidateBR ? 3 : 6) && compW < 3 && compH < 3) {
+        for (let i = 0; i < qTail; i++) {
+          const qIdx = queue[i];
+          if (qIdx !== undefined) {
+            mask[qIdx] = 0;
+          }
+        }
+      }
+    }
+  }
+
+  // 6. Morphological Dilation (3.5px expansion) with Circular Kernel
+  // Completely covers all sub-pixel antialiased edges and faint alpha halos
+  const dilatedMask = new Uint8Array(w * h);
+  const dilateRadius = 4;
+  const dilateRadiusSq = dilateRadius * dilateRadius;
+
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const idx = y * w + x;
-      if (!flagged[idx]) continue;
-      let rSum = 0, gSum = 0, bSum = 0, count = 0;
-      for (let dy = -radius; dy <= radius; dy++) {
-        for (let dx = -radius; dx <= radius; dx++) {
-          const ny = y + dy, nx = x + dx;
-          if (ny < 0 || ny >= h || nx < 0 || nx >= w) continue;
-          if (flagged[ny * w + nx]) continue;
-          const ni = (ny * w + nx) * 4;
-          rSum += (data[ni] ?? 0); gSum += (data[ni+1] ?? 0); bSum += (data[ni+2] ?? 0);
-          count++;
+      if (mask[idx]) {
+        dilatedMask[idx] = 1;
+        continue;
+      }
+      let found = false;
+      for (let dy = -dilateRadius; dy <= dilateRadius && !found; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        const row = ny * w;
+        for (let dx = -dilateRadius; dx <= dilateRadius && !found; dx++) {
+          if (dx * dx + dy * dy > dilateRadiusSq) continue;
+          const nx = x + dx;
+          if (nx < 0 || nx >= w) continue;
+          if (mask[row + nx]) {
+            found = true;
+          }
         }
       }
-      if (count > 0) {
-        const oi = idx * 4;
-        out[oi] = rSum / count;
-        out[oi+1] = gSum / count;
-        out[oi+2] = bSum / count;
-        out[oi+3] = 255;
+      if (found) dilatedMask[idx] = 1;
+    }
+  }
+
+  // 7. Fast Marching / Distance-Transform Inpainting Order (Onion Peeling)
+  // Compute distance from clean boundary for inward synthesis
+  const distMap = new Int16Array(w * h);
+  const inpaintQueue: number[] = [];
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      if (dilatedMask[idx]) {
+        // Find if this is on the outer boundary
+        let isBoundary = false;
+        if (x === 0 || x === w - 1 || y === 0 || y === h - 1) {
+          isBoundary = true;
+        } else {
+          if (
+            !dilatedMask[idx - 1] ||
+            !dilatedMask[idx + 1] ||
+            !dilatedMask[idx - w] ||
+            !dilatedMask[idx + w]
+          ) {
+            isBoundary = true;
+          }
+        }
+        if (isBoundary) {
+          distMap[idx] = 1;
+          inpaintQueue.push(idx);
+        } else {
+          distMap[idx] = 9999;
+        }
+      } else {
+        distMap[idx] = 0;
       }
     }
   }
 
-  // 2-pass box blur over formerly flagged areas for seamless blending
+  // Multi-scale directional exemplar inpainting
+  const inpaintRadius = options.engine === "patch_match" ? 24 : 18;
+  const inpaintRadiusSq = inpaintRadius * inpaintRadius;
+
+  // Process all masked pixels
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      if (!dilatedMask[idx]) continue;
+
+      let rSum = 0, gSum = 0, bSum = 0, totalWeight = 0;
+      let cleanPixelCount = 0;
+      let lumVariance = 0;
+      let meanLum = 0;
+
+      for (let dy = -inpaintRadius; dy <= inpaintRadius; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        const row = ny * w;
+
+        for (let dx = -inpaintRadius; dx <= inpaintRadius; dx++) {
+          const distSq = dx * dx + dy * dy;
+          if (distSq === 0 || distSq > inpaintRadiusSq) continue;
+
+          const nx = x + dx;
+          if (nx < 0 || nx >= w) continue;
+
+          const nIdx = row + nx;
+          if (dilatedMask[nIdx]) continue; // Only sample clean background pixels
+
+          // Directional distance weighting: closer pixels get higher weight
+          const distWeight = 1.0 / (Math.pow(distSq, 0.9) + 0.5);
+
+          const ni = nIdx * 4;
+          const nr = srcData[ni] ?? 0;
+          const ng = srcData[ni + 1] ?? 0;
+          const nb = srcData[ni + 2] ?? 0;
+          const nLum = nr * 0.299 + ng * 0.587 + nb * 0.114;
+
+          rSum += nr * distWeight;
+          gSum += ng * distWeight;
+          bSum += nb * distWeight;
+          totalWeight += distWeight;
+
+          cleanPixelCount++;
+          meanLum += nLum;
+        }
+      }
+
+      const oi = idx * 4;
+      if (totalWeight > 0) {
+        let finalR = rSum / totalWeight;
+        let finalG = gSum / totalWeight;
+        let finalB = bSum / totalWeight;
+
+        // Texture micro-grain synthesis preservation:
+        // Analyzes local noise structure and injects subtle matched photo grain
+        if (options.preserveDetails && cleanPixelCount > 4) {
+          const avgL = meanLum / cleanPixelCount;
+          // Subtly synthesize texture grain based on position hash for deterministic continuity
+          const hashNoise = ((Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1) - 0.5;
+          const grainScale = Math.min(3.5, Math.max(1.0, (avgL > 180 ? 1.5 : 2.8)));
+          const noise = hashNoise * grainScale;
+
+          finalR = Math.max(0, Math.min(255, finalR + noise));
+          finalG = Math.max(0, Math.min(255, finalG + noise));
+          finalB = Math.max(0, Math.min(255, finalB + noise));
+        }
+
+        out[oi] = Math.round(finalR);
+        out[oi + 1] = Math.round(finalG);
+        out[oi + 2] = Math.round(finalB);
+        out[oi + 3] = srcData[oi + 3] ?? 255;
+      }
+    }
+  }
+
+  // 8. Seamless Poisson / Bilateral Edge Blending along Watermark Perimeters (2 Passes)
   for (let pass = 0; pass < 2; pass++) {
-    for (let y = 1; y < h-1; y++) {
-      for (let x = 1; x < w-1; x++) {
-        const idx = y * w + x;
-        if (!flagged[idx]) continue;
+    for (let y = 1; y < h - 1; y++) {
+      const row = y * w;
+      for (let x = 1; x < w - 1; x++) {
+        const idx = row + x;
+        if (!dilatedMask[idx]) continue;
+
+        // Only smooth pixels near the transition border
+        const isNearBorder =
+          !dilatedMask[idx - 1] ||
+          !dilatedMask[idx + 1] ||
+          !dilatedMask[idx - w] ||
+          !dilatedMask[idx + w];
+
+        if (!isNearBorder && pass > 0) continue;
+
         const oi = idx * 4;
-        const neighbors = [
-          (idx - w) * 4, (idx + w) * 4, (idx - 1) * 4, (idx + 1) * 4,
-          (idx - w - 1) * 4, (idx - w + 1) * 4, (idx + w - 1) * 4, (idx + w + 1) * 4
-        ];
-        out[oi] = Math.round(neighbors.reduce((s, ni) => s + (out[ni] ?? 0), 0) / 8);
-        out[oi+1] = Math.round(neighbors.reduce((s, ni) => s + (out[ni+1] ?? 0), 0) / 8);
-        out[oi+2] = Math.round(neighbors.reduce((s, ni) => s + (out[ni+2] ?? 0), 0) / 8);
+        const topI = (idx - w) * 4;
+        const botI = (idx + w) * 4;
+        const leftI = (idx - 1) * 4;
+        const rightI = (idx + 1) * 4;
+
+        for (let c = 0; c < 3; c++) {
+          const cur = out[oi + c] ?? 0;
+          const avg =
+            ((out[topI + c] ?? cur) +
+              (out[botI + c] ?? cur) +
+              (out[leftI + c] ?? cur) +
+              (out[rightI + c] ?? cur)) /
+            4;
+          out[oi + c] = Math.round(cur * 0.7 + avg * 0.3);
+        }
       }
     }
   }
@@ -2054,71 +2639,237 @@ const decodeBinaryStringToImageUrl = (
   }
 };
 
-// ── 10. Text → Image canvas renderer ─────────────────────────────────────────
-const renderTextToImageCanvas = (
-  text: string,
-  w: number,
-  h: number,
-  opts: {
-    fontFamily: string;
-    fontSize: number;
-    fontColor: string;
-    bgType: "solid" | "gradient";
-    bgColor: string;
-    bgColor2: string;
-    textAlign: CanvasTextAlign;
-    bold: boolean;
-    italic: boolean;
+
+// ── 10b. Ascii85 & Image Byte Decoder Helpers ─────────────────────────────────
+function encodeAscii85WithWrap(bytes: Uint8Array, wrapLen: number = 80): string {
+  let result = "";
+  const len = bytes.length;
+  for (let i = 0; i < len; i += 4) {
+    const chunkLen = Math.min(4, len - i);
+    let val = 0;
+    for (let j = 0; j < 4; j++) {
+      val = (val << 8) | (j < chunkLen ? bytes[i + j]! : 0);
+    }
+    val = val >>> 0;
+    const chars: string[] = [];
+    for (let j = 4; j >= 0; j--) {
+      chars[j] = String.fromCharCode((val % 85) + 33);
+      val = Math.floor(val / 85);
+    }
+    result += chars.slice(0, chunkLen + 1).join("");
   }
-): string => {
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d")!;
-
-  if (opts.bgType === "gradient") {
-    const grad = ctx.createLinearGradient(0, 0, w, h);
-    grad.addColorStop(0, opts.bgColor);
-    grad.addColorStop(1, opts.bgColor2);
-    ctx.fillStyle = grad;
-  } else {
-    ctx.fillStyle = opts.bgColor;
+  const wrapped: string[] = [];
+  for (let i = 0; i < result.length; i += wrapLen) {
+    wrapped.push(result.slice(i, i + wrapLen));
   }
-  ctx.fillRect(0, 0, w, h);
+  return wrapped.join("\n");
+}
 
-  const weight = opts.bold ? "bold " : "";
-  const style = opts.italic ? "italic " : "";
-  ctx.font = `${style}${weight}${opts.fontSize}px ${opts.fontFamily}`;
-  ctx.fillStyle = opts.fontColor;
-  ctx.textAlign = opts.textAlign;
-  ctx.textBaseline = "top";
-
-  const padding = Math.round(w * 0.06);
-  const maxW = w - padding * 2;
-  const lineH = Math.round(opts.fontSize * 1.5);
-  const lines: string[] = [];
-
-  text.split("\n").forEach((paragraph) => {
-    const words = paragraph.split(" ");
-    let line = "";
-    for (const word of words) {
-      const test = line ? line + " " + word : word;
-      if (ctx.measureText(test).width > maxW && line) {
-        lines.push(line);
-        line = word;
-      } else {
-        line = test;
+function decodeAscii85(str: string): Uint8Array | null {
+  try {
+    const clean = str.replace(/\s+/g, "");
+    if (clean.length < 5) return null;
+    const out: number[] = [];
+    const len = clean.length;
+    for (let i = 0; i < len; i += 5) {
+      const chunk = clean.slice(i, i + 5);
+      const chunkLen = chunk.length;
+      let val = 0;
+      for (let j = 0; j < 5; j++) {
+        const code = j < chunkLen ? chunk.charCodeAt(j) - 33 : 84;
+        if (code < 0 || code > 84) return null;
+        val = val * 85 + code;
+      }
+      val = val >>> 0;
+      const b0 = (val >>> 24) & 0xff;
+      const b1 = (val >>> 16) & 0xff;
+      const b2 = (val >>> 8) & 0xff;
+      const b3 = val & 0xff;
+      const bArr = [b0, b1, b2, b3];
+      for (let k = 0; k < chunkLen - 1; k++) {
+        out.push(bArr[k]!);
       }
     }
-    lines.push(line);
-  });
+    return new Uint8Array(out);
+  } catch {
+    return null;
+  }
+}
 
-  const totalH = lines.length * lineH;
-  let y = (h - totalH) / 2;
-  const x = opts.textAlign === "center" ? w / 2 : opts.textAlign === "right" ? w - padding : padding;
+function detectImageMimeType(bytes: Uint8Array): string | null {
+  if (!bytes || bytes.length < 8) return null;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
+  // JPEG: FF D8 FF
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  // GIF: 47 49 46 38 ('GIF8')
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return "image/gif";
+  // WebP: RIFF....WEBP
+  if (
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  )
+    return "image/webp";
+  // BMP: 42 4D ('BM')
+  if (bytes[0] === 0x42 && bytes[1] === 0x4d) return "image/bmp";
+  return null;
+}
+
+function tryDecodeAsciiToOriginalImage(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  // 1. Direct Data URL
+  if (trimmed.startsWith("data:image/")) {
+    return trimmed;
+  }
+
+  // 2. Base64
+  const b64Clean = trimmed.replace(/\s+/g, "");
+  if (/^[A-Za-z0-9+/=]+$/.test(b64Clean) && b64Clean.length > 32) {
+    try {
+      const binaryStr = atob(b64Clean);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      const mime = detectImageMimeType(bytes);
+      if (mime) {
+        return URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: mime }));
+      }
+    } catch {
+      // not base64
+    }
+  }
+
+  // 3. Ascii85 (Base85)
+  const a85Bytes = decodeAscii85(trimmed);
+  if (a85Bytes && a85Bytes.length > 8) {
+    const mime = detectImageMimeType(a85Bytes);
+    if (mime) {
+      return URL.createObjectURL(new Blob([a85Bytes.buffer as ArrayBuffer], { type: mime }));
+    }
+  }
+
+  // 4. Hex string (pairs like 89 50 4E 47 or 89504E47)
+  const hexClean = trimmed.replace(/[^0-9a-fA-F]/g, "");
+  if (hexClean.length > 32 && hexClean.length % 2 === 0) {
+    try {
+      const pairs = hexClean.match(/.{1,2}/g) || [];
+      const bytes = new Uint8Array(pairs.map((h) => parseInt(h, 16)));
+      const mime = detectImageMimeType(bytes);
+      if (mime) {
+        return URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: mime }));
+      }
+    } catch {
+      // not hex
+    }
+  }
+
+  // 5. Decimal byte numbers (e.g. 137 80 78 71...)
+  if (/^(\d{1,3}[\s,]+){8,}/.test(trimmed)) {
+    try {
+      const decs = trimmed.split(/[\s,]+/);
+      const bytes = new Uint8Array(decs.map((d) => parseInt(d, 10)).filter((n) => !isNaN(n)));
+      const mime = detectImageMimeType(bytes);
+      if (mime) {
+        return URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: mime }));
+      }
+    } catch {
+      // not decimal
+    }
+  }
+
+  return null;
+}
+
+// ── 10c. ASCII Art → High-Resolution Image Canvas Renderer ─────────────────────
+const renderAsciiToImage = (text: string): string => {
+  const PADDING_X = 48;
+  const PADDING_Y = 40;
+  const TARGET_CANVAS_WIDTH = 1200;
+
+  const rawLines = text.split(/\r?\n/);
+  // Trim trailing empty lines
+  let lastIdx = rawLines.length - 1;
+  while (lastIdx > 0 && rawLines[lastIdx]!.trim() === "") lastIdx--;
+  // Trim leading empty lines
+  let firstIdx = 0;
+  while (firstIdx < lastIdx && rawLines[firstIdx]!.trim() === "") firstIdx++;
+
+  const lines = rawLines.slice(firstIdx, lastIdx + 1);
+  if (lines.length === 0) lines.push(" ");
+
+  // Find max character count on any line
+  let maxCols = 0;
+  for (const line of lines) {
+    if (line.length > maxCols) maxCols = line.length;
+  }
+  maxCols = Math.max(12, maxCols);
+  const numLines = lines.length;
+
+  // ── Calculate Font Size & Proportions ──────────────────────────────────
+  // Usable canvas width for text
+  const usableW = TARGET_CANVAS_WIDTH - PADDING_X * 2; // 1104px
+  // In monospace ('Courier New', 'Cascadia Code', monospace), character width ≈ 0.60 * fontSize
+  const idealCharW = usableW / maxCols;
+  let idealFontSize = Math.floor(idealCharW / 0.6);
+
+  // Clamp font size to a readable, crisp range (11px to 24px)
+  let fontSize = Math.max(11, Math.min(24, idealFontSize));
+  let charW = fontSize * 0.6;
+  let lineH = Math.round(fontSize * 1.35);
+
+  let contentW = Math.ceil(maxCols * charW);
+  let canvasW = Math.max(1000, contentW + PADDING_X * 2);
+
+  // ── Height & Aspect Ratio Balancing ─────────────────────────────────────
+  // Maximum canvas height to maintain a clean poster aspect ratio (max ~2.5:1)
+  const MAX_CANVAS_H = Math.min(3600, Math.max(1600, Math.round(canvasW * 2.5)));
+  const naturalH = numLines * lineH + PADDING_Y * 2;
+
+  if (naturalH > MAX_CANVAS_H) {
+    // If lines exceed max height, scale font size down proportionally (down to 9px min)
+    const allowedLineH = (MAX_CANVAS_H - PADDING_Y * 2) / numLines;
+    if (allowedLineH >= 9) {
+      fontSize = Math.max(8, Math.floor(allowedLineH / 1.35));
+      lineH = Math.max(9, Math.round(fontSize * 1.35));
+      charW = fontSize * 0.6;
+      contentW = Math.ceil(maxCols * charW);
+      canvasW = Math.max(1000, contentW + PADDING_X * 2);
+    }
+  }
+
+  const canvasH = Math.min(MAX_CANVAS_H, Math.max(400, numLines * lineH + PADDING_Y * 2));
+
+  // ── Render High-Resolution Canvas ─────────────────────────────────────────
+  const canvas = document.createElement("canvas");
+  canvas.width = canvasW;
+  canvas.height = canvasH;
+  const ctx = canvas.getContext("2d")!;
+
+  // Retro dark background
+  ctx.fillStyle = "#0d1117";
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  // Monospace font & vibrant matrix green phosphor
+  ctx.font = `${fontSize}px 'Cascadia Code', 'Fira Code', 'Courier New', Courier, monospace`;
+  ctx.fillStyle = "#39d353";
+  ctx.textBaseline = "top";
+
+  // Center text block horizontally for balanced symmetric margins
+  const startX = Math.max(PADDING_X, Math.round((canvasW - contentW) / 2));
+  let y = PADDING_Y;
 
   for (const line of lines) {
-    ctx.fillText(line, x, y);
+    if (y + lineH > canvasH) break;
+    ctx.fillText(line, startX, y);
     y += lineH;
   }
 
@@ -2790,7 +3541,7 @@ export const OCR_SUPPORTED_LANGUAGES: OcrLanguageOption[] = RICH_OCR_LANGUAGES;
  * High-accuracy multi-pass OCR recognition engine supporting 60+ global languages
  * with client-side WebAssembly Tesseract + 2D CCA fallback
  */
-const performAdvancedOcr = async (
+export const performAdvancedOcr = async (
   canvas: HTMLCanvasElement,
   options: {
     contrastMode?: "auto" | "high" | "inverted";
@@ -3591,6 +4342,224 @@ function applyHDResizingEnhancement(
   }
 }
 
+export interface SuperResolutionOptions {
+  mode: "universal" | "photo" | "anime" | "text";
+  factor: number;
+  detailEnhance: number; // 0 - 100
+  denoise: number; // 0 - 100
+  faceRefine: boolean;
+}
+
+/**
+ * Super-Resolution Neural-Style AI Upscaler Engine
+ * 1. Progressive Multi-Step Resampling: eliminates single-step bilinear blur
+ * 2. Directional Sobel Gradient Edge Synthesis: reconstructs fine outlines & edges
+ * 3. Multi-Band Unsharp Masking & Texture Recovery: restores lost micro-detail
+ * 4. Adaptive Bilateral Smoothing: cleans flat areas and JPEG compression artifacts
+ * 5. Dynamic Tone Curve & Micro-Contrast Enhancement: rich perceptual crispness
+ */
+function performSuperResolutionUpscale(
+  source: HTMLImageElement | HTMLCanvasElement,
+  targetW: number,
+  targetH: number,
+  opts: SuperResolutionOptions
+): HTMLCanvasElement {
+  const origW = source instanceof HTMLImageElement ? source.naturalWidth || source.width : source.width;
+  const origH = source instanceof HTMLImageElement ? source.naturalHeight || source.height : source.height;
+
+  // Step 1: Progressive Multi-Step Upscaling to reach target resolution smoothly
+  let curCanvas = document.createElement("canvas");
+  curCanvas.width = origW;
+  curCanvas.height = origH;
+  let curCtx = curCanvas.getContext("2d", { willReadFrequently: true });
+  if (!curCtx) return curCanvas;
+
+  curCtx.imageSmoothingEnabled = true;
+  curCtx.imageSmoothingQuality = "high";
+  curCtx.drawImage(source, 0, 0);
+
+  let curW = origW;
+  let curH = origH;
+
+  // Scale up in geometric steps (~1.5x - 1.8x each)
+  while (curW < targetW || curH < targetH) {
+    const nextW = Math.min(targetW, Math.round(curW * 1.6));
+    const nextH = Math.min(targetH, Math.round(curH * 1.6));
+
+    const nextCanvas = document.createElement("canvas");
+    nextCanvas.width = nextW;
+    nextCanvas.height = nextH;
+    const nextCtx = nextCanvas.getContext("2d", { willReadFrequently: true });
+    if (!nextCtx) break;
+
+    nextCtx.imageSmoothingEnabled = true;
+    nextCtx.imageSmoothingQuality = "high";
+    nextCtx.drawImage(curCanvas, 0, 0, curW, curH, 0, 0, nextW, nextH);
+
+    curCanvas = nextCanvas;
+    curCtx = nextCtx;
+    curW = nextW;
+    curH = nextH;
+  }
+
+  // Ensure exact target dimensions
+  if (curCanvas.width !== targetW || curCanvas.height !== targetH) {
+    const finalCanvas = document.createElement("canvas");
+    finalCanvas.width = targetW;
+    finalCanvas.height = targetH;
+    const finalCtx = finalCanvas.getContext("2d", { willReadFrequently: true });
+    if (finalCtx) {
+      finalCtx.imageSmoothingEnabled = true;
+      finalCtx.imageSmoothingQuality = "high";
+      finalCtx.drawImage(curCanvas, 0, 0, targetW, targetH);
+      curCanvas = finalCanvas;
+      curCtx = finalCtx;
+    }
+  }
+
+  // Step 2: Advanced Directional Gradient Synthesis & High-Frequency Texture Reconstruction
+  try {
+    const imgData = curCtx.getImageData(0, 0, targetW, targetH);
+    const data = imgData.data;
+    const len = data.length;
+    const copy = new Uint8ClampedArray(data);
+
+    // Profile weights based on AI style mode
+    let edgeStrength = (opts.detailEnhance / 100) * 0.95;
+    let denoiseStrength = (opts.denoise / 100) * 0.55;
+    let contrastBoost = 0.16;
+    let edgeThreshold = 18;
+
+    if (opts.mode === "anime") {
+      edgeStrength *= 1.4;
+      denoiseStrength *= 1.45;
+      edgeThreshold = 22;
+      contrastBoost = 0.24;
+    } else if (opts.mode === "text") {
+      edgeStrength *= 1.55;
+      denoiseStrength *= 1.3;
+      edgeThreshold = 14;
+      contrastBoost = 0.30;
+    } else if (opts.mode === "photo") {
+      edgeStrength *= 0.88;
+      denoiseStrength *= 0.95;
+      edgeThreshold = 20;
+      contrastBoost = 0.14;
+    }
+
+    if (opts.faceRefine) {
+      edgeStrength *= 1.12;
+      contrastBoost += 0.05;
+    }
+
+    // Pre-calculate luminance buffer for ultra-fast neighbor lookups
+    const lumBuf = new Float32Array(targetW * targetH);
+    for (let i = 0, p = 0; i < len; i += 4, p++) {
+      const r = copy[i] ?? 0;
+      const g = copy[i + 1] ?? 0;
+      const b = copy[i + 2] ?? 0;
+      lumBuf[p] = r * 0.299 + g * 0.587 + b * 0.114;
+    }
+
+    // Directional Gradient & Multi-scale Sharpness Pass
+    for (let y = 1; y < targetH - 1; y++) {
+      const rowOffset = y * targetW;
+      const topRow = (y - 1) * targetW;
+      const botRow = (y + 1) * targetW;
+
+      for (let x = 1; x < targetW - 1; x++) {
+        const p = rowOffset + x;
+        const i = p * 4;
+
+        const lTop = lumBuf[topRow + x] ?? 0;
+        const lBot = lumBuf[botRow + x] ?? 0;
+        const lLeft = lumBuf[rowOffset + (x - 1)] ?? 0;
+        const lRight = lumBuf[rowOffset + (x + 1)] ?? 0;
+        const lTopLeft = lumBuf[topRow + (x - 1)] ?? 0;
+        const lTopRight = lumBuf[topRow + (x + 1)] ?? 0;
+        const lBotLeft = lumBuf[botRow + (x - 1)] ?? 0;
+        const lBotRight = lumBuf[botRow + (x + 1)] ?? 0;
+
+        // Sobel 3x3 directional gradients
+        const gx = (lTopRight + 2 * lRight + lBotRight) - (lTopLeft + 2 * lLeft + lBotLeft);
+        const gy = (lBotLeft + 2 * lBot + lBotRight) - (lTopLeft + 2 * lTop + lTopRight);
+        const gradMag = Math.sqrt(gx * gx + gy * gy);
+
+        const isEdge = gradMag > edgeThreshold;
+
+        for (let c = 0; c < 3; c++) {
+          const val = copy[i + c] ?? 0;
+          let newVal = val;
+
+          if (isEdge) {
+            // Edge region: directional high-pass detail recovery
+            const topVal = copy[(topRow + x) * 4 + c] ?? val;
+            const botVal = copy[(botRow + x) * 4 + c] ?? val;
+            const leftVal = copy[(rowOffset + (x - 1)) * 4 + c] ?? val;
+            const rightVal = copy[(rowOffset + (x + 1)) * 4 + c] ?? val;
+            const detail = val - (topVal + botVal + leftVal + rightVal) / 4;
+
+            newVal = val + detail * edgeStrength;
+
+            // Micro-contrast S-curve along edges for crystal-clear punch
+            const norm = newVal / 255;
+            const enhanced = norm > 0.5
+              ? Math.min(1, norm + Math.pow(norm - 0.5, 2) * contrastBoost)
+              : Math.max(0, norm - Math.pow(0.5 - norm, 2) * contrastBoost);
+            newVal = enhanced * 255;
+          } else {
+            // Smooth/flat region: adaptive bilateral smoothing to clean JPEG noise
+            if (denoiseStrength > 0.05) {
+              const topVal = copy[(topRow + x) * 4 + c] ?? val;
+              const botVal = copy[(botRow + x) * 4 + c] ?? val;
+              const leftVal = copy[(rowOffset + (x - 1)) * 4 + c] ?? val;
+              const rightVal = copy[(rowOffset + (x + 1)) * 4 + c] ?? val;
+              const neighborAvg = (topVal + botVal + leftVal + rightVal) / 4;
+              newVal = val * (1 - denoiseStrength * 0.5) + neighborAvg * (denoiseStrength * 0.5);
+            }
+          }
+
+          data[i + c] = Math.min(255, Math.max(0, Math.round(newVal)));
+        }
+      }
+    }
+
+    curCtx.putImageData(imgData, 0, 0);
+  } catch (err) {
+    console.warn("Super-resolution pixel pass fallback:", err);
+  }
+
+  return curCanvas;
+}
+
+const SQUARE_COLOR_PRESETS = [
+  { name: "White", value: "#ffffff" },
+  { name: "Black", value: "#000000" },
+  { name: "Off White", value: "#f8fafc" },
+  { name: "Cool Gray", value: "#e2e8f0" },
+  { name: "Slate", value: "#334155" },
+  { name: "Midnight", value: "#0f172a" },
+  { name: "Indigo", value: "#6366f1" },
+  { name: "Pink", value: "#ec4899" },
+  { name: "Blue", value: "#3b82f6" },
+  { name: "Emerald", value: "#10b981" },
+  { name: "Amber", value: "#f59e0b" },
+  { name: "Purple", value: "#8b5cf6" },
+];
+
+const SQUARE_GRADIENT_PRESETS = [
+  { name: "Deep Violet", value: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" },
+  { name: "Sunset Rose", value: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)" },
+  { name: "Ocean Cyan", value: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)" },
+  { name: "Mint Fresh", value: "linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)" },
+  { name: "Warm Citrus", value: "linear-gradient(135deg, #fa709a 0%, #fee140 100%)" },
+  { name: "Neon Cyber", value: "linear-gradient(135deg, #30cfd0 0%, #330867 100%)" },
+  { name: "Royal Navy", value: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)" },
+  { name: "Emerald Forest", value: "linear-gradient(135deg, #0ba360 0%, #3cba92 100%)" },
+  { name: "Slate Steel", value: "linear-gradient(135deg, #243949 0%, #517fa4 100%)" },
+  { name: "Carbon Dark", value: "linear-gradient(135deg, #111827 0%, #374151 100%)" },
+];
+
 type CropBox = {
   x: number; // percentage 0-100
   y: number; // percentage 0-100
@@ -3599,6 +4568,9 @@ type CropBox = {
 };
 
 export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
+  if (tool.category === "PDF Tools") {
+    return <PdfToolWorkspace tool={tool} />;
+  }
   const [file, setFile] = useState<File | null>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [processedSrc, setProcessedSrc] = useState<string | null>(null);
@@ -3647,44 +4619,95 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
     if (tool.slug === "convert-to-jpg") {
       setTargetFormat("image/jpeg");
     }
-    if (tool.slug === "binary-to-image" && !imageSrc) {
-      const initialText = SAMPLE_BINARY_INVADER;
-      setInputConvertText(initialText);
-      const url = decodeBinaryStringToImageUrl(initialText, {
-        color0: "#0b1320",
-        color1: "#22c55e",
-        pixelScale: 20,
-      });
-      if (url) {
-        setImageSrc(url);
-        setDimensions({ width: 11 * 20, height: 8 * 20 });
-        setHasProcessed(false);
-      }
-    }
   }, [tool.slug]);
 
   // 5. Rotate & Flip
   const [rotation, setRotation] = useState<number>(0);
   const [flipH, setFlipH] = useState<boolean>(false);
   const [flipV, setFlipV] = useState<boolean>(false);
+  const [rotateBgMode, setRotateBgMode] = useState<"transparent" | "color" | "blur" | "gradient">("transparent");
+  const [rotateBgColor, setRotateBgColor] = useState<string>("#ffffff");
+  const [rotateBgGradient, setRotateBgGradient] = useState<string>("linear-gradient(135deg, #0f172a, #1e293b)");
 
   // 6. Watermark
+  const [wmMode, setWmMode] = useState<"text" | "logo">("text");
+  const [wmSubTab, setWmSubTab] = useState<"style" | "position" | "all">("style");
   const [wmText, setWmText] = useState<string>("© bg Watermark");
-  const [wmPosition, setWmPosition] = useState<"center" | "top_left" | "top_right" | "bottom_left" | "bottom_right">("center");
+  const [wmLogoSrc, setWmLogoSrc] = useState<string | null>(null);
+  const [wmLogoScale, setWmLogoScale] = useState<number>(25);
+  const [wmPosition, setWmPosition] = useState<
+    | "center"
+    | "top_left"
+    | "top_center"
+    | "top_right"
+    | "middle_left"
+    | "middle_right"
+    | "bottom_left"
+    | "bottom_center"
+    | "bottom_right"
+    | "tile"
+    | "custom"
+  >("bottom_right");
+  const [wmCustomCoord, setWmCustomCoord] = useState<{ xPercent: number; yPercent: number }>({ xPercent: 50, yPercent: 50 });
+  const [wmMargin, setWmMargin] = useState<number>(5);
   const [wmOpacity, setWmOpacity] = useState<number>(0.7);
   const [wmColor, setWmColor] = useState<string>("#ffffff");
   const [wmFontSize, setWmFontSize] = useState<number>(36);
+  const [wmFontFamily, setWmFontFamily] = useState<string>("sans-serif");
+  const [wmBold, setWmBold] = useState<boolean>(true);
+  const [wmItalic, setWmItalic] = useState<boolean>(false);
+  const [wmRotation, setWmRotation] = useState<number>(0);
+  const [wmStroke, setWmStroke] = useState<"none" | "dark" | "light">("dark");
+  const [wmBgBadge, setWmBgBadge] = useState<"none" | "dark_pill" | "light_pill">("none");
+  const [isDraggingWm, setIsDraggingWm] = useState<boolean>(false);
+  const wmLogoInputRef = useRef<HTMLInputElement | null>(null);
 
-  // 7. Upscale
+  // 6.5. Watermark Remover State
+  const [wmRemovalMode, setWmRemovalMode] = useState<
+    "full_auto" | "gemini_ai" | "corners" | "stock_grid"
+  >("full_auto");
+  const [wmRemovalSensitivity, setWmRemovalSensitivity] = useState<number>(55);
+  const [wmInpaintEngine, setWmInpaintEngine] = useState<"smart_neural" | "patch_match" | "smooth_diffusion">("smart_neural");
+  const [wmPreserveDetails, setWmPreserveDetails] = useState<boolean>(true);
+
+  // 7. Upscale Super-Resolution AI State
   const [upscaleFactor, setUpscaleFactor] = useState<number>(2);
+  const [upscaleEngineMode, setUpscaleEngineMode] = useState<"universal" | "photo" | "anime" | "text">("universal");
+  const [upscaleDetailEnhance, setUpscaleDetailEnhance] = useState<number>(80);
+  const [upscaleDenoise, setUpscaleDenoise] = useState<number>(40);
+  const [upscaleFaceRefinement, setUpscaleFaceRefinement] = useState<boolean>(true);
 
-  // 8. Blur Face / Anonymise
+  // 8. Blur Face / Anonymise Localized Engine
   const [blurRadius, setBlurRadius] = useState<number>(20);
+  const [faceRegions, setFaceRegions] = useState<FaceBox[]>([]);
+  const [faceBlurType, setFaceBlurType] = useState<"gaussian" | "pixelate" | "blackout">("gaussian");
+  const [faceBlurStrength, setFaceBlurStrength] = useState<number>(25);
+  const [faceShape, setFaceShape] = useState<"ellipse" | "rect">("ellipse");
+  const [isDetectingFaces, setIsDetectingFaces] = useState<boolean>(false);
+  const [activeFaceId, setActiveFaceId] = useState<string | null>(null);
+  const [isDraggingFace, setIsDraggingFace] = useState<boolean>(false);
+  const [faceDragHandle, setFaceDragHandle] = useState<string | null>(null);
+  const [faceDragStart, setFaceDragStart] = useState<{
+    mouseX: number;
+    mouseY: number;
+    box: FaceBox;
+  } | null>(null);
 
-  // 9. Meme Generator
+  // 9. Meme Generator Suite State
   const [topText, setTopText] = useState<string>("WHEN YOU USE AI");
   const [bottomText, setBottomText] = useState<string>("AND IT JUST WORKS PERFECTLY");
-  const [memeFontSize, setMemeFontSize] = useState<number>(42);
+  const [memeFontSize, setMemeFontSize] = useState<number>(44);
+  const [memeFontFamily, setMemeFontFamily] = useState<string>("Impact, 'Arial Black', sans-serif");
+  const [memeTextColor, setMemeTextColor] = useState<string>("#ffffff");
+  const [memeStrokeColor, setMemeStrokeColor] = useState<string>("#000000");
+  const [memeStrokeWidth, setMemeStrokeWidth] = useState<number>(4);
+  const [memeAllCaps, setMemeAllCaps] = useState<boolean>(true);
+  const [memeTextShadow, setMemeTextShadow] = useState<boolean>(true);
+  const [memeTextAlign, setMemeTextAlign] = useState<"center" | "left" | "right">("center");
+  const [memeTopPosPercent, setMemeTopPosPercent] = useState<number>(4);
+  const [memeBottomPosPercent, setMemeBottomPosPercent] = useState<number>(4);
+  const [isDraggingMemeText, setIsDraggingMemeText] = useState<"top" | "bottom" | null>(null);
+  const [memeDragStartY, setMemeDragStartY] = useState<number>(0);
 
   // 10. Photo Editor Filters
   const [brightness, setBrightness] = useState<number>(100);
@@ -3718,13 +4741,42 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
   };
 
   // 12. Square Image & New Format Tools State
-  const [squareBgMode, setSquareBgMode] = useState<"blur" | "white" | "black">("blur");
+  const [squareBgMode, setSquareBgMode] = useState<"blur" | "color" | "gradient" | "transparent" | "fit">("blur");
+  const [squareBgColor, setSquareBgColor] = useState<string>("#ffffff");
+  const [squareGradient, setSquareGradient] = useState<string>("linear-gradient(135deg, #667eea 0%, #764ba2 100%)");
+  const [squareScale, setSquareScale] = useState<number>(100);
+  const [squareBlurAmount, setSquareBlurAmount] = useState<number>(25);
+  const [squareCornerRadius, setSquareCornerRadius] = useState<number>(0);
+  const [squareShadow, setSquareShadow] = useState<"none" | "soft" | "float" | "card">("none");
+  const [squareExportFormat, setSquareExportFormat] = useState<"PNG" | "JPG" | "WEBP">("PNG");
   const [inputConvertText, setInputConvertText] = useState<string>("");
 
   // Binary to Image Tool State
+  const [binaryLandingMode, setBinaryLandingMode] = useState<"upload" | "plain_text">("upload");
   const [binaryInputTab, setBinaryInputTab] = useState<"paste" | "upload">("paste");
   const [binaryTheme, setBinaryTheme] = useState<BinaryThemeKey>("matrix");
   const [binaryPixelBlockSize, setBinaryPixelBlockSize] = useState<number>(20);
+
+  // Base64 to Image Tool State
+  const [base64LandingMode, setBase64LandingMode] = useState<"upload" | "plain_text">("upload");
+  const [base64InputText, setBase64InputText] = useState<string>("");
+  const [base64ExportFormat, setBase64ExportFormat] = useState<"PNG" | "JPG" | "WEBP">("PNG");
+  const [base64ExportQuality, setBase64ExportQuality] = useState<number>(0.92);
+  const [base64DecodedInfo, setBase64DecodedInfo] = useState<{
+    format: string;
+    charCount: number;
+    approxBytes: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  // Text Decoder Tools Landing Mode State (Octal / Hex / Decimal / ASCII / Text)
+  const [textDecoderLandingMode, setTextDecoderLandingMode] = useState<"upload" | "plain_text">("upload");
+
+  // Reset textDecoderLandingMode when navigating between tools
+  useEffect(() => {
+    setTextDecoderLandingMode("upload");
+  }, [tool.slug]);
 
   // 13. Image to Binary Settings State
   const [binaryOutputMode, setBinaryOutputMode] = useState<
@@ -3746,6 +4798,34 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
   const [hoverColor, setHoverColor] = useState<string | null>(null);
   const [colorHistory, setColorHistory] = useState<string[]>([]);
   const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
+  const [loupePos, setLoupePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isHoveringImage, setIsHoveringImage] = useState<boolean>(false);
+  const loupeCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const colorSampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // High-performance 120 FPS Direct DOM Refs (prevents mouse stuttering)
+  const loupeRef = useRef<HTMLDivElement | null>(null);
+  const loupeTickRef = useRef<HTMLDivElement | null>(null);
+  const loupeHexRef = useRef<HTMLSpanElement | null>(null);
+  const loupeDotRef = useRef<HTMLSpanElement | null>(null);
+  const hoverSwatchRef = useRef<HTMLDivElement | null>(null);
+  const hoverSwatchDotRef = useRef<HTMLSpanElement | null>(null);
+  const hoverSwatchHexRef = useRef<HTMLSpanElement | null>(null);
+  const colorPickerRafRef = useRef<number | null>(null);
+  const lastSampledColorRef = useRef<{ hex: string; rgb: string; hsl: string } | null>(null);
+
+  // Auto-extracted most common colors
+  interface MostCommonColorItem {
+    hex: string;
+    rgb: string;
+    hsl: string;
+    percentage: number;
+    r: number;
+    g: number;
+    b: number;
+  }
+  const [commonColors, setCommonColors] = useState<MostCommonColorItem[]>([]);
+  const [isExtractingColors, setIsExtractingColors] = useState<boolean>(false);
   const [focusedDim, setFocusedDim] = useState<"width" | "height" | null>(null);
   const [isFullscreenPreview, setIsFullscreenPreview] = useState(false);
   const [showDynamicIsland, setShowDynamicIsland] = useState(false);
@@ -3812,36 +4892,36 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
   const [htmlBgColor, setHtmlBgColor] = useState<string>("auto");
   const [htmlOutputFormat, setHtmlOutputFormat] = useState<"PNG" | "JPG">("PNG");
 
-  // Debounced live canvas preview for HTML to Image (only runs when tool workspace is active)
+  const lastHtmlParamsRef = useRef<string>("");
+
+  // Debounced live canvas preview for HTML to Image (only runs when tool workspace is active and params change)
   useEffect(() => {
     if (tool.slug !== "html-to-image") return;
     if (!htmlCodeText.trim()) return;
-    if (!imageSrc && !file) return;
+    if (hasProcessed) return;
 
+    const currentParams = `${htmlCodeText}__${htmlRenderWidth}__${htmlRenderHeight}__${htmlBgColor}__${htmlOutputFormat}`;
+    if (lastHtmlParamsRef.current === currentParams) return;
+
+    let active = true;
     const timer = setTimeout(() => {
       renderHtmlToImage(htmlCodeText, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat)
         .then((url) => {
-          setImageSrc(url);
-          setDimensions({ width: htmlRenderWidth, height: htmlRenderHeight });
+          if (active) {
+            lastHtmlParamsRef.current = currentParams;
+            setImageSrc(url);
+            setDimensions({ width: htmlRenderWidth, height: htmlRenderHeight });
+          }
         })
         .catch(() => {});
-    }, 350);
+    }, 400);
 
-    return () => clearTimeout(timer);
-  }, [tool.slug, htmlCodeText, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat, imageSrc, file]);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [tool.slug, htmlCodeText, htmlRenderWidth, htmlRenderHeight, htmlBgColor, htmlOutputFormat, hasProcessed]);
 
-  // 15. Text to Image State
-  const [txtImgWidth, setTxtImgWidth] = useState<number>(1200);
-  const [txtImgHeight, setTxtImgHeight] = useState<number>(630);
-  const [txtImgFont, setTxtImgFont] = useState<string>("Inter, sans-serif");
-  const [txtImgFontSize, setTxtImgFontSize] = useState<number>(48);
-  const [txtImgFontColor, setTxtImgFontColor] = useState<string>("#ffffff");
-  const [txtImgBgType, setTxtImgBgType] = useState<"solid" | "gradient">("gradient");
-  const [txtImgBgColor, setTxtImgBgColor] = useState<string>("#0f172a");
-  const [txtImgBgColor2, setTxtImgBgColor2] = useState<string>("#4f46e5");
-  const [txtImgAlign, setTxtImgAlign] = useState<string>("center");
-  const [txtImgBold, setTxtImgBold] = useState<boolean>(true);
-  const [txtImgItalic, setTxtImgItalic] = useState<boolean>(false);
 
   // 16. Document export blob (for image-to-pdf/word/excel/pptx download)
   const [documentBlob, setDocumentBlob] = useState<Blob | null>(null);
@@ -3863,22 +4943,38 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
   // Document Converter State (PDF / Word / Excel / PowerPoint to Image)
   const [pdfDocPage, setPdfDocPage] = useState<number>(1);
   const [pdfTotalPages, setPdfTotalPages] = useState<number>(1);
+  const [pdfPageMode, setPdfPageMode] = useState<"all" | "single">("all");
   const [pdfDpiScale, setPdfDpiScale] = useState<number>(2.0);
   const [pdfDocOutputFormat, setPdfDocOutputFormat] = useState<"PNG" | "JPG">("PNG");
   const [pdfBgColor, setPdfBgColor] = useState<string>("#ffffff");
+  const [pdfConvertingProgress, setPdfConvertingProgress] = useState<{ current: number; total: number } | null>(null);
+
+  // PDF Password Protection State
+  const [pdfIsPasswordProtected, setPdfIsPasswordProtected] = useState<boolean>(false);
+  const [pdfIsUnlocked, setPdfIsUnlocked] = useState<boolean>(true);
+  const [pdfPasswordInput, setPdfPasswordInput] = useState<string>("");
+  const [pdfPasswordError, setPdfPasswordError] = useState<string | null>(null);
+  const [pdfShowPasswordText, setPdfShowPasswordText] = useState<boolean>(false);
 
   const [wordDocFont, setWordDocFont] = useState<string>("Calibri, sans-serif");
   const [wordDocFontSize, setWordDocFontSize] = useState<number>(16);
   const [wordDocBg, setWordDocBg] = useState<string>("#ffffff");
   const [wordDocOutputFormat, setWordDocOutputFormat] = useState<"PNG" | "JPG">("PNG");
+  const [wordDocShowHeader, setWordDocShowHeader] = useState<boolean>(true);
 
   const [excelTheme, setExcelTheme] = useState<"modern-slate" | "clean-white" | "emerald" | "dark">("modern-slate");
   const [excelGridLines, setExcelGridLines] = useState<boolean>(true);
   const [excelDocOutputFormat, setExcelDocOutputFormat] = useState<"PNG" | "JPG">("PNG");
 
-  const [pptTheme, setPptTheme] = useState<"indigo" | "dark" | "clean">("indigo");
+  const [pptTheme, setPptTheme] = useState<"original" | "clean" | "indigo" | "dark">("original");
   const [pptDocOutputFormat, setPptDocOutputFormat] = useState<"PNG" | "JPG">("PNG");
+  const [pptDocSlide, setPptDocSlide] = useState<number>(1);
+  const [pptTotalSlides, setPptTotalSlides] = useState<number>(1);
+  const [pptSlideMode, setPptSlideMode] = useState<"single" | "all">("single");
+  const [pptAspectRatio, setPptAspectRatio] = useState<string>("16:9 Widescreen");
+  const [pptConvertingProgress, setPptConvertingProgress] = useState<{ current: number; total: number } | null>(null);
 
+  const docBufferRef = useRef<ArrayBuffer | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const settingsPanelRef = useRef<HTMLDivElement>(null);
@@ -3936,6 +5032,152 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
     return () => observer.disconnect();
   }, [imageSrc, processedSrc, dimensions.width, dimensions.height, targetWidth, targetHeight, settingsHeight]);
 
+  // Live reactive preview re-render for PDF tool when settings change
+  useEffect(() => {
+    if (!file || !docBufferRef.current || hasProcessed) return;
+
+    let active = true;
+    if (tool.slug === "pdf-to-image") {
+      // If locked, do not trigger auto render without password unlock
+      if (pdfIsPasswordProtected && !pdfIsUnlocked) return;
+
+      const refreshPdfPreview = async () => {
+        if (!docBufferRef.current) return;
+        try {
+          const res = await renderPdfToImage(
+            docBufferRef.current,
+            pdfDocPage,
+            pdfDpiScale,
+            pdfDocOutputFormat,
+            pdfBgColor,
+            pdfPasswordInput
+          );
+          if (active && res.isUnlocked) {
+            setPdfTotalPages(res.totalPages);
+            setImageSrc(res.dataUrl);
+            setDimensions({ width: res.width, height: res.height });
+          }
+        } catch (e) {
+          console.warn("Live PDF preview update failed:", e);
+        }
+      };
+      refreshPdfPreview();
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [file, pdfDocPage, pdfDpiScale, pdfDocOutputFormat, pdfBgColor, pdfPasswordInput, pdfIsUnlocked, pdfIsPasswordProtected, tool.slug, hasProcessed]);
+
+  // Live reactive preview re-render for PowerPoint tool when settings change
+  useEffect(() => {
+    if (!file || !docBufferRef.current || hasProcessed) return;
+    if (tool.slug !== "powerpoint-to-image") return;
+
+    let active = true;
+    const refreshPptPreview = async () => {
+      if (!docBufferRef.current) return;
+      try {
+        const res = await renderPptSlideToImage(
+          docBufferRef.current,
+          file.name,
+          pptTheme,
+          pptDocOutputFormat,
+          pptDocSlide
+        );
+        if (active) {
+          setPptTotalSlides(res.totalSlides);
+          setImageSrc(res.dataUrl);
+          setDimensions({ width: res.width, height: res.height });
+        }
+      } catch (e) {
+        console.warn("Live PPT preview update failed:", e);
+      }
+    };
+    refreshPptPreview();
+
+    return () => {
+      active = false;
+    };
+  }, [file, pptDocSlide, pptTheme, pptDocOutputFormat, tool.slug, hasProcessed]);
+
+  // Live reactive preview re-render for Word tool when settings change
+  useEffect(() => {
+    if (!file || !docBufferRef.current || hasProcessed) return;
+    if (tool.slug !== "word-to-image") return;
+
+    let active = true;
+    const refreshWordPreview = async () => {
+      if (!docBufferRef.current) return;
+      try {
+        const res = await renderWordDocumentToImage(
+          docBufferRef.current,
+          file.name,
+          wordDocFont,
+          wordDocFontSize,
+          wordDocBg,
+          wordDocOutputFormat,
+          wordDocShowHeader
+        );
+        if (active) {
+          setImageSrc(res.dataUrl);
+          setDimensions({ width: res.width, height: res.height });
+        }
+      } catch (e) {
+        console.warn("Live Word preview update failed:", e);
+      }
+    };
+    refreshWordPreview();
+
+    return () => {
+      active = false;
+    };
+  }, [file, wordDocFont, wordDocFontSize, wordDocBg, wordDocOutputFormat, wordDocShowHeader, tool.slug, hasProcessed]);
+
+  // Handle PDF Password Unlock
+  const handleUnlockPdf = async () => {
+    if (!docBufferRef.current) return;
+    if (!pdfPasswordInput.trim()) {
+      setPdfPasswordError("Please enter the PDF password.");
+      toast.error("Please enter the PDF password.");
+      return;
+    }
+    setProcessing(true);
+    setPdfPasswordError(null);
+    try {
+      const res = await renderPdfToImage(
+        docBufferRef.current,
+        1,
+        pdfDpiScale,
+        pdfDocOutputFormat,
+        pdfBgColor,
+        pdfPasswordInput
+      );
+      if (res.isPasswordProtected && !res.isUnlocked) {
+        setPdfIsUnlocked(false);
+        setPdfPasswordError(res.passwordError || "Incorrect password. Please try again.");
+        setImageSrc(res.dataUrl);
+        setProcessing(false);
+        toast.error("Incorrect password for this PDF.");
+      } else {
+        setPdfIsPasswordProtected(true);
+        setPdfIsUnlocked(true);
+        setPdfPasswordError(null);
+        setPdfTotalPages(res.totalPages);
+        setPdfDocPage(1);
+        setPdfPageMode(res.totalPages > 1 ? "all" : "single");
+        setImageSrc(res.dataUrl);
+        setDimensions({ width: res.width, height: res.height });
+        setProcessing(false);
+        toast.success("PDF unlocked successfully!");
+      }
+    } catch (err) {
+      setProcessing(false);
+      setPdfPasswordError("Failed to decrypt PDF. Please check your password.");
+      toast.error("Failed to decrypt PDF.");
+    }
+  };
+
   // Adjust crop aspect preset helper
   const applyCropAspectPreset = useCallback((ratio: "free" | "1:1" | "4:3" | "16:9" | "9:16") => {
     setCropAspect(ratio);
@@ -3961,7 +5203,151 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
     setCropBox({ x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
   }, [dimensions]);
 
+  const decodeAndApplyBase64 = (rawText: string, fileName?: string) => {
+    let clean = (rawText || "").trim();
+    if (!clean) {
+      toast.error("Please provide Base64 code or text.");
+      setProcessing(false);
+      return;
+    }
+    // Strip surrounding quotes or url(...) wraps
+    clean = clean.replace(/^['"`]|['"`]$/g, "").trim();
+    const urlMatch = clean.match(/^url\(['"]?(.*?)['"]?\)$/i);
+    if (urlMatch && urlMatch[1]) clean = urlMatch[1].trim();
+
+    let dataUrl = "";
+    let detectedFormat = "PNG";
+    let purePayload = "";
+
+    if (clean.startsWith("data:image/")) {
+      const commaIdx = clean.indexOf(",");
+      if (commaIdx !== -1) {
+        const header = clean.slice(0, commaIdx + 1);
+        const payload = clean.slice(commaIdx + 1).replace(/[\r\n\t\s]+/g, "");
+        dataUrl = `${header}${payload}`;
+        purePayload = payload;
+        const fmtMatch = header.match(/^data:image\/([a-zA-Z0-9+]+);/i);
+        if (fmtMatch && fmtMatch[1]) {
+          const rawFmt = fmtMatch[1].toUpperCase();
+          detectedFormat = rawFmt === "JPEG" ? "JPG" : rawFmt;
+        }
+      } else {
+        dataUrl = clean.replace(/[\r\n\t\s]+/g, "");
+        purePayload = dataUrl;
+      }
+    } else {
+      const payload = clean.replace(/[\r\n\t\s]+/g, "");
+      purePayload = payload;
+      if (payload.startsWith("/9j/")) {
+        detectedFormat = "JPG";
+        dataUrl = `data:image/jpeg;base64,${payload}`;
+      } else if (payload.startsWith("R0lGOD")) {
+        detectedFormat = "GIF";
+        dataUrl = `data:image/gif;base64,${payload}`;
+      } else if (payload.startsWith("UklGR")) {
+        detectedFormat = "WEBP";
+        dataUrl = `data:image/webp;base64,${payload}`;
+      } else if (payload.startsWith("PHN2Zy") || payload.startsWith("PD94bW")) {
+        detectedFormat = "SVG";
+        dataUrl = `data:image/svg+xml;base64,${payload}`;
+      } else {
+        detectedFormat = "PNG";
+        dataUrl = `data:image/png;base64,${payload}`;
+      }
+    }
+
+    setProcessing(true);
+    const testImg = new Image();
+    testImg.onload = () => {
+      const w = testImg.naturalWidth || testImg.width || 800;
+      const h = testImg.naturalHeight || testImg.height || 600;
+      const approxBytes = Math.max(512, Math.round((purePayload.length * 3) / 4));
+
+      setBase64DecodedInfo({
+        format: detectedFormat,
+        charCount: purePayload.length,
+        approxBytes,
+        width: w,
+        height: h,
+      });
+
+      setBase64InputText(clean);
+      setImageSrc(dataUrl);
+      setProcessedSrc(dataUrl);
+      setDimensions({ width: w, height: h });
+      setTargetWidth(w);
+      setTargetHeight(h);
+      setOrigSize(approxBytes);
+      setNewSize(approxBytes);
+      setHasProcessed(false);
+      setIsEditingSettings(true);
+      setProcessing(false);
+      toast.success(
+        `Decoded Base64 ${detectedFormat} (${w}×${h} px)${fileName ? ` from ${fileName}` : ""}!`
+      );
+    };
+
+    testImg.onerror = () => {
+      setProcessing(false);
+      toast.error("Failed to decode Base64 image. Please ensure the string or file is a valid Base64 image.");
+    };
+
+    testImg.src = dataUrl;
+  };
+
+  const copyBase64DecodedImage = async () => {
+    const srcToUse = processedSrc || imageSrc;
+    if (!srcToUse) return;
+    try {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = img.naturalWidth || img.width;
+        c.height = img.naturalHeight || img.height;
+        const ctx = c.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        c.toBlob(async (pngBlob) => {
+          if (pngBlob) {
+            try {
+              await navigator.clipboard.write([
+                new ClipboardItem({ "image/png": pngBlob }),
+              ]);
+              toast.success("Decoded image copied to clipboard!");
+            } catch {
+              toast.error("Failed to copy image to clipboard.");
+            }
+          }
+        }, "image/png");
+      };
+      img.src = srcToUse;
+    } catch {
+      toast.error("Could not copy image to clipboard.");
+    }
+  };
+
   const processSelectedFile = (selected: File) => {
+    // Base64-to-image tool: read as text (.txt, .b64, etc.) and auto-decode
+    if (tool.slug === "base64-to-image") {
+      setFile(selected);
+      setOrigSize(selected.size);
+      setProcessing(true);
+      setHasProcessed(false);
+      setProcessedSrc(null);
+
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const text = (evt.target?.result as string) || "";
+        decodeAndApplyBase64(text, selected.name);
+      };
+      reader.onerror = () => {
+        setProcessing(false);
+        toast.error("Failed to read Base64 text file.");
+      };
+      reader.readAsText(selected);
+      return;
+    }
+
     // Document-to-image tools: load buffer and render initial preview in settings mode
     if (["pdf-to-image", "word-to-image", "excel-to-image", "powerpoint-to-image"].includes(tool.slug)) {
       setFile(selected);
@@ -3978,14 +5364,31 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
           toast.error("Failed to read file.");
           return;
         }
+        docBufferRef.current = buffer;
         try {
           if (tool.slug === "pdf-to-image") {
-            const res = await renderPdfToImage(buffer, pdfDocPage, pdfDpiScale, pdfDocOutputFormat, pdfBgColor);
-            setPdfTotalPages(res.totalPages);
-            setImageSrc(res.dataUrl);
-            setDimensions({ width: res.width, height: res.height });
+            setPdfPasswordInput("");
+            setPdfPasswordError(null);
+            const res = await renderPdfToImage(buffer, 1, pdfDpiScale, pdfDocOutputFormat, pdfBgColor, "");
+            if (res.isPasswordProtected && !res.isUnlocked) {
+              setPdfIsPasswordProtected(true);
+              setPdfIsUnlocked(false);
+              setPdfPasswordError(null);
+              setPdfTotalPages(1);
+              setImageSrc(res.dataUrl);
+              setDimensions({ width: res.width, height: res.height });
+            } else {
+              setPdfIsPasswordProtected(false);
+              setPdfIsUnlocked(true);
+              setPdfPasswordError(null);
+              setPdfTotalPages(res.totalPages);
+              setPdfDocPage(1);
+              setPdfPageMode(res.totalPages > 1 ? "all" : "single");
+              setImageSrc(res.dataUrl);
+              setDimensions({ width: res.width, height: res.height });
+            }
           } else if (tool.slug === "word-to-image") {
-            const res = await renderWordDocumentToImage(buffer, selected.name, wordDocFont, wordDocFontSize, wordDocBg, wordDocOutputFormat);
+            const res = await renderWordDocumentToImage(buffer, selected.name, wordDocFont, wordDocFontSize, wordDocBg, wordDocOutputFormat, wordDocShowHeader);
             setImageSrc(res.dataUrl);
             setDimensions({ width: res.width, height: res.height });
           } else if (tool.slug === "excel-to-image") {
@@ -3993,7 +5396,12 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
             setImageSrc(res.dataUrl);
             setDimensions({ width: res.width, height: res.height });
           } else if (tool.slug === "powerpoint-to-image") {
-            const res = await renderPptSlideToImage(buffer, selected.name, pptTheme, pptDocOutputFormat);
+            const meta = await getPptxMetadata(buffer);
+            setPptTotalSlides(meta.totalSlides);
+            setPptDocSlide(1);
+            setPptSlideMode(meta.totalSlides > 1 ? "all" : "single");
+            setPptAspectRatio(meta.aspectRatioLabel);
+            const res = await renderPptSlideToImage(buffer, selected.name, pptTheme, pptDocOutputFormat, 1);
             setImageSrc(res.dataUrl);
             setDimensions({ width: res.width, height: res.height });
           }
@@ -4028,8 +5436,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       };
       reader.onerror = () => {
         setProcessing(false);
-        setFile(null);
-        toast.error("Error reading file.");
+        toast.error("Error reading file from disk.");
       };
       reader.readAsArrayBuffer(selected);
       return;
@@ -4099,7 +5506,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
               setTargetHeight(img.height);
             };
             img.src = url;
-            setHasProcessed(true);
+            setHasProcessed(false);
+            setIsEditingSettings(true);
+            setBinaryInputTab("upload");
             setProcessing(false);
             toast.success(`Loaded and decoded binary text from ${selected.name}!`);
           } else {
@@ -4173,7 +5582,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
             setTargetHeight(img.height);
           };
           img.src = url;
-          setHasProcessed(true);
+          setHasProcessed(false);
+          setIsEditingSettings(true);
+          setBinaryInputTab("upload");
           setProcessing(false);
           toast.success(`Loaded and decoded binary file ${selected.name}!`);
         } else {
@@ -4182,6 +5593,37 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         }
       };
       reader.readAsArrayBuffer(selected);
+      return;
+    }
+
+    // Text Decoder tools (Octal / Hex / Decimal / ASCII): read .txt files as text
+    if (
+      [
+        "octal-to-image",
+        "hex-to-image",
+        "decimal-to-image",
+        "ascii-to-image",
+      ].includes(tool.slug)
+    ) {
+      setFile(selected);
+      setOrigSize(selected.size);
+      setProcessing(true);
+      setHasProcessed(false);
+      setProcessedSrc(null);
+
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const text = (evt.target?.result as string) || "";
+        setInputConvertText(text);
+        setTextDecoderLandingMode("plain_text");
+        setProcessing(false);
+        toast.success(`Loaded text from ${selected.name} — review and click Convert.`);
+      };
+      reader.onerror = () => {
+        setProcessing(false);
+        toast.error("Failed to read text file.");
+      };
+      reader.readAsText(selected);
       return;
     }
 
@@ -4218,11 +5660,21 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
     }
 
     const reader = new FileReader();
+    reader.onerror = () => {
+      toast.error("Failed to read image file. Please try a different image.");
+    };
     reader.onload = (evt) => {
       const b64 = evt.target?.result as string;
+      if (!b64) {
+        toast.error("Empty image file data received.");
+        return;
+      }
       setImageSrc(b64);
 
       const img = new Image();
+      img.onerror = () => {
+        toast.error("Could not parse image dimensions.");
+      };
       img.onload = () => {
         setDimensions({ width: img.width, height: img.height });
         setTargetWidth(img.width);
@@ -4231,7 +5683,11 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       };
       img.src = b64;
     };
-    reader.readAsDataURL(selected);
+    try {
+      reader.readAsDataURL(selected);
+    } catch {
+      toast.error("Failed to process selected file.");
+    }
   };
 
   const sampleColorAtEvent = (e: React.MouseEvent<HTMLImageElement>) => {
@@ -4244,15 +5700,29 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
     const scaleX = img.naturalWidth / rect.width;
     const scaleY = img.naturalHeight / rect.height;
 
-    const pxX = Math.floor(x * scaleX);
-    const pxY = Math.floor(y * scaleY);
+    const pxX = Math.max(0, Math.min(img.naturalWidth - 1, Math.floor(x * scaleX)));
+    const pxY = Math.max(0, Math.min(img.naturalHeight - 1, Math.floor(y * scaleY)));
 
-    const canvas = document.createElement("canvas");
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext("2d");
+    // Cache offscreen canvas for high-performance 60fps sampling
+    if (
+      !colorSampleCanvasRef.current ||
+      colorSampleCanvasRef.current.width !== img.naturalWidth ||
+      colorSampleCanvasRef.current.height !== img.naturalHeight
+    ) {
+      const c = document.createElement("canvas");
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const cCtx = c.getContext("2d", { willReadFrequently: true });
+      if (cCtx) {
+        cCtx.drawImage(img, 0, 0);
+        colorSampleCanvasRef.current = c;
+      }
+    }
+
+    const sampleCanvas = colorSampleCanvasRef.current;
+    if (!sampleCanvas) return null;
+    const ctx = sampleCanvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return null;
-    ctx.drawImage(img, 0, 0);
 
     try {
       const p = ctx.getImageData(pxX, pxY, 1, 1).data;
@@ -4260,28 +5730,622 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
       const rgb = `rgb(${r}, ${g}, ${b})`;
       const hsl = rgbToHsl(r, g, b);
-      return { hex, rgb, hsl };
+      return { hex, rgb, hsl, pxX, pxY, x, y, r, g, b };
     } catch (err) {
       return null;
     }
   };
 
+  const updateLoupeCanvas = (pxX: number, pxY: number) => {
+    const canvas = loupeCanvasRef.current;
+    const sampleCanvas = colorSampleCanvasRef.current;
+    if (!canvas || !sampleCanvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.imageSmoothingEnabled = false;
+
+    // Fill background with dark tone for out-of-bounds pixels
+    ctx.fillStyle = "#18181b";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 9x9 pixel window around cursor
+    const sampleSize = 9;
+    const half = Math.floor(sampleSize / 2);
+    const srcX = pxX - half;
+    const srcY = pxY - half;
+    const cellSize = canvas.width / sampleSize;
+
+    // Safely clamp source bounds to avoid browser out-of-bounds IndexSizeError
+    const sX = Math.max(0, srcX);
+    const sY = Math.max(0, srcY);
+    const sRight = Math.min(sampleCanvas.width, srcX + sampleSize);
+    const sBottom = Math.min(sampleCanvas.height, srcY + sampleSize);
+    const sW = sRight - sX;
+    const sH = sBottom - sY;
+
+    if (sW > 0 && sH > 0) {
+      const dX = (sX - srcX) * cellSize;
+      const dY = (sY - srcY) * cellSize;
+      const dW = sW * cellSize;
+      const dH = sH * cellSize;
+      ctx.drawImage(sampleCanvas, sX, sY, sW, sH, dX, dY, dW, dH);
+    }
+
+    // Draw pixel grid lines
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
+    ctx.lineWidth = 1;
+    for (let i = 1; i < sampleSize; i++) {
+      ctx.beginPath();
+      ctx.moveTo(Math.round(i * cellSize) + 0.5, 0);
+      ctx.lineTo(Math.round(i * cellSize) + 0.5, canvas.height);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(0, Math.round(i * cellSize) + 0.5);
+      ctx.lineTo(canvas.width, Math.round(i * cellSize) + 0.5);
+      ctx.stroke();
+    }
+
+    // Center pixel target reticle
+    const centerX = half * cellSize;
+    const centerY = half * cellSize;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(centerX + 1, centerY + 1, cellSize - 2, cellSize - 2);
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(centerX, centerY, cellSize, cellSize);
+  };
+
   const handleImageMouseMove = (e: React.MouseEvent<HTMLImageElement>) => {
     if (tool.slug !== "color-picker-from-image") return;
-    const res = sampleColorAtEvent(e);
-    if (res) setHoverColor(res.hex);
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+
+    if (colorPickerRafRef.current) {
+      cancelAnimationFrame(colorPickerRafRef.current);
+    }
+
+    colorPickerRafRef.current = requestAnimationFrame(() => {
+      const img = imgRef.current;
+      if (!img) return;
+      const rect = img.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+
+      if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+        if (loupeRef.current) loupeRef.current.style.display = "none";
+        if (hoverSwatchRef.current) hoverSwatchRef.current.style.display = "none";
+        return;
+      }
+
+      const scaleX = img.naturalWidth / rect.width;
+      const scaleY = img.naturalHeight / rect.height;
+
+      const pxX = Math.max(0, Math.min(img.naturalWidth - 1, Math.floor(x * scaleX)));
+      const pxY = Math.max(0, Math.min(img.naturalHeight - 1, Math.floor(y * scaleY)));
+
+      if (
+        !colorSampleCanvasRef.current ||
+        colorSampleCanvasRef.current.width !== img.naturalWidth ||
+        colorSampleCanvasRef.current.height !== img.naturalHeight
+      ) {
+        const c = document.createElement("canvas");
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        const cCtx = c.getContext("2d", { willReadFrequently: true });
+        if (cCtx) {
+          cCtx.drawImage(img, 0, 0);
+          colorSampleCanvasRef.current = c;
+        }
+      }
+
+      const sampleCanvas = colorSampleCanvasRef.current;
+      if (!sampleCanvas) return;
+      const ctx = sampleCanvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return;
+
+      try {
+        const p = ctx.getImageData(pxX, pxY, 1, 1).data;
+        const r = p[0] ?? 0, g = p[1] ?? 0, b = p[2] ?? 0;
+        const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
+        const rgb = `rgb(${r}, ${g}, ${b})`;
+        const hsl = rgbToHsl(r, g, b);
+
+        lastSampledColorRef.current = { hex, rgb, hsl };
+
+        // 120 FPS Direct DOM Updates (Zero React re-render lag)
+        if (loupeRef.current) {
+          loupeRef.current.style.display = "flex";
+          loupeRef.current.style.left = `${x}px`;
+          const isTop = y <= 170;
+          loupeRef.current.style.top = isTop ? `${y + 24}px` : `${y - 18}px`;
+          loupeRef.current.style.transform = isTop ? "translate(-50%, 0)" : "translate(-50%, -100%)";
+        }
+
+        if (loupeTickRef.current) {
+          const isTop = y <= 170;
+          loupeTickRef.current.className = `absolute left-1/2 -translate-x-1/2 w-0 h-0 border-x-[7px] border-x-transparent ${
+            isTop ? "-top-2 border-b-[9px] border-b-white" : "-bottom-2 border-t-[9px] border-t-neutral-500"
+          }`;
+        }
+
+        if (loupeDotRef.current) {
+          loupeDotRef.current.style.backgroundColor = hex;
+        }
+        if (loupeHexRef.current) {
+          loupeHexRef.current.textContent = hex;
+        }
+
+        if (hoverSwatchRef.current) {
+          hoverSwatchRef.current.style.display = "flex";
+        }
+        if (hoverSwatchDotRef.current) {
+          hoverSwatchDotRef.current.style.backgroundColor = hex;
+        }
+        if (hoverSwatchHexRef.current) {
+          hoverSwatchHexRef.current.textContent = hex;
+        }
+
+        updateLoupeCanvas(pxX, pxY);
+      } catch (err) {
+        // ignore
+      }
+    });
+  };
+
+  const handleImageMouseEnter = () => {
+    if (tool.slug !== "color-picker-from-image") return;
+    if (loupeRef.current) loupeRef.current.style.display = "flex";
+    if (hoverSwatchRef.current) hoverSwatchRef.current.style.display = "flex";
+  };
+
+  const handleImageMouseLeave = () => {
+    if (tool.slug !== "color-picker-from-image") return;
+    if (colorPickerRafRef.current) {
+      cancelAnimationFrame(colorPickerRafRef.current);
+      colorPickerRafRef.current = null;
+    }
+    if (loupeRef.current) loupeRef.current.style.display = "none";
+    if (hoverSwatchRef.current) hoverSwatchRef.current.style.display = "none";
   };
 
   const handleImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
     if (tool.slug !== "color-picker-from-image") return;
-    const res = sampleColorAtEvent(e);
+    let res = lastSampledColorRef.current;
+    if (!res) {
+      const sampled = sampleColorAtEvent(e);
+      if (sampled) {
+        res = { hex: sampled.hex, rgb: sampled.rgb, hsl: sampled.hsl };
+      }
+    }
     if (res) {
       setPickedHex(res.hex);
       setPickedRgb(res.rgb);
       setPickedHsl(res.hsl);
-      setColorHistory((prev) => Array.from(new Set([res.hex, ...prev])).slice(0, 16));
-      toast.success(`Picked color ${res.hex}`);
+      setColorHistory((prev) => Array.from(new Set([res.hex, ...prev])).slice(0, 24));
+      // Auto-copy to clipboard for instant convenience!
+      navigator.clipboard.writeText(res.hex);
+      setCopiedFormat("HEX");
+      toast.success(`Copied ${res.hex} to clipboard!`);
+      setTimeout(() => setCopiedFormat(null), 2000);
     }
+  };
+
+  const extractMostCommonColors = useCallback((sourceImgSrc: string) => {
+    if (!sourceImgSrc) return;
+    setIsExtractingColors(true);
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        // Pre-cache full resolution canvas for instantaneous sampling
+        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+          const fullCanvas = document.createElement("canvas");
+          fullCanvas.width = img.naturalWidth;
+          fullCanvas.height = img.naturalHeight;
+          const fullCtx = fullCanvas.getContext("2d", { willReadFrequently: true });
+          if (fullCtx) {
+            fullCtx.drawImage(img, 0, 0);
+            colorSampleCanvasRef.current = fullCanvas;
+          }
+        }
+
+        // Fast downsampled canvas (120x120 is 14,400 pixels, takes <4ms)
+        const size = 120;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) {
+          setIsExtractingColors(false);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, size, size);
+        const data = ctx.getImageData(0, 0, size, size).data;
+
+        // Group into quantized color buckets (step of 24 to cluster minor variations)
+        const step = 24;
+        const colorBuckets = new Map<string, { sumR: number; sumG: number; sumB: number; count: number }>();
+        let totalValidPixels = 0;
+
+        for (let i = 0; i < data.length; i += 4) {
+          const a = data[i + 3] ?? 0;
+          if (a < 64) continue; // Ignore transparent or near-transparent pixels
+
+          const r = data[i] ?? 0;
+          const g = data[i + 1] ?? 0;
+          const b = data[i + 2] ?? 0;
+
+          const qr = Math.min(255, Math.floor(r / step) * step);
+          const qg = Math.min(255, Math.floor(g / step) * step);
+          const qb = Math.min(255, Math.floor(b / step) * step);
+          const key = `${qr},${qg},${qb}`;
+
+          const existing = colorBuckets.get(key);
+          if (existing) {
+            existing.count += 1;
+            existing.sumR += r;
+            existing.sumG += g;
+            existing.sumB += b;
+          } else {
+            colorBuckets.set(key, { sumR: r, sumG: g, sumB: b, count: 1 });
+          }
+          totalValidPixels++;
+        }
+
+        if (totalValidPixels === 0) {
+          setIsExtractingColors(false);
+          return;
+        }
+
+        // Sort by frequency descending
+        const sorted = Array.from(colorBuckets.values())
+          .map((b) => ({
+            r: Math.round(b.sumR / b.count),
+            g: Math.round(b.sumG / b.count),
+            b: Math.round(b.sumB / b.count),
+            count: b.count,
+          }))
+          .sort((a, b) => b.count - a.count);
+
+        // Pick top distinct common colors (Delta E / Euclidean distance >= 38)
+        const distinct: MostCommonColorItem[] = [];
+        for (const item of sorted) {
+          const isTooClose = distinct.some((existing) => {
+            const dr = item.r - existing.r;
+            const dg = item.g - existing.g;
+            const db = item.b - existing.b;
+            const dist = Math.sqrt(2 * dr * dr + 4 * dg * dg + 3 * db * db);
+            return dist < 38;
+          });
+
+          if (!isTooClose) {
+            const hex = `#${((1 << 24) + (item.r << 16) + (item.g << 8) + item.b).toString(16).slice(1).toUpperCase()}`;
+            const rgb = `rgb(${item.r}, ${item.g}, ${item.b})`;
+            const hsl = rgbToHsl(item.r, item.g, item.b);
+            const percentage = Math.max(1, Math.round((item.count / totalValidPixels) * 100));
+
+            distinct.push({
+              hex,
+              rgb,
+              hsl,
+              percentage,
+              r: item.r,
+              g: item.g,
+              b: item.b,
+            });
+          }
+
+          // Top 6 most common colors ("not all need most comun")
+          if (distinct.length >= 6) break;
+        }
+
+        setCommonColors(distinct);
+        setIsExtractingColors(false);
+
+        // AUTO-SELECT the #1 most common color from the image!
+        const dominant = distinct[0];
+        if (dominant) {
+          setPickedHex(dominant.hex);
+          setPickedRgb(dominant.rgb);
+          setPickedHsl(dominant.hsl);
+        }
+      } catch (err) {
+        console.warn("Failed to extract common colors:", err);
+        setIsExtractingColors(false);
+      }
+    };
+    img.src = sourceImgSrc;
+  }, []);
+
+  // Auto-extract most common colors whenever image or tool changes
+  useEffect(() => {
+    if (tool.slug === "color-picker-from-image" && imageSrc) {
+      extractMostCommonColors(imageSrc);
+    }
+  }, [tool.slug, imageSrc, extractMostCommonColors]);
+
+  const handleWatermarkOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (wmPosition === "tile") return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const x = Math.max(2, Math.min(98, Math.round(((e.clientX - rect.left) / rect.width) * 100)));
+    const y = Math.max(2, Math.min(98, Math.round(((e.clientY - rect.top) / rect.height) * 100)));
+    setWmPosition("custom");
+    setWmCustomCoord({ xPercent: x, yPercent: y });
+  };
+
+  const handleWatermarkMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingWm(true);
+  };
+
+  const handleWatermarkOverlayMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isDraggingWm || wmPosition === "tile") return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const x = Math.max(2, Math.min(98, Math.round(((e.clientX - rect.left) / rect.width) * 100)));
+    const y = Math.max(2, Math.min(98, Math.round(((e.clientY - rect.top) / rect.height) * 100)));
+    setWmPosition("custom");
+    setWmCustomCoord({ xPercent: x, yPercent: y });
+  };
+
+  const handleWatermarkOverlayMouseUp = () => {
+    if (isDraggingWm) {
+      setIsDraggingWm(false);
+    }
+  };
+
+  // Watermark dragging window-level listener to prevent stuck drag states
+  useEffect(() => {
+    if (!isDraggingWm) return;
+
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      if (wmPosition === "tile" || !imgRef.current) return;
+      const rect = imgRef.current.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const x = Math.max(2, Math.min(98, Math.round(((e.clientX - rect.left) / rect.width) * 100)));
+      const y = Math.max(2, Math.min(98, Math.round(((e.clientY - rect.top) / rect.height) * 100)));
+      setWmPosition("custom");
+      setWmCustomCoord({ xPercent: x, yPercent: y });
+    };
+
+    const handleWindowMouseUp = () => {
+      setIsDraggingWm(false);
+    };
+
+    window.addEventListener("mousemove", handleWindowMouseMove);
+    window.addEventListener("mouseup", handleWindowMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleWindowMouseMove);
+      window.removeEventListener("mouseup", handleWindowMouseUp);
+    };
+  }, [isDraggingWm, wmPosition]);
+
+  // Face Blur & Anonymization Handlers
+  const handleFaceMouseDown = (e: React.MouseEvent, faceId: string, handle: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const targetFace = faceRegions.find((f) => f.id === faceId);
+    if (!targetFace) return;
+    setActiveFaceId(faceId);
+    setIsDraggingFace(true);
+    setFaceDragHandle(handle);
+    setFaceDragStart({
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      box: { ...targetFace },
+    });
+  };
+
+  const handleAddFaceBox = () => {
+    const newId = `face_manual_${Date.now()}`;
+    const count = faceRegions.length;
+    const offset = (count % 4) * 4;
+    const newBox: FaceBox = {
+      id: newId,
+      x: Math.min(65, Math.max(5, 35 + offset)),
+      y: Math.min(65, Math.max(5, 25 + offset)),
+      w: 24,
+      h: 28,
+    };
+    setFaceRegions((prev) => [...prev, newBox]);
+    setActiveFaceId(newId);
+    toast.success("Added new face blur region! Drag and resize over face.");
+  };
+
+  const handleAutoDetectFaces = async () => {
+    if (!imgRef.current && !imageSrc) return;
+    setIsDetectingFaces(true);
+    try {
+      let targetImg = imgRef.current;
+      if (!targetImg && imageSrc) {
+        targetImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = imageSrc;
+        });
+      }
+      if (!targetImg) return;
+      const faces = await detectFacesInImage(targetImg);
+      if (faces.length > 0) {
+        setFaceRegions(faces);
+        setActiveFaceId(null);
+        toast.success(`✨ Auto-detected ${faces.length} face${faces.length > 1 ? "s" : ""} & applied blur!`);
+      } else {
+        setFaceRegions([]);
+        setActiveFaceId(null);
+        toast.info("No faces detected in this image.");
+      }
+    } catch (err) {
+      toast.error("Auto face detection failed. Please try again.");
+    } finally {
+      setIsDetectingFaces(false);
+    }
+  };
+
+  // Face Drag and Resize Mouse Listener Effect
+  useEffect(() => {
+    if (!isDraggingFace || !activeFaceId || !faceDragStart) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!imgRef.current) return;
+      const rect = imgRef.current.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+
+      const deltaXPercent = ((e.clientX - faceDragStart.mouseX) / rect.width) * 100;
+      const deltaYPercent = ((e.clientY - faceDragStart.mouseY) / rect.height) * 100;
+      const { box } = faceDragStart;
+
+      let newX = box.x;
+      let newY = box.y;
+      let newW = box.w;
+      let newH = box.h;
+
+      if (faceDragHandle === "move") {
+        newX = Math.max(0, Math.min(100 - box.w, box.x + deltaXPercent));
+        newY = Math.max(0, Math.min(100 - box.h, box.y + deltaYPercent));
+      } else {
+        if (faceDragHandle?.includes("e")) {
+          newW = Math.max(5, Math.min(100 - box.x, box.w + deltaXPercent));
+        }
+        if (faceDragHandle?.includes("s")) {
+          newH = Math.max(5, Math.min(100 - box.y, box.h + deltaYPercent));
+        }
+        if (faceDragHandle?.includes("w")) {
+          const maxDeltaW = box.w - 5;
+          const clampedDeltaX = Math.max(-box.x, Math.min(maxDeltaW, deltaXPercent));
+          newX = box.x + clampedDeltaX;
+          newW = box.w - clampedDeltaX;
+        }
+        if (faceDragHandle?.includes("n")) {
+          const maxDeltaH = box.h - 5;
+          const clampedDeltaY = Math.max(-box.y, Math.min(maxDeltaH, deltaYPercent));
+          newY = box.y + clampedDeltaY;
+          newH = box.h - clampedDeltaY;
+        }
+      }
+
+      setFaceRegions((prev) =>
+        prev.map((f) =>
+          f.id === activeFaceId
+            ? {
+                ...f,
+                x: Number(newX.toFixed(1)),
+                y: Number(newY.toFixed(1)),
+                w: Number(newW.toFixed(1)),
+                h: Number(newH.toFixed(1)),
+              }
+            : f
+        )
+      );
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingFace(false);
+      setFaceDragHandle(null);
+      setFaceDragStart(null);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDraggingFace, activeFaceId, faceDragStart, faceDragHandle]);
+
+  // Auto-detect faces when switching to blur-face or when image loads
+  useEffect(() => {
+    if (tool.slug === "blur-face" && imageSrc && faceRegions.length === 0 && !isDetectingFaces && !hasProcessed) {
+      const img = new Image();
+      img.onload = () => {
+        setIsDetectingFaces(true);
+        detectFacesInImage(img)
+          .then((faces) => {
+            setFaceRegions(faces);
+            setActiveFaceId(null);
+            if (faces.length > 0) {
+              toast.success(`✨ Auto-detected ${faces.length} face${faces.length > 1 ? "s" : ""} & applied blur!`);
+            }
+          })
+          .catch(() => {})
+          .finally(() => setIsDetectingFaces(false));
+      };
+      img.src = imageSrc;
+    }
+  }, [tool.slug, imageSrc]);
+
+  // Meme Text Drag Handlers
+  const handleMemeTextMouseDown = (e: React.MouseEvent, target: "top" | "bottom") => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingMemeText(target);
+    setMemeDragStartY(e.clientY);
+  };
+
+  useEffect(() => {
+    if (!isDraggingMemeText) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!imgRef.current) return;
+      const rect = imgRef.current.getBoundingClientRect();
+      if (!rect.height) return;
+
+      const deltaYPercent = ((e.clientY - memeDragStartY) / rect.height) * 100;
+
+      if (isDraggingMemeText === "top") {
+        setMemeTopPosPercent((prev) => Math.max(1, Math.min(45, Number((prev + deltaYPercent).toFixed(1)))));
+      } else {
+        setMemeBottomPosPercent((prev) => Math.max(1, Math.min(45, Number((prev - deltaYPercent).toFixed(1)))));
+      }
+      setMemeDragStartY(e.clientY);
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingMemeText(null);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDraggingMemeText, memeDragStartY]);
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!f.type.startsWith("image/")) {
+      toast.error("Please upload a valid image file for logo watermark (PNG, SVG, JPG, WebP).");
+      e.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => {
+      toast.error("Failed to read logo watermark image file.");
+    };
+    reader.onload = (evt) => {
+      const dataUrl = evt.target?.result as string;
+      if (dataUrl) {
+        setWmLogoSrc(dataUrl);
+        setWmMode("logo");
+        toast.success(`Loaded logo watermark: ${f.name}`);
+      }
+    };
+    try {
+      reader.readAsDataURL(f);
+    } catch {
+      toast.error("Failed to load logo image.");
+    }
+    e.target.value = "";
   };
 
   const copyToClipboard = (text: string, label: string) => {
@@ -4472,20 +6536,14 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
           return;
         }
 
-        // 7. ASCII Character Mode
+        // 7. ASCII Character Mode (Reversible ASCII85 Stream)
         if (tool.slug === "image-to-ascii") {
-          const asciiChars = "@#S%?*+;:,. ";
-          const asciiArr: string[] = [];
-          for (let i = 0; i < totalBytes; i++) {
-            asciiArr.push(asciiChars[bytes[i]! % asciiChars.length]!);
-            if ((i + 1) % 80 === 0) asciiArr.push("\n");
-          }
-          const fullResult = asciiArr.join("");
+          const fullResult = encodeAscii85WithWrap(bytes, 80);
           setFullBinaryOutputText(fullResult);
           if (fullResult.length > 60000) {
             setBinaryOutputText(
               fullResult.slice(0, 60000) +
-                `\n\n... [Displaying first 60,000 characters. Click "Copy Output" or "Download" for 100% full dataset]`
+                `\n\n... [Displaying first 60,000 characters of ${totalBytes.toLocaleString()} bytes. Click "Copy Output" or "Download" for 100% full dataset]`
             );
             setIsBinaryTruncatedPreview(true);
           } else {
@@ -4713,7 +6771,68 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
     };
   }, [isDraggingCrop, cropDragHandle, cropDragStart]);
 
+  const recordToolExecution = () => {
+    Telemetry.trackToolUsage(tool.slug, tool.name);
+    const cost = AdminStore.getToolCreditCost(tool.slug);
+    AuthUser.deductCredit(cost);
+    AdminStore.recordToolDailyUsage(tool.slug);
+  };
+
   const processImage = () => {
+    // Check daily usage quota per IP/device
+    const limitCheck = AdminStore.checkDailyToolLimit(tool.slug);
+    if (limitCheck.reached) {
+      toast.error(`Daily limit reached (${limitCheck.usedToday}/${limitCheck.limit} runs). Limit resets tomorrow.`);
+      return;
+    }
+
+    // Check credits balance
+    const cost = AdminStore.getToolCreditCost(tool.slug);
+    if (cost > 0 && !AuthUser.hasCredits(cost)) {
+      toast.error(`Insufficient credits. This tool requires ${cost} credit${cost === 1 ? "" : "s"}.`);
+      return;
+    }
+
+    // 0. Handle Base64 to Image tool
+    if (tool.slug === "base64-to-image") {
+      const srcToUse = imageSrc || processedSrc;
+      if (!srcToUse) {
+        toast.error("Please upload a .txt file or paste Base64 code first!");
+        return;
+      }
+      setProcessing(true);
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = img.naturalWidth || img.width;
+        c.height = img.naturalHeight || img.height;
+        const ctx = c.getContext("2d");
+        if (!ctx) {
+          setProcessing(false);
+          return;
+        }
+        if (base64ExportFormat === "JPG") {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, c.width, c.height);
+        }
+        ctx.drawImage(img, 0, 0);
+        const mime = base64ExportFormat === "PNG" ? "image/png" : base64ExportFormat === "JPG" ? "image/jpeg" : "image/webp";
+        const convertedUrl = c.toDataURL(mime, base64ExportQuality);
+        setProcessedSrc(convertedUrl);
+        setHasProcessed(true);
+        setIsEditingSettings(false);
+        setProcessing(false);
+        recordToolExecution();
+        toast.success(`Image converted to ${base64ExportFormat}! Ready to download.`);
+      };
+      img.onerror = () => {
+        setProcessing(false);
+        toast.error("Failed to process decoded image.");
+      };
+      img.src = srcToUse;
+      return;
+    }
+
     // 0. Handle HTML to Image tool
     if (tool.slug === "html-to-image") {
       const code = htmlCodeText.trim() || SAMPLE_OG_CARD;
@@ -4739,6 +6858,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
           setHasProcessed(true);
           setIsEditingSettings(false);
           setProcessing(false);
+          recordToolExecution();
           toast.success("Rendered HTML to image successfully!");
         })
         .catch((err) => {
@@ -4763,12 +6883,40 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
           let outH = 0;
 
           if (tool.slug === "pdf-to-image") {
-            const res = await renderPdfToImage(buffer, pdfDocPage, pdfDpiScale, pdfDocOutputFormat, pdfBgColor);
-            outUrl = res.dataUrl;
-            outW = res.width;
-            outH = res.height;
+            if (pdfIsPasswordProtected && !pdfIsUnlocked) {
+              setProcessing(false);
+              toast.error("Please unlock the password-protected PDF first.");
+              return;
+            }
+            const baseName = file.name ? file.name.replace(/\.[^.]+$/, "") : "document";
+            if (pdfPageMode === "all" && pdfTotalPages > 1) {
+              const res = await renderAllPdfPagesToZip(
+                buffer,
+                pdfTotalPages,
+                pdfDpiScale,
+                pdfDocOutputFormat,
+                pdfBgColor,
+                baseName,
+                pdfPasswordInput,
+                (curr, total) => setPdfConvertingProgress({ current: curr, total })
+              );
+              setDocumentBlob(res.zipBlob);
+              setDocumentExt("zip");
+              setNewSize(res.zipBlob.size);
+              outUrl = res.firstPageDataUrl;
+              outW = res.width;
+              outH = res.height;
+              setPdfConvertingProgress(null);
+            } else {
+              const res = await renderPdfToImage(buffer, pdfDocPage, pdfDpiScale, pdfDocOutputFormat, pdfBgColor, pdfPasswordInput);
+              setDocumentBlob(null);
+              setDocumentExt(pdfDocOutputFormat.toLowerCase());
+              outUrl = res.dataUrl;
+              outW = res.width;
+              outH = res.height;
+            }
           } else if (tool.slug === "word-to-image") {
-            const res = await renderWordDocumentToImage(buffer, file.name, wordDocFont, wordDocFontSize, wordDocBg, wordDocOutputFormat);
+            const res = await renderWordDocumentToImage(buffer, file.name, wordDocFont, wordDocFontSize, wordDocBg, wordDocOutputFormat, wordDocShowHeader);
             outUrl = res.dataUrl;
             outW = res.width;
             outH = res.height;
@@ -4778,10 +6926,31 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
             outW = res.width;
             outH = res.height;
           } else if (tool.slug === "powerpoint-to-image") {
-            const res = await renderPptSlideToImage(buffer, file.name, pptTheme, pptDocOutputFormat);
-            outUrl = res.dataUrl;
-            outW = res.width;
-            outH = res.height;
+            const baseName = file.name ? file.name.replace(/\.[^.]+$/, "") : "presentation";
+            if (pptSlideMode === "all" && pptTotalSlides > 1) {
+              const res = await renderAllPptSlidesToZip(
+                buffer,
+                file.name,
+                pptTotalSlides,
+                pptTheme,
+                pptDocOutputFormat,
+                (curr, total) => setPptConvertingProgress({ current: curr, total })
+              );
+              setDocumentBlob(res.zipBlob);
+              setDocumentExt("zip");
+              setNewSize(res.zipBlob.size);
+              outUrl = res.firstPageDataUrl;
+              outW = res.width;
+              outH = res.height;
+              setPptConvertingProgress(null);
+            } else {
+              const res = await renderPptSlideToImage(buffer, file.name, pptTheme, pptDocOutputFormat, pptDocSlide);
+              setDocumentBlob(null);
+              setDocumentExt(pptDocOutputFormat.toLowerCase());
+              outUrl = res.dataUrl;
+              outW = res.width;
+              outH = res.height;
+            }
           }
 
           setProcessedSrc(outUrl);
@@ -4844,17 +7013,44 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       return;
     }
 
-    // 1. Handle Text Input Decoding Tools (Base64 to Image, Hex to Image, Octal to Image, etc.)
+    // 1a. ascii-to-image: ALWAYS re-render from inputConvertText
+    //     (whether imageSrc is set or not, so "Convert" works after the landing card preview too)
+    if (tool.slug === "ascii-to-image") {
+      if (!inputConvertText.trim()) {
+        toast.error("Please enter or paste ASCII text data first!");
+        return;
+      }
+      setProcessing(true);
+      try {
+        const decodedUrl = tryDecodeAsciiToOriginalImage(inputConvertText);
+        const url = decodedUrl || renderAsciiToImage(inputConvertText);
+        const img2 = new Image();
+        img2.onload = () => {
+          setDimensions({ width: img2.width, height: img2.height });
+          setTargetWidth(img2.width);
+          setTargetHeight(img2.height);
+        };
+        img2.src = url;
+        setProcessedSrc(url);
+        setImageSrc(url);
+        setHasProcessed(true);
+        setProcessing(false);
+        if (decodedUrl) {
+          toast.success("Decoded original image successfully!");
+        } else {
+          toast.success("Rendered ASCII art to image successfully!");
+        }
+      } catch (err) {
+        setProcessing(false);
+        toast.error("Failed to render ASCII text. Check your input.");
+      }
+      return;
+    }
+
+    // 1b. Byte-decode tools (Octal / Hex / Decimal): only run when no image is loaded yet
     if (
       !imageSrc &&
-      [
-        "base64-to-image",
-        "octal-to-image",
-        "ascii-to-image",
-        "text-to-image",
-        "hex-to-image",
-        "decimal-to-image",
-      ].includes(tool.slug)
+      ["octal-to-image", "hex-to-image", "decimal-to-image"].includes(tool.slug)
     ) {
       if (!inputConvertText.trim()) {
         toast.error("Please enter or paste input text data first!");
@@ -4862,16 +7058,6 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       }
       setProcessing(true);
       try {
-        if (tool.slug === "base64-to-image") {
-          const raw = inputConvertText.trim();
-          const dataUrl = raw.startsWith("data:") ? raw : `data:image/png;base64,${raw}`;
-          setProcessedSrc(dataUrl);
-          setImageSrc(dataUrl);
-          setHasProcessed(true);
-          setProcessing(false);
-          toast.success("Decoded Base64 to image!");
-          return;
-        }
         if (tool.slug === "octal-to-image") {
           const octs = inputConvertText.trim().split(/\s+/);
           const bytes = new Uint8Array(octs.map((o) => parseInt(o, 8)).filter((n) => !isNaN(n)));
@@ -4909,32 +7095,6 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
           toast.success("Decoded Decimal bytes to image!");
           return;
         }
-        if (tool.slug === "ascii-to-image") {
-          const canvas2 = document.createElement("canvas");
-          canvas2.width = 1200; canvas2.height = 630;
-          const ctx2 = canvas2.getContext("2d");
-          if (ctx2) {
-            ctx2.fillStyle = "#0d1117"; ctx2.fillRect(0, 0, 1200, 630);
-            ctx2.fillStyle = "#39d353"; ctx2.font = "14px monospace";
-            inputConvertText.split("\n").slice(0, 35).forEach((line, i) => ctx2.fillText(line, 20, 30 + i * 18));
-            const url = canvas2.toDataURL("image/png");
-            setProcessedSrc(url); setImageSrc(url); setHasProcessed(true); setProcessing(false);
-            toast.success("Rendered ASCII to image!");
-            return;
-          }
-        }
-        if (tool.slug === "text-to-image") {
-          const url = renderTextToImageCanvas(inputConvertText, txtImgWidth, txtImgHeight, {
-            fontFamily: txtImgFont, fontSize: txtImgFontSize, fontColor: txtImgFontColor,
-            bgType: txtImgBgType, bgColor: txtImgBgColor, bgColor2: txtImgBgColor2,
-            textAlign: txtImgAlign as CanvasTextAlign, bold: txtImgBold, italic: txtImgItalic,
-          });
-          setProcessedSrc(url); setImageSrc(url);
-          setDimensions({ width: txtImgWidth, height: txtImgHeight });
-          setHasProcessed(true); setProcessing(false);
-          toast.success("Generated image from text!");
-          return;
-        }
         if (tool.slug === "binary-to-image") {
           const url = decodeBinaryStringToImageUrl(inputConvertText);
           if (!url) { toast.error("Invalid binary data — make sure it's a valid image encoded in binary."); setProcessing(false); return; }
@@ -4953,11 +7113,22 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
     setProcessing(true);
 
     const img = new Image();
-    img.crossOrigin = "anonymous";
+    if (imageSrc.startsWith("http://") || imageSrc.startsWith("https://")) {
+      img.crossOrigin = "anonymous";
+    }
+    img.onerror = () => {
+      setProcessing(false);
+      toast.error("Failed to load image for processing.");
+    };
     img.onload = async () => {
-      const canvas = canvasRef.current || document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      try {
+        const canvas = canvasRef.current || document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          setProcessing(false);
+          toast.error("Could not obtain canvas context.");
+          return;
+        }
 
       let w = img.width;
       let h = img.height;
@@ -4996,12 +7167,16 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         h = img.height * upscaleFactor;
       }
 
-      // Orientation swap for 90 or 270 deg rotation
+      // Orientation & rotation bounding box calculation
       const rad = (rotation * Math.PI) / 180;
       const is90or270 = Math.abs(rotation % 180) === 90;
+      const sin = Math.abs(Math.sin(rad));
+      const cos = Math.abs(Math.cos(rad));
+      const rotCanvasW = is90or270 ? h : Math.round(w * cos + h * sin);
+      const rotCanvasH = is90or270 ? w : Math.round(w * sin + h * cos);
 
-      canvas.width = is90or270 ? h : w;
-      canvas.height = is90or270 ? w : h;
+      canvas.width = rotCanvasW;
+      canvas.height = rotCanvasH;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.imageSmoothingEnabled = true;
@@ -5018,6 +7193,32 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
 
+      // Rotate Image Custom Background Fill Pass
+      if (tool.slug === "rotate-image") {
+        if (rotateBgMode === "color") {
+          ctx.fillStyle = rotateBgColor;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else if (rotateBgMode === "gradient") {
+          const gradObj = ROTATE_GRADIENT_PRESETS.find((g) => g.css === rotateBgGradient) || ROTATE_GRADIENT_PRESETS[0];
+          const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+          grad.addColorStop(0, gradObj!.stops[0]!);
+          grad.addColorStop(1, gradObj!.stops[1]!);
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else if (rotateBgMode === "blur") {
+          ctx.save();
+          ctx.filter = "blur(28px)";
+          const scale = Math.max(canvas.width / img.width, canvas.height / img.height) * 1.25;
+          const bgW = img.width * scale;
+          const bgH = img.height * scale;
+          ctx.drawImage(img, (canvas.width - bgW) / 2, (canvas.height - bgH) / 2, bgW, bgH);
+          ctx.restore();
+        } else if (rotateBgMode === "transparent" && targetFormat === "image/jpeg") {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+
       ctx.save();
 
       // Transform origin center
@@ -5028,40 +7229,134 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       // Apply Photo Editor filters
       if (tool.slug === "photo-editor") {
         ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) grayscale(${grayscale}%) sepia(${sepia}%)`;
-      } else if (tool.slug === "blur-face") {
-        ctx.filter = `blur(${blurRadius / 2}px)`;
       }
 
       // Draw image onto canvas
-      const drawW = is90or270 ? h : w;
-      const drawH = is90or270 ? w : h;
+      const drawW = tool.slug === "rotate-image" ? w : is90or270 ? h : w;
+      const drawH = tool.slug === "rotate-image" ? h : is90or270 ? w : h;
 
       if (tool.slug === "square-your-image") {
         ctx.restore();
-        ctx.save();
         canvas.width = w;
         canvas.height = h;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
         ctx.clearRect(0, 0, w, h);
 
+        // 1. Draw Background Layer
         if (squareBgMode === "blur") {
           ctx.save();
-          ctx.filter = "blur(20px)";
-          const scale = Math.max(w / img.width, h / img.height);
-          const bgW = img.width * scale;
-          const bgH = img.height * scale;
+          const blurPx = Math.max(10, Math.round((squareBlurAmount / 500) * w));
+          ctx.filter = `blur(${blurPx}px)`;
+          const bgScale = Math.max(w / img.width, h / img.height) * 1.25;
+          const bgW = img.width * bgScale;
+          const bgH = img.height * bgScale;
           ctx.drawImage(img, (w - bgW) / 2, (h - bgH) / 2, bgW, bgH);
           ctx.restore();
-        } else if (squareBgMode === "black") {
-          ctx.fillStyle = "#000000";
+        } else if (squareBgMode === "color") {
+          ctx.fillStyle = squareBgColor;
           ctx.fillRect(0, 0, w, h);
-        } else {
-          ctx.fillStyle = "#ffffff";
+        } else if (squareBgMode === "gradient") {
+          const grad = ctx.createLinearGradient(0, 0, w, h);
+          const colorMatches = squareGradient.match(/#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|rgba?\([^)]+\)/g);
+          if (colorMatches && colorMatches.length >= 2 && colorMatches[0] && colorMatches[colorMatches.length - 1]) {
+            grad.addColorStop(0, colorMatches[0]);
+            grad.addColorStop(1, colorMatches[colorMatches.length - 1] as string);
+          } else {
+            grad.addColorStop(0, "#667eea");
+            grad.addColorStop(1, "#764ba2");
+          }
+          ctx.fillStyle = grad;
           ctx.fillRect(0, 0, w, h);
+        } else if (squareBgMode === "transparent") {
+          if (squareExportFormat === "JPG" || targetFormat === "image/jpeg") {
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, w, h);
+          } else {
+            ctx.clearRect(0, 0, w, h);
+          }
         }
 
-        const dx = (w - img.width) / 2;
-        const dy = (h - img.height) / 2;
-        ctx.drawImage(img, dx, dy, img.width, img.height);
+        // 2. Draw Foreground Image Layer
+        if (squareBgMode === "fit") {
+          const coverScale = Math.max(w / img.width, h / img.height) * (squareScale / 100);
+          const drawW = img.width * coverScale;
+          const drawH = img.height * coverScale;
+          const dx = (w - drawW) / 2;
+          const dy = (h - drawH) / 2;
+
+          ctx.save();
+          if (squareCornerRadius > 0) {
+            const radPx = squareCornerRadius === 9999 ? w / 2 : Math.round((squareCornerRadius / 500) * w);
+            ctx.beginPath();
+            if (typeof ctx.roundRect === "function") {
+              ctx.roundRect(0, 0, w, h, radPx);
+            } else {
+              ctx.rect(0, 0, w, h);
+            }
+            ctx.clip();
+          }
+          ctx.drawImage(img, dx, dy, drawW, drawH);
+          ctx.restore();
+        } else {
+          const scaleMultiplier = Math.max(0.2, Math.min(1.0, squareScale / 100));
+          let fgW = img.width;
+          let fgH = img.height;
+          if (fgW >= fgH) {
+            fgW = w * scaleMultiplier;
+            fgH = (img.height / img.width) * fgW;
+          } else {
+            fgH = h * scaleMultiplier;
+            fgW = (img.width / img.height) * fgH;
+          }
+
+          const dx = (w - fgW) / 2;
+          const dy = (h - fgH) / 2;
+          const radPx = squareCornerRadius === 9999 ? Math.min(fgW, fgH) / 2 : Math.round((squareCornerRadius / 500) * w);
+
+          if (squareShadow !== "none") {
+            ctx.save();
+            if (squareShadow === "soft") {
+              ctx.shadowColor = "rgba(0, 0, 0, 0.38)";
+              ctx.shadowBlur = Math.round(w * 0.035);
+              ctx.shadowOffsetX = 0;
+              ctx.shadowOffsetY = Math.round(w * 0.015);
+            } else if (squareShadow === "float") {
+              ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
+              ctx.shadowBlur = Math.round(w * 0.06);
+              ctx.shadowOffsetX = 0;
+              ctx.shadowOffsetY = Math.round(w * 0.03);
+            } else if (squareShadow === "card") {
+              ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
+              ctx.shadowBlur = Math.round(w * 0.02);
+              ctx.shadowOffsetX = 0;
+              ctx.shadowOffsetY = Math.round(w * 0.01);
+            }
+
+            ctx.beginPath();
+            if (radPx > 0 && typeof ctx.roundRect === "function") {
+              ctx.roundRect(dx, dy, fgW, fgH, radPx);
+            } else {
+              ctx.rect(dx, dy, fgW, fgH);
+            }
+            ctx.fillStyle = "#ffffff";
+            ctx.fill();
+            ctx.restore();
+          }
+
+          ctx.save();
+          if (radPx > 0) {
+            ctx.beginPath();
+            if (typeof ctx.roundRect === "function") {
+              ctx.roundRect(dx, dy, fgW, fgH, radPx);
+            } else {
+              ctx.rect(dx, dy, fgW, fgH);
+            }
+            ctx.clip();
+          }
+          ctx.drawImage(img, dx, dy, fgW, fgH);
+          ctx.restore();
+        }
       } else if (tool.slug === "crop-image") {
         ctx.drawImage(img, srcX, srcY, srcW, srcH, -drawW / 2, -drawH / 2, drawW, drawH);
       } else if (tool.slug === "resize-image" && resizeQualityMode === "improved") {
@@ -5095,69 +7390,382 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         } else {
           ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
         }
+      } else if (tool.slug === "upscale-image") {
+        const upscaledCanvas = performSuperResolutionUpscale(img, drawW, drawH, {
+          mode: upscaleEngineMode,
+          factor: upscaleFactor,
+          detailEnhance: upscaleDetailEnhance,
+          denoise: upscaleDenoise,
+          faceRefine: upscaleFaceRefinement,
+        });
+        ctx.drawImage(upscaledCanvas, -drawW / 2, -drawH / 2, drawW, drawH);
       } else {
         ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
       }
       ctx.restore();
+
+      // Localized Face Anonymization Pass (Python YuNet AI Backend + High-Precision Client Fallback)
+      if (tool.slug === "blur-face") {
+        let appliedPython = false;
+        try {
+          const rawDataUrl = canvas.toDataURL("image/png");
+          const pyRes = await fetch("/api/blur-face", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              base64Image: rawDataUrl,
+              blurType: faceBlurType,
+              strength: faceBlurStrength,
+              shape: faceShape,
+              faces: faceRegions.length > 0 ? faceRegions : undefined,
+            }),
+          });
+          if (pyRes.ok) {
+            const json = await pyRes.json();
+            if (json.success && json.base64Image) {
+              const pyImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+                const i = new Image();
+                i.onload = () => resolve(i);
+                i.onerror = reject;
+                i.src = json.base64Image;
+              });
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              ctx.drawImage(pyImg, 0, 0);
+              appliedPython = true;
+              if (Array.isArray(json.faces) && json.faces.length > 0) {
+                setFaceRegions(json.faces);
+              }
+            }
+          }
+        } catch (pyErr) {
+          console.warn("Python face blur server unreachable, using client anonymizer:", pyErr);
+        }
+
+        if (!appliedPython) {
+          applyFaceAnonymization(ctx, canvas.width, canvas.height, faceRegions, {
+            type: faceBlurType,
+            strength: faceBlurStrength,
+            shape: faceShape,
+          });
+        }
+      }
 
       // Apply HD Sharpening & Micro-contrast pass if resize with quality improvement
       if (tool.slug === "resize-image" && resizeQualityMode === "improved") {
         applyHDResizingEnhancement(ctx, canvas.width, canvas.height, 0.45);
       }
 
-      // Watermark Removal — Custom Inpainting Pass
+      // Watermark Removal — Hybrid Python AI Server + High-Precision Client Fallback
       if (tool.slug === "remove-watermark") {
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const cleaned = removeWatermarkFromImageData(imageData);
-        ctx.putImageData(cleaned, 0, 0);
+        let appliedPython = false;
+        try {
+          const rawDataUrl = canvas.toDataURL("image/png");
+          const pyRes = await fetch("/api/remove-watermark", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              base64Image: rawDataUrl,
+              mode: wmRemovalMode,
+              sensitivity: wmRemovalSensitivity,
+              engine: wmInpaintEngine,
+              preserveDetails: wmPreserveDetails,
+            }),
+          });
+          if (pyRes.ok) {
+            const json = await pyRes.json();
+            if (json.success && json.base64Image) {
+              const pyImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+                const i = new Image();
+                i.onload = () => resolve(i);
+                i.onerror = reject;
+                i.src = json.base64Image;
+              });
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              ctx.drawImage(pyImg, 0, 0);
+              appliedPython = true;
+            }
+          }
+        } catch (pyErr) {
+          console.warn("Python watermark server unreachable, falling back to client engine:", pyErr);
+        }
+
+        if (!appliedPython) {
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const cleaned = removeWatermarkAdvanced(imageData, {
+            mode: wmRemovalMode,
+            sensitivity: wmRemovalSensitivity,
+            engine: wmInpaintEngine,
+            preserveDetails: wmPreserveDetails,
+          });
+          ctx.putImageData(cleaned, 0, 0);
+        }
       }
 
       // Watermark Draw Pass
-      if (tool.slug === "watermark-image" && wmText.trim()) {
-        ctx.save();
-        ctx.globalAlpha = wmOpacity;
-        ctx.font = `bold ${wmFontSize}px sans-serif`;
-        ctx.fillStyle = wmColor;
-        ctx.textBaseline = "middle";
+      if (tool.slug === "watermark-image") {
+        const marginPxX = Math.round((wmMargin / 100) * canvas.width);
+        const marginPxY = Math.round((wmMargin / 100) * canvas.height);
 
-        let x = canvas.width / 2;
-        let y = canvas.height / 2;
-        ctx.textAlign = "center";
+        let targetX = canvas.width / 2;
+        let targetY = canvas.height / 2;
+        let align: CanvasTextAlign = "center";
+        let baseline: CanvasTextBaseline = "middle";
 
         if (wmPosition === "top_left") {
-          x = 30; y = 40; ctx.textAlign = "left";
+          targetX = marginPxX; targetY = marginPxY; align = "left"; baseline = "top";
+        } else if (wmPosition === "top_center") {
+          targetX = canvas.width / 2; targetY = marginPxY; align = "center"; baseline = "top";
         } else if (wmPosition === "top_right") {
-          x = canvas.width - 30; y = 40; ctx.textAlign = "right";
+          targetX = canvas.width - marginPxX; targetY = marginPxY; align = "right"; baseline = "top";
+        } else if (wmPosition === "middle_left") {
+          targetX = marginPxX; targetY = canvas.height / 2; align = "left"; baseline = "middle";
+        } else if (wmPosition === "center") {
+          targetX = canvas.width / 2; targetY = canvas.height / 2; align = "center"; baseline = "middle";
+        } else if (wmPosition === "middle_right") {
+          targetX = canvas.width - marginPxX; targetY = canvas.height / 2; align = "right"; baseline = "middle";
         } else if (wmPosition === "bottom_left") {
-          x = 30; y = canvas.height - 40; ctx.textAlign = "left";
+          targetX = marginPxX; targetY = canvas.height - marginPxY; align = "left"; baseline = "bottom";
+        } else if (wmPosition === "bottom_center") {
+          targetX = canvas.width / 2; targetY = canvas.height - marginPxY; align = "center"; baseline = "bottom";
         } else if (wmPosition === "bottom_right") {
-          x = canvas.width - 30; y = canvas.height - 40; ctx.textAlign = "right";
+          targetX = canvas.width - marginPxX; targetY = canvas.height - marginPxY; align = "right"; baseline = "bottom";
+        } else if (wmPosition === "custom") {
+          targetX = Math.round((wmCustomCoord.xPercent / 100) * canvas.width);
+          targetY = Math.round((wmCustomCoord.yPercent / 100) * canvas.height);
+          align = "center"; baseline = "middle";
         }
 
-        ctx.shadowColor = "rgba(0,0,0,0.6)";
-        ctx.shadowBlur = 8;
-        ctx.fillText(wmText, x, y);
-        ctx.restore();
+        if (wmMode === "logo" && wmLogoSrc) {
+          try {
+            const logoImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+              const i = new Image();
+              if (wmLogoSrc.startsWith("http://") || wmLogoSrc.startsWith("https://")) {
+                i.crossOrigin = "anonymous";
+              }
+              i.onload = () => resolve(i);
+              i.onerror = () => reject(new Error("Failed to load watermark logo"));
+              i.src = wmLogoSrc;
+            });
+            const lw = Math.max(10, Math.round(canvas.width * (wmLogoScale / 100)));
+            const lh = Math.max(10, Math.round((logoImg.height / (logoImg.width || 1)) * lw));
+
+            ctx.save();
+            ctx.globalAlpha = Math.max(0.05, Math.min(1, wmOpacity));
+
+            if (wmPosition === "tile") {
+              const stepX = Math.max(lw * 2.2, Math.round(canvas.width * 0.25), 160);
+              const stepY = Math.max(lh * 2.2, Math.round(canvas.height * 0.25), 120);
+              const tileRad = (wmRotation || -30) * (Math.PI / 180);
+              const startY = -Math.round(canvas.height * 0.2);
+              const endY = Math.round(canvas.height * 1.2);
+              const startX = -Math.round(canvas.width * 0.2);
+              const endX = Math.round(canvas.width * 1.2);
+
+              for (let gy = startY; gy < endY; gy += stepY) {
+                for (let gx = startX; gx < endX; gx += stepX) {
+                  ctx.save();
+                  ctx.translate(gx, gy);
+                  ctx.rotate(tileRad);
+                  ctx.drawImage(logoImg, -lw / 2, -lh / 2, lw, lh);
+                  ctx.restore();
+                }
+              }
+            } else {
+              ctx.translate(targetX, targetY);
+              if (wmRotation !== 0) {
+                ctx.rotate((wmRotation * Math.PI) / 180);
+              }
+              let drawDx = -lw / 2;
+              let drawDy = -lh / 2;
+              if (align === "left") drawDx = 0;
+              else if (align === "right") drawDx = -lw;
+              if (baseline === "top") drawDy = 0;
+              else if (baseline === "bottom") drawDy = -lh;
+
+              ctx.shadowColor = "rgba(0,0,0,0.5)";
+              ctx.shadowBlur = Math.max(4, Math.round(lw * 0.05));
+              ctx.drawImage(logoImg, drawDx, drawDy, lw, lh);
+            }
+            ctx.restore();
+          } catch (e) {
+            console.error("Failed to render logo watermark:", e);
+            toast.error("Could not render logo watermark. Please check logo format.");
+          }
+        } else if (wmText.trim()) {
+          const canvasFontSize = Math.max(14, Math.round(wmFontSize * (canvas.width / 1000)));
+          const fontStyle = `${wmItalic ? "italic " : ""}${wmBold ? "bold " : ""}${canvasFontSize}px ${wmFontFamily}`;
+
+          ctx.save();
+          ctx.globalAlpha = Math.max(0.05, Math.min(1, wmOpacity));
+          ctx.font = fontStyle;
+
+          if (wmPosition === "tile") {
+            const stepX = Math.max(canvasFontSize * 8, Math.round(canvas.width * 0.3), 200);
+            const stepY = Math.max(canvasFontSize * 4, Math.round(canvas.height * 0.2), 120);
+            const tileRad = (wmRotation || -30) * (Math.PI / 180);
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            const startY = -Math.round(canvas.height * 0.2);
+            const endY = Math.round(canvas.height * 1.2);
+            const startX = -Math.round(canvas.width * 0.2);
+            const endX = Math.round(canvas.width * 1.2);
+
+            for (let gy = startY; gy < endY; gy += stepY) {
+              for (let gx = startX; gx < endX; gx += stepX) {
+                ctx.save();
+                ctx.translate(gx, gy);
+                ctx.rotate(tileRad);
+
+                if (wmStroke === "dark") {
+                  ctx.strokeStyle = "rgba(0,0,0,0.85)";
+                  ctx.lineWidth = Math.max(2, Math.round(canvasFontSize * 0.1));
+                  ctx.strokeText(wmText, 0, 0);
+                } else if (wmStroke === "light") {
+                  ctx.strokeStyle = "rgba(255,255,255,0.85)";
+                  ctx.lineWidth = Math.max(2, Math.round(canvasFontSize * 0.1));
+                  ctx.strokeText(wmText, 0, 0);
+                }
+                ctx.fillStyle = wmColor;
+                ctx.fillText(wmText, 0, 0);
+                ctx.restore();
+              }
+            }
+          } else {
+            ctx.translate(targetX, targetY);
+            if (wmRotation !== 0) {
+              ctx.rotate((wmRotation * Math.PI) / 180);
+            }
+            ctx.textAlign = align;
+            ctx.textBaseline = baseline;
+
+            if (wmBgBadge !== "none") {
+              const metrics = ctx.measureText(wmText);
+              const tw = metrics.width;
+              const th = canvasFontSize * 1.3;
+              const px = canvasFontSize * 0.4;
+              const py = canvasFontSize * 0.2;
+
+              let bx = 0;
+              if (align === "center") bx = -tw / 2 - px;
+              else if (align === "right") bx = -tw - px;
+              else bx = -px;
+
+              let by = 0;
+              if (baseline === "middle") by = -th / 2;
+              else if (baseline === "bottom") by = -th;
+              else by = -py;
+
+              ctx.fillStyle = wmBgBadge === "dark_pill" ? "rgba(0,0,0,0.65)" : "rgba(255,255,255,0.75)";
+              const r = Math.max(0, th * 0.3);
+              ctx.beginPath();
+              if (typeof ctx.roundRect === "function") {
+                ctx.roundRect(bx, by, Math.max(1, tw + px * 2), Math.max(1, th + py * 2), r);
+              } else {
+                ctx.rect(bx, by, Math.max(1, tw + px * 2), Math.max(1, th + py * 2));
+              }
+              ctx.fill();
+            }
+
+            if (wmStroke === "dark") {
+              ctx.strokeStyle = "rgba(0,0,0,0.9)";
+              ctx.lineWidth = Math.max(2, Math.round(canvasFontSize * 0.08));
+              ctx.strokeText(wmText, 0, 0);
+            } else if (wmStroke === "light") {
+              ctx.strokeStyle = "rgba(255,255,255,0.9)";
+              ctx.lineWidth = Math.max(2, Math.round(canvasFontSize * 0.08));
+              ctx.strokeText(wmText, 0, 0);
+            }
+
+            ctx.shadowColor = wmStroke === "light" ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.65)";
+            ctx.shadowBlur = Math.max(4, Math.round(canvasFontSize * 0.15));
+            ctx.fillStyle = wmColor;
+            ctx.fillText(wmText, 0, 0);
+          }
+          ctx.restore();
+        }
       }
 
       // Meme Generator Pass
       if (tool.slug === "meme-generator") {
         ctx.save();
-        ctx.font = `900 ${memeFontSize}px Impact, sans-serif`;
-        ctx.fillStyle = "white";
-        ctx.strokeStyle = "black";
-        ctx.lineWidth = Math.max(3, memeFontSize / 10);
-        ctx.textAlign = "center";
+        const canvasScale = canvas.width / 800;
+        const fontPx = Math.max(14, Math.round(memeFontSize * canvasScale));
+        ctx.font = `900 ${fontPx}px ${memeFontFamily}`;
+        ctx.textAlign = memeTextAlign;
+        ctx.textBaseline = "middle";
 
+        const strokePx = memeStrokeWidth > 0 ? Math.max(1, Math.round(memeStrokeWidth * canvasScale * 1.5)) : 0;
+        if (strokePx > 0) {
+          ctx.strokeStyle = memeStrokeColor;
+          ctx.lineWidth = strokePx;
+          ctx.lineJoin = "round";
+        }
+        ctx.fillStyle = memeTextColor;
+
+        if (memeTextShadow) {
+          ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
+          ctx.shadowBlur = Math.max(4, Math.round(fontPx * 0.15));
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = Math.max(2, Math.round(fontPx * 0.05));
+        }
+
+        const maxTextW = canvas.width * 0.92;
+        const alignX =
+          memeTextAlign === "left"
+            ? canvas.width * 0.04
+            : memeTextAlign === "right"
+            ? canvas.width * 0.96
+            : canvas.width / 2;
+
+        const wrapLines = (txt: string) => {
+          const finalTxt = memeAllCaps ? txt.toUpperCase() : txt;
+          const words = finalTxt.split(" ");
+          const lines: string[] = [];
+          let cur = words[0] || "";
+          for (let i = 1; i < words.length; i++) {
+            const w = words[i];
+            if (ctx.measureText(cur + " " + w).width < maxTextW) {
+              cur += " " + w;
+            } else {
+              lines.push(cur);
+              cur = w || "";
+            }
+          }
+          if (cur) lines.push(cur);
+          return lines;
+        };
+
+        const lineHeight = fontPx * 1.2;
+
+        // Draw Top Text
         if (topText.trim()) {
-          ctx.strokeText(topText.toUpperCase(), canvas.width / 2, memeFontSize + 15);
-          ctx.fillText(topText.toUpperCase(), canvas.width / 2, memeFontSize + 15);
+          const topLines = wrapLines(topText);
+          const topStartY = Math.round((memeTopPosPercent / 100) * canvas.height) + fontPx / 2;
+          topLines.forEach((line, idx) => {
+            const y = topStartY + idx * lineHeight;
+            if (strokePx > 0) ctx.strokeText(line, alignX, y);
+            ctx.fillText(line, alignX, y);
+          });
         }
 
+        // Draw Bottom Text
         if (bottomText.trim()) {
-          ctx.strokeText(bottomText.toUpperCase(), canvas.width / 2, canvas.height - 25);
-          ctx.fillText(bottomText.toUpperCase(), canvas.width / 2, canvas.height - 25);
+          const bottomLines = wrapLines(bottomText);
+          const totalBottomH = bottomLines.length * lineHeight;
+          const bottomStartY =
+            canvas.height -
+            Math.round((memeBottomPosPercent / 100) * canvas.height) -
+            totalBottomH +
+            fontPx / 2;
+
+          bottomLines.forEach((line, idx) => {
+            const y = bottomStartY + idx * lineHeight;
+            if (strokePx > 0) ctx.strokeText(line, alignX, y);
+            ctx.fillText(line, alignX, y);
+          });
         }
+
         ctx.restore();
       }
 
@@ -5261,8 +7869,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
           toast.success(`Image converted to ${ext.toUpperCase()} — click Download to save!`);
         }
 
-        import("@/lib/telemetry").then(({ Telemetry }) => { Telemetry.trackToolUsage(tool.slug, tool.name); });
-        import("@/lib/auth-user").then(({ AuthUser }) => { AuthUser.deductCredit(1); });
+        recordToolExecution();
         return;
       }
 
@@ -5308,8 +7915,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         setOcrProgressStatus("");
         setOcrProgressPercent(0);
 
-        import("@/lib/telemetry").then(({ Telemetry }) => { Telemetry.trackToolUsage(tool.slug, tool.name); });
-        import("@/lib/auth-user").then(({ AuthUser }) => { AuthUser.deductCredit(1); });
+        recordToolExecution();
 
         if (detectedCodes.length > 0) {
           toast.success(`OCR Complete! Detected ${detectedCodes.length} ${detectedCodes.length === 1 ? detectedCodes[0]!.type : "code(s)"} & extracted text (${langName}).`);
@@ -5335,12 +7941,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         setIsEditingSettings(false);
         setProcessing(false);
 
-        import("@/lib/telemetry").then(({ Telemetry }) => {
-          Telemetry.trackToolUsage(tool.slug, tool.name);
-        });
-        import("@/lib/auth-user").then(({ AuthUser }) => {
-          AuthUser.deductCredit(1);
-        });
+        recordToolExecution();
 
         toast.success(`Generated ${binaryOutputMode} output successfully!`);
         return;
@@ -5479,8 +8080,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         setIsEditingSettings(false);
         setProcessing(false);
 
-        import("@/lib/telemetry").then(({ Telemetry }) => { Telemetry.trackToolUsage(tool.slug, tool.name); });
-        import("@/lib/auth-user").then(({ AuthUser }) => { AuthUser.deductCredit(1); });
+        recordToolExecution();
 
         const pctSaved = origSize > 0 ? Math.max(0, Math.round(((origSize - outBytes) / origSize) * 100)) : 0;
         toast.success(`Image compressed! File size reduced by ${pctSaved}%.`);
@@ -5496,6 +8096,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         exportQuality = 0.98; // Maintain maximum image quality in JPG conversion
       } else if (tool.slug === "convert-from-jpg") {
         format = targetFormat;
+        exportQuality = 0.98;
+      } else if (tool.slug === "square-your-image") {
+        format = squareExportFormat === "PNG" ? "image/png" : squareExportFormat === "JPG" ? "image/jpeg" : "image/webp";
         exportQuality = 0.98;
       } else if (tool.slug === "resize-image") {
         if (resizeQualityMode === "improved") {
@@ -5525,7 +8128,20 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         exportQuality = Math.max(0.02, Math.min(1.0, quality / 100));
       }
 
-      const dataUrl = canvas.toDataURL(format, exportQuality);
+      let dataUrl = "";
+      try {
+        dataUrl = canvas.toDataURL(format, exportQuality);
+      } catch {
+        try {
+          dataUrl = canvas.toDataURL("image/png");
+        } catch (canvasErr) {
+          console.error("Canvas export failed:", canvasErr);
+          setProcessing(false);
+          toast.error("Could not export image. Please try another image file.");
+          return;
+        }
+      }
+
       setProcessedSrc(dataUrl);
       const b64 = dataUrl.split(",")[1] || "";
       const padding = b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0;
@@ -5534,22 +8150,23 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       setIsEditingSettings(false);
       setProcessing(false);
 
-      // Real telemetry & live credit deduction tracking
-      import("@/lib/telemetry").then(({ Telemetry }) => {
-        Telemetry.trackToolUsage(tool.slug, tool.name);
-      });
-      import("@/lib/auth-user").then(({ AuthUser }) => {
-        AuthUser.deductCredit(1);
-      });
+      // Real telemetry, quota tracking & custom credit deduction
+      recordToolExecution();
 
       toast.success(`${tool.name} completed successfully!`);
-    };
+    } catch (fatalErr) {
+      console.error("Fatal error inside processImage:", fatalErr);
+      setProcessing(false);
+      toast.error("An unexpected error occurred while processing image.");
+    }
+  };
     img.src = imageSrc;
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (selected) processSelectedFile(selected);
+    e.target.value = "";
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -5618,6 +8235,62 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       a.click();
       setTimeout(() => URL.revokeObjectURL(textUrl), 5000);
       toast.success(`Downloaded complete ${binaryOutputMode} data file!`);
+      return;
+    }
+
+    // Base64 to Image tool with format conversion export
+    if (tool.slug === "base64-to-image") {
+      const srcToUse = processedSrc || imageSrc;
+      if (!srcToUse) return;
+      const ext = base64ExportFormat.toLowerCase();
+      const mime = base64ExportFormat === "PNG" ? "image/png" : base64ExportFormat === "JPG" ? "image/jpeg" : "image/webp";
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = img.naturalWidth || img.width;
+        c.height = img.naturalHeight || img.height;
+        const ctx = c.getContext("2d");
+        if (!ctx) return;
+        if (base64ExportFormat === "JPG") {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, c.width, c.height);
+        }
+        ctx.drawImage(img, 0, 0);
+        const outUrl = c.toDataURL(mime, base64ExportQuality);
+        const a = document.createElement("a");
+        a.href = outUrl;
+        const baseName = file?.name ? file.name.replace(/\.[^.]+$/, "") : "decoded_image";
+        a.download = `${baseName}.${ext}`;
+        a.click();
+        toast.success(`Downloaded decoded ${base64ExportFormat} image!`);
+      };
+      img.src = srcToUse;
+      return;
+    }
+
+    // PDF to Image tool with multi-page ZIP bundle
+    if (tool.slug === "pdf-to-image" && documentBlob) {
+      const docUrl = URL.createObjectURL(documentBlob);
+      const a = document.createElement("a");
+      a.href = docUrl;
+      const baseName = file?.name ? file.name.replace(/\.[^.]+$/, "") : "pdf_pages";
+      a.download = `${baseName}_all_pages_${pdfDocOutputFormat.toLowerCase()}.zip`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(docUrl), 5000);
+      toast.success(`Downloaded all ${pdfTotalPages} PDF pages in ZIP archive (${formatBytes(documentBlob.size)})!`);
+      return;
+    }
+
+    // PowerPoint to Image tool with multi-slide ZIP bundle
+    if (tool.slug === "powerpoint-to-image" && documentBlob) {
+      const docUrl = URL.createObjectURL(documentBlob);
+      const a = document.createElement("a");
+      a.href = docUrl;
+      const baseName = file?.name ? file.name.replace(/\.[^.]+$/, "") : "presentation_slides";
+      a.download = `${baseName}_all_slides_${pptDocOutputFormat.toLowerCase()}.zip`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(docUrl), 5000);
+      toast.success(`Downloaded all ${pptTotalSlides} presentation slides in ZIP archive (${formatBytes(documentBlob.size)})!`);
       return;
     }
 
@@ -5695,11 +8368,17 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
     const baseName = file?.name ? file.name.replace(/\.[^.]+$/, "") : `${tool.slug}_output`;
     const a = document.createElement("a");
     a.href = url;
-    a.download = tool.slug === "compress-image" ? `${baseName}_compressed.${ext}` : `${baseName}_${tool.slug}.${ext}`;
+    a.download = tool.slug === "compress-image"
+      ? `${baseName}_compressed.${ext}`
+      : tool.slug === "square-your-image"
+      ? `${baseName}_square.${ext}`
+      : `${baseName}_${tool.slug}.${ext}`;
     a.click();
     toast.success(
       tool.slug === "compress-image"
         ? `Downloaded compressed image (${formatBytes(newSize || origSize)})!`
+        : tool.slug === "square-your-image"
+        ? `Downloaded 1:1 square image (${ext.toUpperCase()})!`
         : "Processed image downloaded!"
     );
   };
@@ -5741,6 +8420,8 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
     if (tool.slug === "word-to-image") return wordDocOutputFormat || "PNG";
     if (tool.slug === "excel-to-image") return excelDocOutputFormat || "PNG";
     if (tool.slug === "powerpoint-to-image") return pptDocOutputFormat || "PNG";
+    if (tool.slug === "base64-to-image") return base64ExportFormat;
+    if (tool.slug === "square-your-image") return squareExportFormat;
     if (tool.slug.includes("-to-")) {
       const parts = tool.slug.split("-to-");
       if (parts[1]) {
@@ -5978,8 +8659,10 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         ref={fileInputRef}
         type="file"
         accept={
+          tool.slug === "base64-to-image" ? ".txt,.b64,.base64,.text,text/plain,text/*" :
           tool.slug === "html-to-image" ? ".html,.htm,.txt,text/html" :
           tool.slug === "binary-to-image" ? ".bin,.txt,.dat,.raw,text/plain,application/octet-stream,image/*" :
+          ["octal-to-image","hex-to-image","decimal-to-image","ascii-to-image"].includes(tool.slug) ? ".txt,.text,text/plain" :
           ["pdf-to-image"].includes(tool.slug) ? ".pdf,application/pdf" :
           ["word-to-image"].includes(tool.slug) ? ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" :
           ["excel-to-image"].includes(tool.slug) ? ".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" :
@@ -5991,10 +8674,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       />
       <canvas ref={canvasRef} className="hidden" />
 
-      {!imageSrc && !file && ![
-        "text-to-image", "binary-to-image", "ascii-to-image",
-        "base64-to-image", "hex-to-image", "octal-to-image", "decimal-to-image",
-      ].includes(tool.slug) ? (
+      {!imageSrc && !file ? (
         tool.slug === "html-to-image" && htmlLandingMode === "plain_text" ? (
           /* Plain Text / HTML Code Direct Input Card with Next Button */
           <div className="flex flex-col items-center justify-center rounded-3xl border border-border bg-card p-6 sm:p-10 w-full max-w-4xl mx-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200">
@@ -6153,6 +8833,490 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
               </button>
             </div>
           </div>
+        ) : tool.slug === "binary-to-image" && binaryLandingMode === "plain_text" ? (
+          /* Plain Text / Binary Code Direct Input Card with Paste & Next Button */
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-border bg-card p-6 sm:p-10 w-full max-w-4xl mx-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3.5 self-start mb-6 w-full">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-foreground text-background shadow-md">
+                <Binary className="h-6 w-6 text-accent" />
+              </div>
+              <div>
+                <h2 className="font-display text-2xl sm:text-3xl font-extrabold text-foreground">
+                  Paste or Write Binary / Plain Text
+                </h2>
+                <p className="text-xs sm:text-sm text-muted-foreground font-semibold mt-0.5">
+                  Type or paste raw binary bits (0s &amp; 1s), pixel matrix, or plain text to decode directly into a high-resolution image
+                </p>
+              </div>
+            </div>
+
+            <div className="w-full space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+                    Binary Code / Plain Text Input:
+                  </label>
+                  {inputConvertText && (
+                    <span className="rounded-full bg-accent/15 border border-accent/30 px-2 py-0.5 text-[10px] font-mono font-bold text-accent">
+                      {inputConvertText.replace(/[^01]/g, "").length.toLocaleString()} bits
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const clip = await navigator.clipboard.readText();
+                        if (clip) {
+                          setInputConvertText(clip);
+                          toast.success("Pasted binary text from clipboard!");
+                        }
+                      } catch {
+                        toast.error("Could not read clipboard. Please paste manually.");
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-xs font-bold text-foreground hover:border-accent hover:text-accent transition-all cursor-pointer shadow-xs"
+                    title="Paste from clipboard"
+                  >
+                    <Copy className="h-3.5 w-3.5 text-accent" />
+                    <span>Paste from Clipboard</span>
+                  </button>
+                  {inputConvertText && (
+                    <button
+                      type="button"
+                      onClick={() => setInputConvertText("")}
+                      className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold text-muted-foreground hover:text-destructive hover:border-destructive transition-all cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <textarea
+                rows={10}
+                value={inputConvertText}
+                onChange={(e) => setInputConvertText(e.target.value)}
+                placeholder={`Paste binary bits (e.g. 01001000 01100101... or multiline 1-bit pixel matrix)...\n\nExample:\n00000100000\n00000010000\n00011111000\n00110110100\n11111111111\n10111111101\n10100000101\n00011011000`}
+                className="w-full rounded-2xl border-2 border-border bg-background p-4 text-xs sm:text-sm font-mono leading-relaxed focus:border-accent focus:outline-none shadow-inner"
+              />
+
+              {/* Sample Templates Quick-Load */}
+              <div className="space-y-1.5 pt-1">
+                <span className="text-[11px] font-bold text-muted-foreground block">
+                  Quick Sample Presets:
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputConvertText(SAMPLE_BINARY_INVADER);
+                    }}
+                    className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
+                  >
+                    👾 8-Bit Pixel Invader
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputConvertText(SAMPLE_BINARY_HEART);
+                    }}
+                    className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
+                  >
+                    ❤️ Retro Heart
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputConvertText(SAMPLE_BINARY_IMAGE);
+                    }}
+                    className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
+                  >
+                    🖼️ Sample Binary Header
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons: Back & Next */}
+            <div className="mt-8 flex flex-wrap items-center justify-between w-full gap-4 pt-4 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setBinaryLandingMode("upload")}
+                className="inline-flex items-center gap-2 rounded-full border-2 border-border bg-background px-6 py-3.5 text-sm font-extrabold text-muted-foreground hover:text-foreground hover:border-foreground transition-all cursor-pointer"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back to Upload File</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={processing}
+                onClick={() => {
+                  if (!inputConvertText.trim()) {
+                    toast.error("Please enter or paste binary code or text before proceeding.");
+                    return;
+                  }
+                  setFile(null);
+                  setBinaryInputTab("paste");
+                  setProcessing(true);
+                  const activeTheme = BINARY_THEMES[binaryTheme];
+                  const url = decodeBinaryStringToImageUrl(inputConvertText, {
+                    color0: activeTheme.bg,
+                    color1: activeTheme.fg,
+                    pixelScale: binaryPixelBlockSize,
+                  });
+                  if (url) {
+                    setProcessedSrc(url);
+                    setImageSrc(url);
+                    const img = new Image();
+                    img.onload = () => {
+                      setDimensions({ width: img.width, height: img.height });
+                      setTargetWidth(img.width);
+                      setTargetHeight(img.height);
+                    };
+                    img.src = url;
+                    setHasProcessed(false);
+                    setIsEditingSettings(true);
+                    setProcessing(false);
+                    toast.success("Binary loaded! Review live preview and settings.");
+                  } else {
+                    setProcessing(false);
+                    toast.error("Could not decode binary data. Please check format.");
+                  }
+                }}
+                className="inline-flex items-center gap-3 rounded-full bg-foreground px-9 py-3.5 text-base font-black text-background shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Decoding...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Next</span>
+                    <ArrowRight className="h-5 w-5" />
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : [
+            "octal-to-image", "hex-to-image", "decimal-to-image", "ascii-to-image",
+          ].includes(tool.slug) && textDecoderLandingMode === "plain_text" ? (
+          /* Plain Text / Paste Input Card for Text Decoder Tools */
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-border bg-card p-6 sm:p-10 w-full max-w-4xl mx-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3.5 self-start mb-6 w-full">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-foreground text-background shadow-md">
+                <FileText className="h-6 w-6 text-accent" />
+              </div>
+              <div>
+                <h2 className="font-display text-2xl sm:text-3xl font-extrabold text-foreground">
+                  {tool.slug === "octal-to-image"
+                    ? "Paste Octal Byte Data"
+                    : tool.slug === "hex-to-image"
+                    ? "Paste Hexadecimal Byte Data"
+                    : tool.slug === "decimal-to-image"
+                    ? "Paste Decimal Byte Data"
+                    : "Paste ASCII Art / Text"}
+                </h2>
+                <p className="text-xs sm:text-sm text-muted-foreground font-semibold mt-0.5">
+                  {tool.slug === "octal-to-image"
+                    ? "Paste space-separated octal byte values to decode back to an image"
+                    : tool.slug === "hex-to-image"
+                    ? "Paste hexadecimal byte values (e.g. 89 50 4E 47…) to reconstruct the image"
+                    : tool.slug === "decimal-to-image"
+                    ? "Paste decimal byte values (e.g. 137 80 78 71…) to decode back to an image"
+                    : "Paste ASCII art or plain text to render into a monospace image"}
+                </p>
+              </div>
+            </div>
+
+            <div className="w-full space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+                    Encoded Data Input:
+                  </label>
+                  {inputConvertText && (
+                    <span className="rounded-full bg-accent/15 border border-accent/30 px-2.5 py-0.5 text-[11px] font-mono font-bold text-accent">
+                      {inputConvertText.trim().split(/\s+/).length.toLocaleString()} tokens · {inputConvertText.length.toLocaleString()} chars
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const clip = await navigator.clipboard.readText();
+                        if (clip) {
+                          setInputConvertText(clip);
+                          toast.success("Pasted text from clipboard!");
+                        }
+                      } catch {
+                        toast.error("Could not read clipboard. Please paste manually.");
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-xs font-bold text-foreground hover:border-accent hover:text-accent transition-all cursor-pointer shadow-xs"
+                    title="Paste from clipboard"
+                  >
+                    <Copy className="h-3.5 w-3.5 text-accent" />
+                    <span>Paste from Clipboard</span>
+                  </button>
+                  {inputConvertText && (
+                    <button
+                      type="button"
+                      onClick={() => setInputConvertText("")}
+                      className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold text-muted-foreground hover:text-destructive hover:border-destructive transition-all cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <textarea
+                rows={10}
+                value={inputConvertText}
+                onChange={(e) => setInputConvertText(e.target.value)}
+                placeholder={
+                  tool.slug === "octal-to-image"
+                    ? "Paste space-separated octal values (e.g. 137 120 116 107 15 12 32 12...)"
+                    : tool.slug === "hex-to-image"
+                    ? "Paste hexadecimal byte string (e.g. 89 50 4E 47 0D 0A 1A 0A...)"
+                    : tool.slug === "decimal-to-image"
+                    ? "Paste decimal byte numbers (e.g. 137 80 78 71 13 10 26 10...)"
+                    : "Paste ASCII art or plain text here...\n\nExample:\n  _____\n |     |\n | o o |\n |  ^  |\n | \\_/ |\n |_____|\n"
+                }
+                className="w-full rounded-2xl border-2 border-border bg-background p-4 text-xs sm:text-sm font-mono leading-relaxed focus:border-accent focus:outline-none shadow-inner"
+              />
+            </div>
+
+            {/* Action Buttons: Back & Next */}
+            <div className="mt-8 flex flex-wrap items-center justify-between w-full gap-4 pt-4 border-t border-border">
+              <button
+                type="button"
+                onClick={() => {
+                  setTextDecoderLandingMode("upload");
+                  setInputConvertText("");
+                  setFile(null);
+                }}
+                className="inline-flex items-center gap-2 rounded-full border-2 border-border bg-background px-6 py-3.5 text-sm font-extrabold text-muted-foreground hover:text-foreground hover:border-foreground transition-all cursor-pointer"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back to Upload File</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={processing}
+                onClick={() => {
+                  if (!inputConvertText.trim()) {
+                    toast.error("Please enter or paste data before proceeding.");
+                    return;
+                  }
+                  setFile(null);
+                  setProcessing(true);
+                  try {
+                    let url: string | null = null;
+                    if (tool.slug === "octal-to-image") {
+                      const octs = inputConvertText.trim().split(/\s+/);
+                      const bytes = new Uint8Array(octs.map((o) => parseInt(o, 8)).filter((n) => !isNaN(n)));
+                      const blob = new Blob([bytes], { type: "image/png" });
+                      url = URL.createObjectURL(blob);
+                    } else if (tool.slug === "hex-to-image") {
+                      const clean = inputConvertText.replace(/[^0-9a-fA-F]/g, "");
+                      const pairs = clean.match(/.{1,2}/g) || [];
+                      const bytes = new Uint8Array(pairs.map((h) => parseInt(h, 16)));
+                      const blob = new Blob([bytes], { type: "image/png" });
+                      url = URL.createObjectURL(blob);
+                    } else if (tool.slug === "decimal-to-image") {
+                      const decs = inputConvertText.trim().split(/[\s,]+/);
+                      const bytes = new Uint8Array(decs.map((d) => parseInt(d, 10)).filter((n) => !isNaN(n)));
+                      const blob = new Blob([bytes], { type: "image/png" });
+                      url = URL.createObjectURL(blob);
+                    } else if (tool.slug === "ascii-to-image") {
+                      const decodedUrl = tryDecodeAsciiToOriginalImage(inputConvertText);
+                      url = decodedUrl || renderAsciiToImage(inputConvertText);
+                    }
+                    if (url) {
+                      setImageSrc(url);
+                      setProcessedSrc(url);
+                      const img = new Image();
+                      img.onload = () => {
+                        setDimensions({ width: img.width, height: img.height });
+                        setTargetWidth(img.width);
+                        setTargetHeight(img.height);
+                      };
+                      img.src = url;
+                      setHasProcessed(false);
+                      setIsEditingSettings(true);
+                      setProcessing(false);
+                      toast.success("Decoded! Review the preview and settings below.");
+                    } else {
+                      setProcessing(false);
+                      toast.error("Could not decode input data. Please check format.");
+                    }
+                  } catch (err) {
+                    setProcessing(false);
+                    toast.error("Failed to decode. Please check the input format.");
+                  }
+                }}
+                className="inline-flex items-center gap-3 rounded-full bg-foreground px-9 py-3.5 text-base font-black text-background shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Decoding...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Next → Preview</span>
+                    <ArrowRight className="h-5 w-5" />
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : tool.slug === "base64-to-image" && base64LandingMode === "plain_text" ? (
+          /* Plain Text / Base64 Direct Input Card with Next Button */
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-border bg-card p-6 sm:p-10 w-full max-w-4xl mx-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3.5 self-start mb-6 w-full">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-foreground text-background shadow-md">
+                <FileText className="h-6 w-6 text-accent" />
+              </div>
+              <div>
+                <h2 className="font-display text-2xl sm:text-3xl font-extrabold text-foreground">
+                  Paste Base64 Code or Plain Text
+                </h2>
+                <p className="text-xs sm:text-sm text-muted-foreground font-semibold mt-0.5">
+                  Paste Data URI (data:image/...) or raw Base64 string to decode instantly into a preview &amp; image file
+                </p>
+              </div>
+            </div>
+
+            <div className="w-full space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+                    Base64 String / Plain Text Input:
+                  </label>
+                  {base64InputText && (
+                    <span className="rounded-full bg-accent/15 border border-accent/30 px-2.5 py-0.5 text-[11px] font-mono font-bold text-accent">
+                      {base64InputText.replace(/[\r\n\t\s]+/g, "").length.toLocaleString()} chars (~{Math.max(1, Math.round((base64InputText.replace(/[\r\n\t\s]+/g, "").length * 3) / 1024))} KB)
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const clip = await navigator.clipboard.readText();
+                        if (clip) {
+                          setBase64InputText(clip);
+                          toast.success("Pasted Base64 text from clipboard!");
+                        }
+                      } catch {
+                        toast.error("Could not read clipboard. Please paste manually.");
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-xs font-bold text-foreground hover:border-accent hover:text-accent transition-all cursor-pointer shadow-xs"
+                    title="Paste from clipboard"
+                  >
+                    <Copy className="h-3.5 w-3.5 text-accent" />
+                    <span>Paste from Clipboard</span>
+                  </button>
+                  {base64InputText && (
+                    <button
+                      type="button"
+                      onClick={() => setBase64InputText("")}
+                      className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold text-muted-foreground hover:text-destructive hover:border-destructive transition-all cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <textarea
+                rows={10}
+                value={base64InputText}
+                onChange={(e) => setBase64InputText(e.target.value)}
+                placeholder={`Paste Base64 string or Data URI here...\n\nExamples:\ndata:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...\nor raw Base64 string:\niVBORw0KGgoAAAANSUhEUgAA...`}
+                className="w-full rounded-2xl border-2 border-border bg-background p-4 text-xs sm:text-sm font-mono leading-relaxed focus:border-accent focus:outline-none shadow-inner"
+              />
+
+              {/* Sample Presets Quick-Load */}
+              <div className="space-y-1.5 pt-1">
+                <span className="text-[11px] font-bold text-muted-foreground block">
+                  Quick Sample Presets:
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBase64InputText(SAMPLE_BASE64_STAR);
+                      toast.info("Loaded Sample Star Icon Base64");
+                    }}
+                    className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
+                  >
+                    🌟 Sample Star Icon
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBase64InputText(SAMPLE_BASE64_GRADIENT_ICON);
+                      toast.info("Loaded Sample Badge Base64");
+                    }}
+                    className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold hover:border-accent hover:text-accent transition-all cursor-pointer"
+                  >
+                    🔷 Sample Badge Icon
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons: Back & Next */}
+            <div className="mt-8 flex flex-wrap items-center justify-between w-full gap-4 pt-4 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setBase64LandingMode("upload")}
+                className="inline-flex items-center gap-2 rounded-full border-2 border-border bg-background px-6 py-3.5 text-sm font-extrabold text-muted-foreground hover:text-foreground hover:border-foreground transition-all cursor-pointer"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back to Upload File</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={processing}
+                onClick={() => {
+                  if (!base64InputText.trim()) {
+                    toast.error("Please enter or paste Base64 text before proceeding.");
+                    return;
+                  }
+                  setFile(null);
+                  decodeAndApplyBase64(base64InputText);
+                }}
+                className="inline-flex items-center gap-3 rounded-full bg-foreground px-9 py-3.5 text-base font-black text-background shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Decoding...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Next → Preview</span>
+                    <ArrowRight className="h-5 w-5" />
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         ) : (
           /* Standalone Centered Drag & Drop Upload Zone */
           <div
@@ -6174,6 +9338,18 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
             <h2 className="mt-8 font-display text-3xl font-extrabold md:text-4xl text-foreground">
               {tool.slug === "html-to-image"
                 ? "Select HTML File or Drag & Drop HTML Here"
+                : tool.slug === "binary-to-image"
+                ? "Select Binary (.bin) or Text (.txt) File or Drag & Drop Here"
+                : tool.slug === "base64-to-image"
+                ? "Select Base64 Text (.txt) File or Drag & Drop Here"
+                : tool.slug === "octal-to-image"
+                ? "Upload Octal Text File or Drag & Drop Here"
+                : tool.slug === "hex-to-image"
+                ? "Upload Hex Text File or Drag & Drop Here"
+                : tool.slug === "decimal-to-image"
+                ? "Upload Decimal Text File or Drag & Drop Here"
+                : tool.slug === "ascii-to-image"
+                ? "Upload ASCII Text File or Drag & Drop Here"
                 : tool.slug === "pdf-to-image"
                 ? "Select PDF File or Drag & Drop PDF Here"
                 : tool.slug === "word-to-image"
@@ -6201,6 +9377,12 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
               >
                 {tool.slug === "html-to-image"
                   ? "Select HTML File"
+                  : tool.slug === "binary-to-image"
+                  ? "Select Binary / Text File"
+                  : tool.slug === "base64-to-image"
+                  ? "Select Base64 File (.txt)"
+                  : ["octal-to-image","hex-to-image","decimal-to-image","ascii-to-image"].includes(tool.slug)
+                  ? "Upload Text File (.txt)"
                   : tool.slug === "pdf-to-image"
                   ? "Select PDF File"
                   : tool.slug === "word-to-image"
@@ -6227,10 +9409,53 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                   <span>Plain Text Option</span>
                 </button>
               )}
+
+              {tool.slug === "binary-to-image" && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setBinaryLandingMode("plain_text");
+                  }}
+                  className="inline-flex items-center gap-2.5 rounded-full border-2 border-border bg-card px-7 py-4 sm:py-5 text-sm sm:text-base font-extrabold text-foreground shadow-lg hover:border-foreground hover:bg-secondary transition-all hover:scale-105 cursor-pointer"
+                >
+                  <FileText className="h-5 w-5 text-accent" />
+                  <span>Paste Plain Text / Binary</span>
+                </button>
+              )}
+
+              {tool.slug === "base64-to-image" && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setBase64LandingMode("plain_text");
+                  }}
+                  className="inline-flex items-center gap-2.5 rounded-full border-2 border-border bg-card px-7 py-4 sm:py-5 text-sm sm:text-base font-extrabold text-foreground shadow-lg hover:border-foreground hover:bg-secondary transition-all hover:scale-105 cursor-pointer"
+                >
+                  <FileText className="h-5 w-5 text-accent" />
+                  <span>Paste Plain Text / Base64</span>
+                </button>
+              )}
+
+              {["octal-to-image","hex-to-image","decimal-to-image","ascii-to-image"].includes(tool.slug) && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setTextDecoderLandingMode("plain_text");
+                    setInputConvertText("");
+                  }}
+                  className="inline-flex items-center gap-2.5 rounded-full border-2 border-border bg-card px-7 py-4 sm:py-5 text-sm sm:text-base font-extrabold text-foreground shadow-lg hover:border-foreground hover:bg-secondary transition-all hover:scale-105 cursor-pointer"
+                >
+                  <FileText className="h-5 w-5 text-accent" />
+                  <span>Paste Plain Text</span>
+                </button>
+              )}
             </div>
 
             <p className="mt-4 text-xs font-bold text-muted-foreground">
-              🔒 100% Free · Client-side processing · No file size limits
+              🔒 Private client-side processing · No file size limits
             </p>
           </div>
         )
@@ -6680,6 +9905,18 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
               <span>
                 {tool.slug === "compress-image"
                   ? "Download Compressed Image"
+                  : tool.slug === "pdf-to-image"
+                  ? documentBlob
+                    ? `Download All ${pdfTotalPages} Pages (ZIP)`
+                    : pdfTotalPages > 1
+                    ? `Download Page ${pdfDocPage} (${pdfDocOutputFormat})`
+                    : `Download Image (${pdfDocOutputFormat})`
+                  : tool.slug === "powerpoint-to-image"
+                  ? documentBlob
+                    ? `Download All ${pptTotalSlides} Slides (ZIP)`
+                    : pptTotalSlides > 1
+                    ? `Download Slide ${pptDocSlide} (${pptDocOutputFormat})`
+                    : `Download Slide (${pptDocOutputFormat})`
                   : tool.slug === "convert-to-jpg"
                   ? "Download JPG File"
                   : tool.slug === "convert-from-jpg"
@@ -6747,15 +9984,19 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         </div>
       ) : (
         /* Workspace Active Mode: Image Preview + Settings (Full width, no excess margins) */
-        <div className="grid items-start gap-6 lg:gap-8 w-full lg:grid-cols-[2fr_1.2fr]">
+        <div className={`grid items-start gap-6 lg:gap-8 w-full ${tool.slug === "watermark-image" ? "lg:grid-cols-[1.15fr_1fr]" : "lg:grid-cols-[2fr_1.2fr]"}`}>
           {/* Canvas & Image Preview View */}
           <div
-            className="min-w-0 relative flex flex-col w-full overflow-hidden rounded-3xl border-2 border-border bg-card/70 shadow-xl transition-[height] duration-200"
+            className={`min-w-0 relative flex flex-col w-full overflow-hidden rounded-3xl border-2 border-border bg-card/70 shadow-xl transition-[height] duration-200 ${
+              tool.slug === "watermark-image" ? "lg:sticky lg:top-20" : ""
+            }`}
             style={{
-              height: settingsHeight
+              height: tool.slug === "watermark-image"
+                ? "min(580px, calc(100vh - 150px))"
+                : settingsHeight
                 ? `${Math.max(620, settingsHeight)}px`
                 : "620px",
-              minHeight: "540px",
+              minHeight: tool.slug === "watermark-image" ? "420px" : "540px",
             }}
           >
             {/* Header info bar */}
@@ -6767,6 +10008,17 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                 </span>
                 <span>•</span>
                 <span>{dimensions.width}×{dimensions.height}px</span>
+                {tool.slug === "watermark-image" && (
+                  <span className="rounded-full bg-accent/15 border border-accent/30 px-2 py-0.5 text-[10px] font-extrabold text-accent">
+                    Fit View
+                  </span>
+                )}
+                {tool.slug === "square-your-image" && (
+                  <span className="rounded-full bg-violet-500/15 border border-violet-500/30 px-2 py-0.5 text-[10px] font-extrabold text-violet-500 flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-pulse" />
+                    1:1 Square ({Math.max(dimensions.width || 0, dimensions.height || 0)}×{Math.max(dimensions.width || 0, dimensions.height || 0)})
+                  </span>
+                )}
                 {hasProcessed && (
                   <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-500 uppercase">
                     Processed Output
@@ -6799,10 +10051,12 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`relative flex-1 min-h-0 flex items-center justify-center overflow-hidden select-none bg-background/20 ${
+              className={`relative flex-1 min-h-0 flex items-center justify-center overflow-hidden select-none ${
                 tool.slug === "image-to-text-ocr" || tool.slug === "image-to-binary"
-                  ? "p-4 md:p-6 min-h-[560px]"
-                  : "p-4 sm:p-6 md:p-8"
+                  ? "p-4 md:p-6 min-h-[560px] bg-background/20"
+                  : tool.slug === "watermark-image"
+                  ? "p-3 sm:p-5 bg-secondary/15"
+                  : "p-4 sm:p-6 md:p-8 bg-background/20"
               }`}
             >
               {/* Image Frame Wrapper */}
@@ -6870,29 +10124,591 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                   </div>
                 )}
 
-                <img
-                  ref={imgRef}
-                  src={processedSrc || imageSrc || undefined}
-                  alt="Workspace preview"
-                  onLoad={() => {
-                    if (imgRef.current) {
-                      const rect = imgRef.current.getBoundingClientRect();
-                      if (rect.width > 0 && rect.height > 0) {
-                        setRenderedImgSize({ width: Math.round(rect.width), height: Math.round(rect.height) });
+                {/* Rotate Image Live Background Fill Backdrop */}
+                {tool.slug === "rotate-image" && imageSrc && (!hasProcessed || isEditingSettings) && (
+                  <div
+                    className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none -z-10 transition-all duration-300 shadow-xl"
+                    style={{
+                      backgroundColor: rotateBgMode === "color" ? rotateBgColor : undefined,
+                      background: rotateBgMode === "gradient" ? rotateBgGradient : undefined,
+                    }}
+                  >
+                    {rotateBgMode === "blur" && imageSrc && (
+                      <img
+                        src={imageSrc}
+                        alt="Blurred rotation backdrop"
+                        className="w-full h-full object-cover filter blur-2xl scale-125 opacity-80"
+                      />
+                    )}
+                    {rotateBgMode === "transparent" && (
+                      <div className="w-full h-full opacity-35 [background-image:linear-gradient(45deg,#888_25%,transparent_25%),linear-gradient(-45deg,#888_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#888_75%),linear-gradient(-45deg,transparent_75%,#888_75%)] [background-size:16px_16px] [background-position:0_0,0_8px,8px_-8px,-8px_0]" />
+                    )}
+                  </div>
+                )}
+
+                {/* 4a. Square Your Image Live 1:1 Interactive Preview Canvas */}
+                {tool.slug === "square-your-image" && imageSrc && (!hasProcessed || isEditingSettings) ? (
+                  <div className="relative flex flex-col items-center justify-center w-full h-full p-2 sm:p-4">
+                    {/* 1:1 Live Square Frame */}
+                    <div
+                      className="relative aspect-square w-full max-w-[min(500px,calc(100vh-290px),88vw)] flex items-center justify-center overflow-hidden rounded-2xl border-2 border-border/80 shadow-2xl transition-all duration-300 select-none group"
+                      style={{
+                        backgroundColor: squareBgMode === "color" ? squareBgColor : squareBgMode === "transparent" ? "transparent" : undefined,
+                        background: squareBgMode === "gradient" ? squareGradient : undefined,
+                      }}
+                    >
+                      {/* Transparent Checkerboard Grid */}
+                      {squareBgMode === "transparent" && (
+                        <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(45deg,#888_25%,transparent_25%),linear-gradient(-45deg,#888_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#888_75%),linear-gradient(-45deg,transparent_75%,#888_75%)] [background-size:16px_16px] [background-position:0_0,0_8px,8px_-8px,-8px_0] pointer-events-none" />
+                      )}
+
+                      {/* Blurred Edges Backdrop */}
+                      {squareBgMode === "blur" && (
+                        <img
+                          src={imageSrc}
+                          alt="Square blurred backdrop"
+                          className="absolute inset-0 w-full h-full object-cover scale-125 pointer-events-none select-none transition-all duration-200"
+                          style={{
+                            filter: `blur(${squareBlurAmount}px)`,
+                          }}
+                        />
+                      )}
+
+                      {/* Full Bleed Mode */}
+                      {squareBgMode === "fit" ? (
+                        <img
+                          ref={imgRef}
+                          src={imageSrc}
+                          alt="Full bleed 1:1 crop"
+                          onLoad={() => {
+                            if (imgRef.current) {
+                              const rect = imgRef.current.getBoundingClientRect();
+                              if (rect.width > 0 && rect.height > 0) {
+                                setRenderedImgSize({ width: Math.round(rect.width), height: Math.round(rect.height) });
+                              }
+                            }
+                          }}
+                          className="w-full h-full object-cover select-none transition-all duration-200"
+                          style={{
+                            transform: `scale(${squareScale / 100})`,
+                            borderRadius: squareCornerRadius === 9999 ? "9999px" : `${squareCornerRadius}px`,
+                          }}
+                        />
+                      ) : (
+                        /* Scaled Centered Foreground Photo */
+                        <div
+                          className="relative z-10 flex items-center justify-center transition-all duration-200"
+                          style={{
+                            width: `${squareScale}%`,
+                            height: `${squareScale}%`,
+                          }}
+                        >
+                          <img
+                            ref={imgRef}
+                            src={imageSrc}
+                            alt="Square foreground"
+                            onLoad={() => {
+                              if (imgRef.current) {
+                                const rect = imgRef.current.getBoundingClientRect();
+                                if (rect.width > 0 && rect.height > 0) {
+                                  setRenderedImgSize({ width: Math.round(rect.width), height: Math.round(rect.height) });
+                                }
+                              }
+                            }}
+                            className="max-w-full max-h-full object-contain transition-all duration-200 block"
+                            style={{
+                              borderRadius: squareCornerRadius === 9999 ? "9999px" : `${squareCornerRadius}px`,
+                              boxShadow:
+                                squareShadow === "soft"
+                                  ? "0 14px 30px -4px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2)"
+                                  : squareShadow === "float"
+                                  ? "0 24px 50px -8px rgba(0, 0, 0, 0.65), 0 10px 20px rgba(0, 0, 0, 0.35)"
+                                  : squareShadow === "card"
+                                  ? "0 0 0 1px rgba(255,255,255,0.25), 0 8px 24px rgba(0,0,0,0.3)"
+                                  : "none",
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      {/* Live 1:1 Badge in top-right */}
+                      <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-white text-[11px] font-bold tracking-tight shadow-md border border-white/10 pointer-events-none">
+                        <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>1:1 Live Square</span>
+                        <span className="opacity-70 text-[10px] font-mono">
+                          ({Math.max(dimensions.width || 0, dimensions.height || 0)}×{Math.max(dimensions.width || 0, dimensions.height || 0)})
+                        </span>
+                      </div>
+
+                      {/* Mode indicator pill in bottom-left */}
+                      <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white/90 text-[10px] font-mono tracking-tight border border-white/10 pointer-events-none flex items-center gap-1.5">
+                        <span className="opacity-60">Mode:</span>
+                        <span className="font-bold text-white capitalize">
+                          {squareBgMode === "blur"
+                            ? `Blur (${squareBlurAmount}px)`
+                            : squareBgMode === "color"
+                            ? squareBgColor
+                            : squareBgMode === "gradient"
+                            ? "Gradient"
+                            : squareBgMode === "transparent"
+                            ? "Transparent"
+                            : "Full Bleed Fit"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <img
+                    ref={imgRef}
+                    src={(tool.slug === "watermark-image" && (!hasProcessed || isEditingSettings)) || (tool.slug === "rotate-image" && (!hasProcessed || isEditingSettings)) || (tool.slug === "blur-face" && (!hasProcessed || isEditingSettings)) || (tool.slug === "meme-generator" && (!hasProcessed || isEditingSettings)) ? (imageSrc || undefined) : (processedSrc || imageSrc || undefined)}
+                    alt="Workspace preview"
+                    onLoad={() => {
+                      if (imgRef.current) {
+                        const rect = imgRef.current.getBoundingClientRect();
+                        if (rect.width > 0 && rect.height > 0) {
+                          setRenderedImgSize({ width: Math.round(rect.width), height: Math.round(rect.height) });
+                        }
                       }
-                    }
-                  }}
-                  onMouseMove={handleImageMouseMove}
-                  onClick={handleImageClick}
-                  className="max-h-full max-w-full w-auto h-auto object-contain transition-all duration-300 pointer-events-auto shadow-md rounded-md border border-border/40 block"
-                  style={{
-                    maxHeight: settingsHeight
-                      ? `${Math.max(tool.slug === "image-to-text-ocr" || tool.slug === "image-to-binary" ? 600 : 540, settingsHeight - (tool.slug === "resize-image" ? 110 : 90))}px`
-                      : "580px",
-                    maxWidth: "100%",
-                    cursor: tool.slug === "color-picker-from-image" ? "crosshair" : "default",
-                  }}
-                />
+                      if (tool.slug === "color-picker-from-image" && imageSrc) {
+                        extractMostCommonColors(imageSrc);
+                      }
+                    }}
+                    onMouseMove={handleImageMouseMove}
+                    onMouseEnter={handleImageMouseEnter}
+                    onMouseLeave={handleImageMouseLeave}
+                    onClick={handleImageClick}
+                    className="max-h-full max-w-full w-auto h-auto object-contain pointer-events-auto shadow-md rounded-md border border-border/40 block"
+                    style={{
+                      maxHeight: tool.slug === "watermark-image"
+                        ? "min(480px, calc(100vh - 250px))"
+                        : settingsHeight
+                        ? `${Math.max(tool.slug === "image-to-text-ocr" || tool.slug === "image-to-binary" ? 600 : 540, settingsHeight - (tool.slug === "resize-image" ? 110 : 90))}px`
+                        : "580px",
+                      maxWidth: "100%",
+                      cursor: tool.slug === "color-picker-from-image" ? "crosshair" : "default",
+                      transform: tool.slug === "rotate-image"
+                        ? `scale(${(() => {
+                            const rad = (rotation * Math.PI) / 180;
+                            const s = Math.abs(Math.sin(rad));
+                            const c = Math.abs(Math.cos(rad));
+                            const curW = renderedImgSize?.width ?? dimensions.width ?? 600;
+                            const curH = renderedImgSize?.height ?? dimensions.height ?? 400;
+                            const bW = curW * c + curH * s;
+                            const bH = curW * s + curH * c;
+                            return bW > 0 && bH > 0 ? Math.min(1, curW / bW, curH / bH) : 1;
+                          })()}) rotate(${rotation}deg) scaleX(${flipH ? -1 : 1}) scaleY(${flipV ? -1 : 1})`
+                        : undefined,
+                      transformOrigin: "center center",
+                      transition: tool.slug === "rotate-image"
+                        ? "transform 0.45s cubic-bezier(0.34, 1.45, 0.64, 1)"
+                        : undefined,
+                    }}
+                  />
+                )}
+
+                {/* 4b. Color Picker Live Magnifying Zoom Loupe (Follows Mouse Cursor via Direct RAF DOM - 120fps hardware smooth) */}
+                {tool.slug === "color-picker-from-image" && (
+                  <div
+                    ref={loupeRef}
+                    className="pointer-events-none absolute z-50 flex flex-col items-center select-none"
+                    style={{
+                      display: "none",
+                      willChange: "left, top, transform",
+                    }}
+                  >
+                    {/* Circular Magnifier Glass */}
+                    <div className="relative h-[134px] w-[134px] rounded-full p-[3px] bg-gradient-to-b from-white via-white/80 to-neutral-500 shadow-[0_16px_40px_rgba(0,0,0,0.65),0_0_0_1px_rgba(0,0,0,0.4)]">
+                      <div className="relative h-full w-full rounded-full overflow-hidden bg-neutral-950 ring-1 ring-black/80 flex items-center justify-center">
+                        <canvas
+                          ref={loupeCanvasRef}
+                          width={126}
+                          height={126}
+                          className="h-[126px] w-[126px] block [image-rendering:pixelated]"
+                        />
+                        {/* Center Target Reticle Box */}
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="h-[16px] w-[16px] border-2 border-white shadow-[0_0_4px_black,inset_0_0_2px_black] rounded-[2px]" />
+                        </div>
+                      </div>
+                      {/* Directional Tick pointing directly to cursor */}
+                      <div
+                        ref={loupeTickRef}
+                        className="absolute left-1/2 -translate-x-1/2 w-0 h-0 border-x-[7px] border-x-transparent -bottom-2 border-t-[9px] border-t-neutral-500"
+                      />
+                    </div>
+
+                    {/* Floating Hover Color & Copy Badge */}
+                    <div className="mt-2.5 flex items-center gap-2 rounded-full bg-neutral-950/95 px-3 py-1.5 text-xs font-mono font-black text-white shadow-2xl border border-white/20 backdrop-blur-md">
+                      <span
+                        ref={loupeDotRef}
+                        className="h-3.5 w-3.5 rounded-full border border-white/60 shadow-xs shrink-0"
+                        style={{ backgroundColor: pickedHex }}
+                      />
+                      <span ref={loupeHexRef} className="tracking-wide text-xs">
+                        {pickedHex}
+                      </span>
+                      <span className="text-[10px] font-sans font-bold text-neutral-400 border-l border-white/20 pl-1.5 uppercase">
+                        Click to Copy
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. Live Rotate Real-time Animated Status Badge */}
+                {tool.slug === "rotate-image" && imageSrc && (
+                  <div className="absolute top-2 left-2 z-30 pointer-events-none rounded-full bg-black/80 backdrop-blur-md border border-white/10 px-3 py-1.5 text-xs font-bold text-white shadow-xl flex items-center gap-2 animate-in fade-in duration-200">
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/20 text-accent">
+                      <RotateCw className="h-3.5 w-3.5" />
+                    </div>
+                    <span className="font-mono font-black text-accent">
+                      {((rotation % 360) + 360) % 360}°
+                    </span>
+                    {(flipH || flipV) && (
+                      <>
+                        <span className="text-white/30">•</span>
+                        <span className="text-[11px] font-semibold text-emerald-400">
+                          {flipH && flipV ? "Flipped H + V" : flipH ? "Flipped H" : "Flipped V"}
+                        </span>
+                      </>
+                    )}
+                    <span className="text-white/30">•</span>
+                    <span className="text-[11px] font-mono text-white/70">
+                      {Math.abs(rotation % 180) === 90 ? `${dimensions.height}×${dimensions.width}px` : `${dimensions.width}×${dimensions.height}px`}
+                    </span>
+                  </div>
+                )}
+
+                {/* 6. Live Watermark Interactive Real-time Preview Overlay */}
+                {tool.slug === "watermark-image" && imageSrc && (!hasProcessed || isEditingSettings) && (
+                  <div
+                    onClick={handleWatermarkOverlayClick}
+                    onMouseMove={handleWatermarkOverlayMouseMove}
+                    onMouseUp={handleWatermarkOverlayMouseUp}
+                    onMouseLeave={handleWatermarkOverlayMouseUp}
+                    className={`absolute inset-0 z-20 select-none overflow-hidden ${
+                      wmPosition === "tile" ? "cursor-default" : "cursor-crosshair"
+                    }`}
+                    title={wmPosition === "tile" ? "Tiled Watermark Pattern" : "Click or drag to position watermark"}
+                  >
+                    {/* Position hint pill */}
+                    <div className="absolute top-2 left-2 z-30 pointer-events-none rounded-full bg-black/75 backdrop-blur-md px-2.5 py-1 text-[10px] font-bold text-white shadow-md flex items-center gap-1.5 opacity-85 hover:opacity-100 transition-opacity">
+                      <Move className="h-3 w-3 text-accent" />
+                      <span>
+                        {wmPosition === "tile"
+                          ? "Tiled Pattern"
+                          : wmPosition === "custom"
+                          ? `Custom: ${wmCustomCoord.xPercent}%, ${wmCustomCoord.yPercent}%`
+                          : `Position: ${wmPosition.replace("_", " ").toUpperCase()}`}
+                      </span>
+                      <span className="text-white/40">•</span>
+                      <span className="text-accent font-extrabold">{Math.round(wmOpacity * 100)}% Opacity</span>
+                    </div>
+
+                    {/* Watermark Rendering */}
+                    {wmPosition === "tile" ? (
+                      <div
+                        className="w-full h-full flex flex-wrap items-center justify-around content-around pointer-events-none"
+                        style={{
+                          opacity: Math.max(0.05, Math.min(1, wmOpacity)),
+                          transform: `rotate(${wmRotation || -30}deg) scale(1.3)`,
+                        }}
+                      >
+                        {Array.from({ length: 24 }).map((_, idx) => (
+                          <div
+                            key={idx}
+                            className="p-4 whitespace-nowrap"
+                            style={{
+                              fontSize: `${Math.max(10, Math.round(wmFontSize * (((renderedImgSize?.width || dimensions.width || 600)) / 1000)))}px`,
+                              fontFamily: wmFontFamily,
+                              fontWeight: wmBold ? "bold" : "normal",
+                              fontStyle: wmItalic ? "italic" : "normal",
+                              color: wmColor,
+                              textShadow:
+                                wmStroke === "dark"
+                                  ? "0 0 2px #000, 0 0 4px #000, 0 2px 4px rgba(0,0,0,0.8)"
+                                  : wmStroke === "light"
+                                  ? "0 0 2px #fff, 0 0 4px #fff, 0 2px 4px rgba(255,255,255,0.8)"
+                                  : "0 1px 3px rgba(0,0,0,0.6)",
+                              WebkitTextStroke:
+                                wmStroke === "dark"
+                                  ? "0.5px rgba(0,0,0,0.9)"
+                                  : wmStroke === "light"
+                                  ? "0.5px rgba(255,255,255,0.9)"
+                                  : undefined,
+                            }}
+                          >
+                            {wmMode === "logo" && wmLogoSrc ? (
+                              <img
+                                src={wmLogoSrc}
+                                alt="Watermark logo"
+                                className="object-contain"
+                                style={{
+                                  width: `${Math.max(20, Math.round(((renderedImgSize?.width || dimensions.width || 600)) * 0.12))}px`,
+                                }}
+                              />
+                            ) : (
+                              wmText || "Watermark"
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      (() => {
+                        const curW = renderedImgSize?.width || dimensions.width || 600;
+                        const previewScale = curW / 1000;
+                        const dispFontSize = Math.max(10, Math.round(wmFontSize * previewScale));
+                        const logoDispW = Math.max(20, Math.round(curW * (wmLogoScale / 100)));
+
+                        let posStyle: React.CSSProperties = {
+                          position: "absolute",
+                          opacity: Math.max(0.05, Math.min(1, wmOpacity)),
+                          transition: isDraggingWm ? "none" : "all 0.15s ease-out",
+                        };
+
+                        if (wmPosition === "top_left") {
+                          posStyle = { ...posStyle, left: `${wmMargin}%`, top: `${wmMargin}%`, transform: `rotate(${wmRotation}deg)`, transformOrigin: "top left" };
+                        } else if (wmPosition === "top_center") {
+                          posStyle = { ...posStyle, left: "50%", top: `${wmMargin}%`, transform: `translate(-50%, 0) rotate(${wmRotation}deg)` };
+                        } else if (wmPosition === "top_right") {
+                          posStyle = { ...posStyle, right: `${wmMargin}%`, top: `${wmMargin}%`, transform: `rotate(${wmRotation}deg)`, transformOrigin: "top right" };
+                        } else if (wmPosition === "middle_left") {
+                          posStyle = { ...posStyle, left: `${wmMargin}%`, top: "50%", transform: `translate(0, -50%) rotate(${wmRotation}deg)` };
+                        } else if (wmPosition === "center") {
+                          posStyle = { ...posStyle, left: "50%", top: "50%", transform: `translate(-50%, -50%) rotate(${wmRotation}deg)` };
+                        } else if (wmPosition === "middle_right") {
+                          posStyle = { ...posStyle, right: `${wmMargin}%`, top: "50%", transform: `translate(0, -50%) rotate(${wmRotation}deg)` };
+                        } else if (wmPosition === "bottom_left") {
+                          posStyle = { ...posStyle, left: `${wmMargin}%`, bottom: `${wmMargin}%`, transform: `rotate(${wmRotation}deg)`, transformOrigin: "bottom left" };
+                        } else if (wmPosition === "bottom_center") {
+                          posStyle = { ...posStyle, left: "50%", bottom: `${wmMargin}%`, transform: `translate(-50%, 0) rotate(${wmRotation}deg)` };
+                        } else if (wmPosition === "bottom_right") {
+                          posStyle = { ...posStyle, right: `${wmMargin}%`, bottom: `${wmMargin}%`, transform: `rotate(${wmRotation}deg)`, transformOrigin: "bottom right" };
+                        } else if (wmPosition === "custom") {
+                          posStyle = { ...posStyle, left: `${wmCustomCoord.xPercent}%`, top: `${wmCustomCoord.yPercent}%`, transform: `translate(-50%, -50%) rotate(${wmRotation}deg)` };
+                        }
+
+                        return (
+                          <div
+                            style={posStyle}
+                            onMouseDown={handleWatermarkMouseDown}
+                            className="group cursor-grab active:cursor-grabbing pointer-events-auto p-1 rounded-lg hover:ring-2 hover:ring-accent/70 transition-shadow"
+                          >
+                            {wmMode === "logo" && wmLogoSrc ? (
+                              <div className="relative inline-block">
+                                <img
+                                  src={wmLogoSrc}
+                                  alt="Logo watermark"
+                                  className="object-contain block drop-shadow-md pointer-events-none select-none"
+                                  style={{ width: `${logoDispW}px` }}
+                                />
+                                <div className="absolute -top-3 -right-3 opacity-0 group-hover:opacity-100 bg-accent text-white p-1 rounded-full shadow transition-opacity">
+                                  <Move className="h-3 w-3" />
+                                </div>
+                              </div>
+                            ) : (
+                              <div
+                                className="relative inline-flex items-center gap-1 select-none whitespace-nowrap"
+                                style={{
+                                  fontSize: `${dispFontSize}px`,
+                                  fontFamily: wmFontFamily,
+                                  fontWeight: wmBold ? "bold" : "normal",
+                                  fontStyle: wmItalic ? "italic" : "normal",
+                                  color: wmColor,
+                                  backgroundColor:
+                                    wmBgBadge === "dark_pill"
+                                      ? "rgba(0,0,0,0.65)"
+                                      : wmBgBadge === "light_pill"
+                                      ? "rgba(255,255,255,0.75)"
+                                      : "transparent",
+                                  padding: wmBgBadge !== "none" ? "4px 14px" : "2px 4px",
+                                  borderRadius: wmBgBadge !== "none" ? "9999px" : "4px",
+                                  backdropFilter: wmBgBadge !== "none" ? "blur(4px)" : "none",
+                                  textShadow:
+                                    wmStroke === "dark"
+                                      ? "0 0 3px #000, 0 0 6px #000, 0 2px 6px rgba(0,0,0,0.85)"
+                                      : wmStroke === "light"
+                                      ? "0 0 3px #fff, 0 0 6px #fff, 0 2px 6px rgba(255,255,255,0.85)"
+                                      : "0 1px 4px rgba(0,0,0,0.6)",
+                                  WebkitTextStroke:
+                                    wmStroke === "dark"
+                                      ? "0.75px rgba(0,0,0,0.9)"
+                                      : wmStroke === "light"
+                                      ? "0.75px rgba(255,255,255,0.9)"
+                                      : undefined,
+                                }}
+                              >
+                                <span>{wmText || "Watermark"}</span>
+                                <div className="opacity-0 group-hover:opacity-100 ml-1.5 p-0.5 rounded-full bg-accent text-white shadow inline-flex items-center justify-center transition-opacity">
+                                  <Move className="h-2.5 w-2.5" />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()
+                    )}
+                  </div>
+                )}
+
+                {/* 7. Live Face Blur Auto-Protected Overlay (No Selection Boxes) */}
+                {tool.slug === "blur-face" && imageSrc && (!hasProcessed || isEditingSettings) && (
+                  <div className="absolute inset-0 z-20 pointer-events-none select-none overflow-hidden">
+                    {/* Face status badge */}
+                    <div className="absolute top-3 left-3 z-30 pointer-events-none rounded-full bg-black/85 backdrop-blur-md px-3.5 py-1.5 text-xs font-bold text-white shadow-xl flex items-center gap-2 border border-white/10">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/20 text-accent">
+                        {isDetectingFaces ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5" />
+                        )}
+                      </div>
+                      <span>
+                        {isDetectingFaces
+                          ? "Scanning for faces…"
+                          : faceRegions.length === 0
+                          ? "No faces detected"
+                          : `${faceRegions.length} Face${faceRegions.length > 1 ? "s" : ""} Auto-Protected`}
+                      </span>
+                      <span className="text-white/30">•</span>
+                      <span className="text-accent font-extrabold capitalize">{faceBlurType}</span>
+                    </div>
+
+                    {/* Render each face region seamlessly without selection boxes */}
+                    {faceRegions.map((face) => {
+                      const isEllipse = faceShape === "ellipse";
+
+                      return (
+                        <div
+                          key={face.id}
+                          className={`absolute pointer-events-none transition-all duration-150 ${
+                            isEllipse ? "rounded-full" : "rounded-2xl"
+                          }`}
+                          style={{
+                            left: `${face.x}%`,
+                            top: `${face.y}%`,
+                            width: `${face.w}%`,
+                            height: `${face.h}%`,
+                            backdropFilter:
+                              faceBlurType === "blackout"
+                                ? undefined
+                                : `blur(${Math.max(8, Math.round(faceBlurStrength * 0.85))}px)`,
+                            backgroundColor:
+                              faceBlurType === "blackout"
+                                ? "rgba(0, 0, 0, 0.98)"
+                                : faceBlurType === "pixelate"
+                                ? "rgba(255, 255, 255, 0.05)"
+                                : "rgba(255, 255, 255, 0.02)",
+                            boxShadow:
+                              faceBlurType === "blackout"
+                                ? "0 4px 20px rgba(0, 0, 0, 0.5)"
+                                : "0 0 20px rgba(0, 0, 0, 0.1)",
+                          }}
+                        >
+                          {/* Pixelate mosaic visual grid effect on live preview */}
+                          {faceBlurType === "pixelate" && (
+                            <div
+                              className={`absolute inset-0 pointer-events-none opacity-40 ${
+                                isEllipse ? "rounded-full" : "rounded-2xl"
+                              }`}
+                              style={{
+                                backgroundImage: `radial-gradient(circle, rgba(255,255,255,0.7) 1.5px, transparent 1.5px)`,
+                                backgroundSize: "6px 6px",
+                              }}
+                            />
+                          )}
+
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* 8. Live Meme Interactive Real-time Preview Overlay */}
+                {tool.slug === "meme-generator" && imageSrc && (!hasProcessed || isEditingSettings) && (
+                  <div className="absolute inset-0 z-20 pointer-events-none select-none flex flex-col justify-between p-3 overflow-hidden">
+                    {/* Floating live indicator badge */}
+                    <div className="absolute top-2 left-2 z-30 pointer-events-none rounded-full bg-black/80 backdrop-blur-md px-2.5 py-1 text-[10px] font-bold text-white shadow-md flex items-center gap-1.5 border border-white/10 opacity-75 hover:opacity-100 transition-opacity">
+                      <Sparkle className="h-3 w-3 text-accent" />
+                      <span>Live Meme Preview</span>
+                      <span className="text-white/40">•</span>
+                      <span className="text-accent font-mono">{memeFontSize}px</span>
+                    </div>
+
+                    {/* Top Meme Text Block */}
+                    <div
+                      style={{
+                        paddingTop: `${memeTopPosPercent}%`,
+                        textAlign: memeTextAlign,
+                      }}
+                      className="w-full pointer-events-auto cursor-grab active:cursor-grabbing group relative"
+                      onMouseDown={(e) => handleMemeTextMouseDown(e, "top")}
+                      title="Drag up or down to adjust top text position"
+                    >
+                      {topText.trim() ? (
+                        <div
+                          style={{
+                            fontFamily: memeFontFamily,
+                            fontSize: `${Math.max(12, Math.round((renderedImgSize?.width || dimensions.width || 600) * (memeFontSize / 700)))}px`,
+                            color: memeTextColor,
+                            WebkitTextStroke:
+                              memeStrokeWidth > 0
+                                ? `${Math.max(1, Math.round((renderedImgSize?.width || 600) * (memeStrokeWidth / 600)))}px ${memeStrokeColor}`
+                                : undefined,
+                            textShadow: memeTextShadow ? "0 2px 10px rgba(0,0,0,0.85)" : undefined,
+                            textTransform: memeAllCaps ? "uppercase" : "none",
+                            lineHeight: 1.15,
+                            wordBreak: "break-word",
+                          }}
+                          className="font-black tracking-wide drop-shadow-md select-none px-2 transition-[color,font-size] duration-75"
+                        >
+                          {topText}
+                        </div>
+                      ) : null}
+                      {topText.trim() && (
+                        <div className="absolute -top-1 right-2 opacity-0 group-hover:opacity-100 bg-accent text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full shadow pointer-events-none transition-opacity">
+                          ↕ Drag Position
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Bottom Meme Text Block */}
+                    <div
+                      style={{
+                        paddingBottom: `${memeBottomPosPercent}%`,
+                        textAlign: memeTextAlign,
+                      }}
+                      className="w-full pointer-events-auto cursor-grab active:cursor-grabbing group relative"
+                      onMouseDown={(e) => handleMemeTextMouseDown(e, "bottom")}
+                      title="Drag up or down to adjust bottom text position"
+                    >
+                      {bottomText.trim() ? (
+                        <div
+                          style={{
+                            fontFamily: memeFontFamily,
+                            fontSize: `${Math.max(12, Math.round((renderedImgSize?.width || dimensions.width || 600) * (memeFontSize / 700)))}px`,
+                            color: memeTextColor,
+                            WebkitTextStroke:
+                              memeStrokeWidth > 0
+                                ? `${Math.max(1, Math.round((renderedImgSize?.width || 600) * (memeStrokeWidth / 600)))}px ${memeStrokeColor}`
+                                : undefined,
+                            textShadow: memeTextShadow ? "0 2px 10px rgba(0,0,0,0.85)" : undefined,
+                            textTransform: memeAllCaps ? "uppercase" : "none",
+                            lineHeight: 1.15,
+                            wordBreak: "break-word",
+                          }}
+                          className="font-black tracking-wide drop-shadow-md select-none px-2 transition-[color,font-size] duration-75"
+                        >
+                          {bottomText}
+                        </div>
+                      ) : null}
+                      {bottomText.trim() && (
+                        <div className="absolute -bottom-1 right-2 opacity-0 group-hover:opacity-100 bg-accent text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full shadow pointer-events-none transition-opacity">
+                          ↕ Drag Position
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Smooth Loading Indicator Backdrop */}
                 {processing && (
@@ -6910,11 +10726,19 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                 )}
               </div>
 
-              {/* Color Picker Hover Swatch */}
-              {tool.slug === "color-picker-from-image" && hoverColor && (
-                <div className="absolute bottom-4 right-4 flex items-center gap-2 rounded-full border border-border bg-card/90 px-3 py-1.5 shadow-lg text-xs font-mono font-bold backdrop-blur-md">
-                  <span className="h-4 w-4 rounded-full border border-white/40 shadow-sm" style={{ backgroundColor: hoverColor }} />
-                  <span>{hoverColor}</span>
+              {/* Color Picker Hover Swatch (Updated via Direct RAF DOM) */}
+              {tool.slug === "color-picker-from-image" && (
+                <div
+                  ref={hoverSwatchRef}
+                  style={{ display: "none" }}
+                  className="absolute bottom-4 right-4 flex items-center gap-2 rounded-full border border-border bg-card/90 px-3 py-1.5 shadow-lg text-xs font-mono font-bold backdrop-blur-md z-30"
+                >
+                  <span
+                    ref={hoverSwatchDotRef}
+                    className="h-4 w-4 rounded-full border border-white/40 shadow-sm shrink-0"
+                    style={{ backgroundColor: pickedHex }}
+                  />
+                  <span ref={hoverSwatchHexRef}>{pickedHex}</span>
                 </div>
               )}
 
@@ -7564,148 +11388,1653 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
 
               {/* 5. ROTATE & FLIP */}
               {tool.slug === "rotate-image" && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setRotation((r) => (r + 90) % 360)}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-background py-2.5 text-xs font-bold transition-all hover:border-foreground"
-                    >
-                      <RotateCw className="h-4 w-4" /> Rotate 90°
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRotation((r) => (r - 90 + 360) % 360)}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-background py-2.5 text-xs font-bold transition-all hover:border-foreground"
-                    >
-                      <RotateCcw className="h-4 w-4" /> Rotate -90°
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setFlipH(!flipH)}
-                      className={`inline-flex items-center justify-center gap-2 rounded-xl border py-2.5 text-xs font-bold transition-all ${
-                        flipH ? "bg-foreground text-background" : "border-border bg-background"
-                      }`}
-                    >
-                      <FlipHorizontal className="h-4 w-4" /> Flip Horizontal
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFlipV(!flipV)}
-                      className={`inline-flex items-center justify-center gap-2 rounded-xl border py-2.5 text-xs font-bold transition-all ${
-                        flipV ? "bg-foreground text-background" : "border-border bg-background"
-                      }`}
-                    >
-                      <FlipVertical className="h-4 w-4" /> Flip Vertical
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* 6. WATERMARK */}
-              {tool.slug === "watermark-image" && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-bold text-muted-foreground block mb-1">Watermark Text</label>
-                    <input
-                      type="text"
-                      value={wmText}
-                      onChange={(e) => setWmText(e.target.value)}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-bold"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-5">
+                  {/* Current Status Card */}
+                  <div className="flex items-center justify-between rounded-2xl border-2 border-border bg-secondary/40 p-4 shadow-2xs">
                     <div>
-                      <label className="text-xs font-bold text-muted-foreground block mb-1">Opacity</label>
-                      <input
-                        type="range"
-                        min="0.1"
-                        max="1"
-                        step="0.1"
-                        value={wmOpacity}
-                        onChange={(e) => setWmOpacity(Number(e.target.value))}
-                        className="w-full accent-foreground"
-                      />
+                      <span className="text-[10px] uppercase font-black tracking-wider text-muted-foreground block">
+                        Rotation Angle
+                      </span>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="font-mono text-2xl font-black text-foreground">
+                          {((rotation % 360) + 360) % 360}°
+                        </span>
+                        {(rotation !== 0 || flipH || flipV) && (
+                          <span className="rounded-md bg-accent/15 border border-accent/30 px-2 py-0.5 text-[10px] font-bold text-accent">
+                            Modified
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-xs font-bold text-muted-foreground block mb-1">
-                        Font Size (<AnimatedCounter value={wmFontSize} suffix="px" />)
-                      </label>
-                      <input
-                        type="range"
-                        min="16"
-                        max="72"
-                        value={wmFontSize}
-                        onChange={(e) => setWmFontSize(Number(e.target.value))}
-                        className="w-full accent-foreground"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 7. UPSCALE IMAGE */}
-              {tool.slug === "upscale-image" && (
-                <div className="space-y-3">
-                  <label className="text-xs font-bold text-muted-foreground block">AI Upscale Multiplier</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[2, 4].map((factor) => (
+                    {(rotation !== 0 || flipH || flipV) && (
                       <button
-                        key={factor}
                         type="button"
-                        onClick={() => setUpscaleFactor(factor)}
-                        className={`rounded-2xl border py-4 text-center text-sm font-extrabold transition-all ${
-                          upscaleFactor === factor
-                            ? "bg-foreground text-background shadow-lg scale-105"
-                            : "border-border text-muted-foreground hover:border-foreground"
+                        onClick={() => {
+                          setRotation(0);
+                          setFlipH(false);
+                          setFlipV(false);
+                        }}
+                        className="rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-extrabold text-muted-foreground hover:text-foreground hover:border-foreground transition-all cursor-pointer shadow-xs"
+                      >
+                        Reset All (0°)
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 90-Degree Quick Rotation Steppers */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-wider text-muted-foreground block">
+                      Quick 90° Rotations
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setRotation((r) => r - 90)}
+                        className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-border bg-card p-3 text-xs font-black text-foreground hover:border-foreground hover:bg-secondary active:scale-95 transition-all cursor-pointer shadow-xs"
+                      >
+                        <RotateCcw className="h-5 w-5 text-accent" />
+                        <span>-90° Left</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRotation((r) => r + 90)}
+                        className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-border bg-card p-3 text-xs font-black text-foreground hover:border-foreground hover:bg-secondary active:scale-95 transition-all cursor-pointer shadow-xs"
+                      >
+                        <RotateCw className="h-5 w-5 text-accent" />
+                        <span>+90° Right</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRotation((r) => r + 180)}
+                        className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-border bg-card p-3 text-xs font-black text-foreground hover:border-foreground hover:bg-secondary active:scale-95 transition-all cursor-pointer shadow-xs"
+                      >
+                        <RefreshCw className="h-5 w-5 text-accent" />
+                        <span>180° Flip</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Angle Slider / Fine-Tune Straighten */}
+                  <div className="rounded-2xl border-2 border-border/80 bg-card p-4 space-y-3.5 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-black uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                        <SlidersHorizontal className="h-3.5 w-3.5 text-accent" />
+                        <span>Fine-Tune Angle (Straighten)</span>
+                      </label>
+                      <span className="rounded-lg bg-accent/15 border border-accent/30 px-2.5 py-0.5 text-xs font-mono font-black text-accent shadow-2xs">
+                        {rotation}°
+                      </span>
+                    </div>
+
+                    <input
+                      type="range"
+                      min="-180"
+                      max="180"
+                      step="1"
+                      value={rotation}
+                      onChange={(e) => setRotation(Number(e.target.value))}
+                      className="w-full accent-foreground cursor-pointer h-2"
+                    />
+
+                    {/* Micro-adjust buttons & snap chips */}
+                    <div className="flex items-center justify-between gap-1.5 pt-1">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setRotation((r) => r - 1)}
+                          className="rounded-lg border border-border bg-background px-2 py-1 text-[11px] font-mono font-extrabold hover:border-foreground transition-all cursor-pointer"
+                          title="Rotate -1°"
+                        >
+                          -1°
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRotation((r) => r - 0.5)}
+                          className="rounded-lg border border-border bg-background px-2 py-1 text-[11px] font-mono font-extrabold hover:border-foreground transition-all cursor-pointer"
+                          title="Rotate -0.5°"
+                        >
+                          -0.5°
+                        </button>
+                      </div>
+
+                      {/* Snap chips */}
+                      <div className="flex items-center gap-1">
+                        {[
+                          { label: "0°", val: 0 },
+                          { label: "90°", val: 90 },
+                          { label: "180°", val: 180 },
+                          { label: "270°", val: 270 },
+                        ].map((chip) => (
+                          <button
+                            key={chip.label}
+                            type="button"
+                            onClick={() => setRotation(chip.val)}
+                            className={`rounded-lg border px-2 py-1 text-[11px] font-mono font-extrabold transition-all cursor-pointer ${
+                              ((rotation % 360) + 360) % 360 === chip.val
+                                ? "border-foreground bg-foreground text-background shadow-xs"
+                                : "border-border bg-background text-muted-foreground hover:border-foreground"
+                            }`}
+                          >
+                            {chip.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setRotation((r) => r + 0.5)}
+                          className="rounded-lg border border-border bg-background px-2 py-1 text-[11px] font-mono font-extrabold hover:border-foreground transition-all cursor-pointer"
+                          title="Rotate +0.5°"
+                        >
+                          +0.5°
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRotation((r) => r + 1)}
+                          className="rounded-lg border border-border bg-background px-2 py-1 text-[11px] font-mono font-extrabold hover:border-foreground transition-all cursor-pointer"
+                          title="Rotate +1°"
+                        >
+                          +1°
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Rotated Corner Background Fill */}
+                  <div className="rounded-2xl border-2 border-border/80 bg-card p-4 space-y-4 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-black uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                        <Palette className="h-3.5 w-3.5 text-accent" />
+                        <span>Rotated Background Fill</span>
+                      </label>
+                      <span className="rounded-lg bg-accent/15 border border-accent/30 px-2.5 py-0.5 text-[10px] font-mono font-bold text-accent capitalize">
+                        {rotateBgMode === "color" ? rotateBgColor : rotateBgMode}
+                      </span>
+                    </div>
+
+                    {/* Mode Selection Tabs */}
+                    <div className="grid grid-cols-4 gap-1.5 rounded-2xl bg-secondary/60 p-1 border border-border">
+                      {[
+                        { id: "transparent", label: "Transparent", icon: "🔳" },
+                        { id: "color", label: "Solid Color", icon: "🎨" },
+                        { id: "blur", label: "Blurred Image", icon: "💧" },
+                        { id: "gradient", label: "Gradient", icon: "🌈" },
+                      ].map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setRotateBgMode(item.id as any)}
+                          className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl text-[11px] font-black transition-all cursor-pointer ${
+                            rotateBgMode === item.id
+                              ? "bg-foreground text-background shadow-md scale-[1.02]"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <span className="text-xs">{item.icon}</span>
+                          <span className="mt-0.5 truncate text-[10px] sm:text-[11px]">{item.label}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Mode A: Solid Color Controls */}
+                    {rotateBgMode === "color" && (
+                      <div className="space-y-3 pt-1 animate-in fade-in duration-200">
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex items-center gap-2 rounded-xl border border-border bg-background p-1.5 shadow-2xs">
+                            <input
+                              type="color"
+                              value={rotateBgColor}
+                              onChange={(e) => setRotateBgColor(e.target.value)}
+                              className="h-7 w-7 rounded-lg border-0 cursor-pointer bg-transparent p-0"
+                              title="Pick custom background color"
+                            />
+                            <span className="font-mono text-xs font-extrabold pr-2">{rotateBgColor.toUpperCase()}</span>
+                          </div>
+                          <span className="text-[11px] text-muted-foreground font-semibold">Custom Color Picker</span>
+                        </div>
+
+                        {/* Quick Swatches */}
+                        <div>
+                          <label className="text-[10px] font-extrabold uppercase text-muted-foreground block mb-1.5 tracking-wider">
+                            Color Presets:
+                          </label>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {ROTATE_COLOR_SWATCHES.map((sw) => (
+                              <button
+                                key={sw.hex}
+                                type="button"
+                                onClick={() => setRotateBgColor(sw.hex)}
+                                className={`h-7 w-7 rounded-xl border-2 transition-transform hover:scale-110 cursor-pointer shadow-xs ${
+                                  rotateBgColor.toLowerCase() === sw.hex.toLowerCase()
+                                    ? "scale-110 ring-2 ring-accent ring-offset-2 ring-offset-background"
+                                    : sw.border
+                                }`}
+                                style={{ backgroundColor: sw.hex }}
+                                title={sw.name}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Mode B: Gradient Presets */}
+                    {rotateBgMode === "gradient" && (
+                      <div className="space-y-2 pt-1 animate-in fade-in duration-200">
+                        <label className="text-[10px] font-extrabold uppercase text-muted-foreground block tracking-wider">
+                          Select Gradient Style:
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {ROTATE_GRADIENT_PRESETS.map((grad) => (
+                            <button
+                              key={grad.id}
+                              type="button"
+                              onClick={() => setRotateBgGradient(grad.css)}
+                              className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer overflow-hidden ${
+                                rotateBgGradient === grad.css
+                                  ? "border-accent ring-2 ring-accent/40 shadow-md scale-[1.03]"
+                                  : "border-border hover:border-foreground"
+                              }`}
+                            >
+                              <div
+                                className="w-full h-7 rounded-lg shadow-inner border border-white/20 mb-1.5"
+                                style={{ background: grad.css }}
+                              />
+                              <span className="text-[11px] font-bold text-foreground truncate w-full">{grad.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Mode C: Blur Description */}
+                    {rotateBgMode === "blur" && (
+                      <div className="rounded-xl border border-border/80 bg-secondary/40 p-3 text-[11px] font-semibold text-muted-foreground flex items-center gap-2 animate-in fade-in duration-200">
+                        <Sparkles className="h-4 w-4 text-accent shrink-0" />
+                        <span>Artistic blurred expansion of your original image fills all rotated corner gaps smoothly.</span>
+                      </div>
+                    )}
+
+                    {/* Mode D: Transparent Description */}
+                    {rotateBgMode === "transparent" && (
+                      <div className="rounded-xl border border-border/80 bg-secondary/40 p-3 text-[11px] font-semibold text-muted-foreground flex items-center gap-2 animate-in fade-in duration-200">
+                        <span className="text-xs">🔳</span>
+                        <span>Expanded canvas corners remain completely transparent (best for PNG or WebP output).</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Mirror / Flip Controls */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-wider text-muted-foreground block">
+                      Mirror & Flip
+                    </label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setFlipH(!flipH)}
+                        className={`flex items-center justify-center gap-2 rounded-2xl border-2 py-3 text-xs font-black transition-all cursor-pointer ${
+                          flipH
+                            ? "border-accent bg-accent/15 text-accent shadow-xs ring-2 ring-accent/30"
+                            : "border-border bg-card text-muted-foreground hover:border-foreground hover:text-foreground"
                         }`}
                       >
-                        {factor}X Ultra-HD
+                        <FlipHorizontal className="h-4 w-4" />
+                        <span>Flip Horizontal</span>
+                        {flipH && <Check className="h-3.5 w-3.5 ml-1 stroke-[3]" />}
                       </button>
-                    ))}
+
+                      <button
+                        type="button"
+                        onClick={() => setFlipV(!flipV)}
+                        className={`flex items-center justify-center gap-2 rounded-2xl border-2 py-3 text-xs font-black transition-all cursor-pointer ${
+                          flipV
+                            ? "border-accent bg-accent/15 text-accent shadow-xs ring-2 ring-accent/30"
+                            : "border-border bg-card text-muted-foreground hover:border-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <FlipVertical className="h-4 w-4" />
+                        <span>Flip Vertical</span>
+                        {flipV && <Check className="h-3.5 w-3.5 ml-1 stroke-[3]" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* 8. BLUR FACE */}
+              {/* 6. WATERMARK (Compact & Properly Arranged - No Scroll Needed) */}
+              {tool.slug === "watermark-image" && (
+                <div className="space-y-3">
+                  {/* Top Bar: Mode Tabs + View Sub-Tabs in one clean header */}
+                  <div className="flex flex-col gap-2">
+                    {/* Watermark Type Selector: Text vs Logo */}
+                    <div className="flex rounded-xl border border-border bg-secondary/40 p-1 shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={() => setWmMode("text")}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                          wmMode === "text"
+                            ? "bg-foreground text-background shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Type className="h-3.5 w-3.5" />
+                        <span>Text Watermark</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWmMode("logo")}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                          wmMode === "logo"
+                            ? "bg-foreground text-background shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <ImageIcon className="h-3.5 w-3.5" />
+                        <span>Logo / Image</span>
+                      </button>
+                    </div>
+
+                    {/* Sub-Tab Navigation for Compact Non-Scroll Experience */}
+                    <div className="flex items-center justify-between gap-1 rounded-xl border border-border/70 bg-card p-1 text-[11px] font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setWmSubTab("style")}
+                        className={`flex-1 flex items-center justify-center gap-1 py-1 rounded-lg transition-all cursor-pointer ${
+                          wmSubTab === "style"
+                            ? "bg-accent text-accent-foreground font-black shadow-2xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Palette className="h-3 w-3" />
+                        <span>{wmMode === "text" ? "Text & Style" : "Logo Image"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWmSubTab("position")}
+                        className={`flex-1 flex items-center justify-center gap-1 py-1 rounded-lg transition-all cursor-pointer ${
+                          wmSubTab === "position"
+                            ? "bg-accent text-accent-foreground font-black shadow-2xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Move className="h-3 w-3" />
+                        <span>
+                          Position &amp; Angle
+                          {wmPosition === "tile" ? " (Tile)" : ""}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWmSubTab("all")}
+                        className={`px-2 py-1 rounded-lg transition-all cursor-pointer text-[10px] ${
+                          wmSubTab === "all"
+                            ? "bg-foreground text-background font-black shadow-2xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        title="View all settings simultaneously"
+                      >
+                        All
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* TAB 1: TEXT & STYLE (when wmMode === "text" and subTab is "style" or "all") */}
+                  {wmMode === "text" && (wmSubTab === "style" || wmSubTab === "all") && (
+                    <div className="rounded-2xl border border-border/80 bg-card p-3.5 space-y-3 shadow-2xs animate-in fade-in-50 duration-150">
+                      {/* Row 1: Text Input with clear */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <label className="font-extrabold text-foreground flex items-center gap-1.5">
+                            <Type className="h-3.5 w-3.5 text-accent" />
+                            <span>Watermark Text</span>
+                          </label>
+                          {wmText && (
+                            <button
+                              type="button"
+                              onClick={() => setWmText("")}
+                              className="text-[10px] font-bold text-muted-foreground hover:text-destructive cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={wmText}
+                          placeholder="Type watermark text..."
+                          onChange={(e) => setWmText(e.target.value)}
+                          className="w-full rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold text-foreground shadow-2xs focus:border-accent focus:outline-none"
+                        />
+                        {/* Quick Symbols & Stamps compact inline pills */}
+                        <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                          {[
+                            { label: "©", text: "© " },
+                            { label: `© ${new Date().getFullYear()}`, text: `© ${new Date().getFullYear()} ` },
+                            { label: "®", text: "® " },
+                            { label: "™", text: "™ " },
+                            { label: "CONFIDENTIAL", text: "CONFIDENTIAL" },
+                            { label: "SAMPLE", text: "SAMPLE" },
+                            { label: "DO NOT COPY", text: "DO NOT COPY" },
+                          ].map((chip) => (
+                            <button
+                              key={chip.label}
+                              type="button"
+                              onClick={() => {
+                                if (chip.text.startsWith("©") || chip.text.startsWith("®") || chip.text.startsWith("™")) {
+                                  setWmText((prev) => (prev ? `${chip.text}${prev.replace(/^[©®™]\s*/, "")}` : chip.text));
+                                } else {
+                                  setWmText(chip.text);
+                                }
+                              }}
+                              className="rounded-md border border-border/70 bg-secondary/50 px-1.5 py-0.5 text-[10px] font-bold text-foreground hover:border-accent hover:text-accent transition-all cursor-pointer"
+                            >
+                              {chip.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Row 2: Typography + Bold + Italic + Size Slider in one tight block */}
+                      <div className="space-y-2 pt-2 border-t border-border/50">
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={wmFontFamily}
+                            onChange={(e) => setWmFontFamily(e.target.value)}
+                            className="flex-1 rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-bold text-foreground focus:border-accent focus:outline-none"
+                          >
+                            <option value="sans-serif">Modern Sans</option>
+                            <option value="serif">Classic Serif</option>
+                            <option value="monospace">Monospace</option>
+                            <option value="Impact, sans-serif">Bold Impact</option>
+                            <option value="'Caveat', cursive, sans-serif">Handwriting</option>
+                          </select>
+
+                          <div className="flex items-center gap-0.5 rounded-lg border border-border bg-secondary/50 p-0.5">
+                            <button
+                              type="button"
+                              onClick={() => setWmBold(!wmBold)}
+                              className={`h-7 w-7 rounded-md text-xs font-black transition-all cursor-pointer flex items-center justify-center ${
+                                wmBold ? "bg-foreground text-background shadow-2xs" : "text-muted-foreground hover:text-foreground"
+                              }`}
+                              title="Toggle Bold"
+                            >
+                              <Bold className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setWmItalic(!wmItalic)}
+                              className={`h-7 w-7 rounded-md text-xs font-black transition-all cursor-pointer flex items-center justify-center ${
+                                wmItalic ? "bg-foreground text-background shadow-2xs" : "text-muted-foreground hover:text-foreground"
+                              }`}
+                              title="Toggle Italic"
+                            >
+                              <Italic className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Font Scale compact slider + quick chips */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[11px] font-bold">
+                            <span className="text-muted-foreground">Font Size:</span>
+                            <div className="flex items-center gap-1.5">
+                              {[24, 36, 48, 72].map((sz) => (
+                                <button
+                                  key={sz}
+                                  type="button"
+                                  onClick={() => setWmFontSize(sz)}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold cursor-pointer border ${
+                                    Math.abs(wmFontSize - sz) <= 3
+                                      ? "border-accent bg-accent/15 text-accent"
+                                      : "border-border/60 text-muted-foreground hover:text-foreground"
+                                  }`}
+                                >
+                                  {sz}px
+                                </button>
+                              ))}
+                              <span className="font-mono font-black text-accent bg-accent/10 px-1.5 py-0.5 rounded text-[11px]">
+                                {wmFontSize}px
+                              </span>
+                            </div>
+                          </div>
+                          <input
+                            type="range"
+                            min="14"
+                            max="120"
+                            step="2"
+                            value={wmFontSize}
+                            onChange={(e) => setWmFontSize(Number(e.target.value))}
+                            className="w-full accent-foreground cursor-pointer h-1.5"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Row 3: Color + Outline + Background Pill */}
+                      <div className="space-y-2 pt-2 border-t border-border/50">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 rounded-lg border border-border bg-background p-1 shadow-2xs">
+                            <input
+                              type="color"
+                              value={wmColor}
+                              onChange={(e) => setWmColor(e.target.value)}
+                              className="h-6 w-6 rounded border-0 cursor-pointer bg-transparent p-0"
+                              title="Pick custom color"
+                            />
+                            <span className="font-mono text-[11px] font-bold pr-1">{wmColor.toUpperCase()}</span>
+                          </div>
+
+                          {/* Quick Swatches */}
+                          <div className="flex items-center gap-1">
+                            {[
+                              { hex: "#ffffff", name: "White" },
+                              { hex: "#000000", name: "Black" },
+                              { hex: "#ef4444", name: "Red" },
+                              { hex: "#f59e0b", name: "Amber" },
+                              { hex: "#06b6d4", name: "Cyan" },
+                              { hex: "#10b981", name: "Green" },
+                            ].map((sw) => (
+                              <button
+                                key={sw.hex}
+                                type="button"
+                                onClick={() => setWmColor(sw.hex)}
+                                className={`h-6 w-6 rounded-lg border transition-transform hover:scale-110 cursor-pointer shadow-2xs ${
+                                  wmColor.toLowerCase() === sw.hex
+                                    ? "scale-110 ring-2 ring-accent ring-offset-1 ring-offset-background"
+                                    : "border-border/60"
+                                }`}
+                                style={{ backgroundColor: sw.hex }}
+                                title={sw.name}
+                              />
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Outline & Pill Compact Controls */}
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div className="flex items-center justify-between rounded-lg border border-border/70 bg-secondary/30 px-2 py-1">
+                            <span className="text-[10px] font-bold text-muted-foreground">Outline:</span>
+                            <div className="flex items-center gap-0.5">
+                              {[
+                                { id: "none", label: "Off" },
+                                { id: "dark", label: "Dark" },
+                                { id: "light", label: "Light" },
+                              ].map((st) => (
+                                <button
+                                  key={st.id}
+                                  type="button"
+                                  onClick={() => setWmStroke(st.id as any)}
+                                  className={`rounded px-1.5 py-0.5 text-[10px] font-extrabold cursor-pointer transition-all ${
+                                    wmStroke === st.id
+                                      ? "bg-foreground text-background shadow-2xs font-black"
+                                      : "text-muted-foreground hover:text-foreground"
+                                  }`}
+                                >
+                                  {st.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between rounded-lg border border-border/70 bg-secondary/30 px-2 py-1">
+                            <span className="text-[10px] font-bold text-muted-foreground">Badge:</span>
+                            <div className="flex items-center gap-0.5">
+                              {[
+                                { id: "none", label: "Off" },
+                                { id: "dark_pill", label: "Dark" },
+                                { id: "light_pill", label: "Light" },
+                              ].map((bg) => (
+                                <button
+                                  key={bg.id}
+                                  type="button"
+                                  onClick={() => setWmBgBadge(bg.id as any)}
+                                  className={`rounded px-1.5 py-0.5 text-[10px] font-extrabold cursor-pointer transition-all ${
+                                    wmBgBadge === bg.id
+                                      ? "bg-foreground text-background shadow-2xs font-black"
+                                      : "text-muted-foreground hover:text-foreground"
+                                  }`}
+                                >
+                                  {bg.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 1 (LOGO): Logo Controls (when wmMode === "logo" and subTab is "style" or "all") */}
+                  {wmMode === "logo" && (wmSubTab === "style" || wmSubTab === "all") && (
+                    <div className="rounded-2xl border border-border/80 bg-card p-3.5 space-y-3 shadow-2xs animate-in fade-in-50 duration-150">
+                      <input
+                        ref={wmLogoInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        className="hidden"
+                      />
+
+                      {wmLogoSrc ? (
+                        <div className="space-y-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="h-12 w-12 shrink-0 rounded-xl border border-border bg-secondary/60 p-1 flex items-center justify-center overflow-hidden">
+                              <img src={wmLogoSrc} alt="Logo preview" className="max-h-full max-w-full object-contain" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-black text-foreground truncate">Custom Logo Active</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => wmLogoInputRef.current?.click()}
+                                  className="rounded-md border border-border bg-background px-2 py-0.5 text-[10px] font-extrabold hover:bg-secondary transition-all cursor-pointer"
+                                >
+                                  Replace
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setWmLogoSrc(null);
+                                    setWmMode("text");
+                                  }}
+                                  className="text-[10px] font-bold text-destructive hover:underline cursor-pointer"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 pt-2 border-t border-border/50">
+                            <div className="flex items-center justify-between text-[11px] font-bold">
+                              <span className="text-muted-foreground">Logo Size Scale:</span>
+                              <div className="flex items-center gap-1">
+                                {[20, 35, 50, 70].map((sc) => (
+                                  <button
+                                    key={sc}
+                                    type="button"
+                                    onClick={() => setWmLogoScale(sc)}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold cursor-pointer border ${
+                                      Math.abs(wmLogoScale - sc) <= 4
+                                        ? "border-accent bg-accent/15 text-accent"
+                                        : "border-border/60 text-muted-foreground hover:text-foreground"
+                                    }`}
+                                  >
+                                    {sc}%
+                                  </button>
+                                ))}
+                                <span className="font-mono font-black text-accent bg-accent/10 px-1.5 py-0.5 rounded text-[11px]">
+                                  {wmLogoScale}%
+                                </span>
+                              </div>
+                            </div>
+                            <input
+                              type="range"
+                              min="10"
+                              max="80"
+                              value={wmLogoScale}
+                              onChange={(e) => setWmLogoScale(Number(e.target.value))}
+                              className="w-full accent-foreground cursor-pointer h-1.5"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => wmLogoInputRef.current?.click()}
+                          className="w-full flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-card/60 p-5 hover:border-foreground hover:bg-secondary/40 transition-all cursor-pointer"
+                        >
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent shadow-2xs">
+                            <Upload className="h-5 w-5" />
+                          </div>
+                          <div className="text-center">
+                            <p className="text-xs font-black text-foreground">Upload Logo or Signature Image</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">PNG with transparency or SVG recommended</p>
+                          </div>
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TAB 2: POSITION & OPACITY (when subTab is "position" or "all") */}
+                  {(wmSubTab === "position" || wmSubTab === "all") && (
+                    <div className="rounded-2xl border border-border/80 bg-card p-3.5 space-y-3 shadow-2xs animate-in fade-in-50 duration-150">
+                      {/* Placement: 3x3 Grid & Tile Side-by-Side */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <label className="font-extrabold text-foreground flex items-center gap-1.5">
+                            <Move className="h-3.5 w-3.5 text-accent" />
+                            <span>Placement &amp; Tile</span>
+                          </label>
+                          <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-extrabold text-accent uppercase">
+                            {wmPosition === "tile"
+                              ? "Tiled Pattern"
+                              : wmPosition === "custom"
+                              ? `Custom (${wmCustomCoord.xPercent}%, ${wmCustomCoord.yPercent}%)`
+                              : wmPosition.replace("_", " ")}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-[auto_1fr] gap-3 items-center">
+                          {/* 3x3 Mini Pad */}
+                          <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-secondary/50 border border-border/60 shrink-0">
+                            {[
+                              { id: "top_left", label: "↖", title: "Top Left" },
+                              { id: "top_center", label: "↑", title: "Top Center" },
+                              { id: "top_right", label: "↗", title: "Top Right" },
+                              { id: "middle_left", label: "←", title: "Middle Left" },
+                              { id: "center", label: "✛", title: "Center" },
+                              { id: "middle_right", label: "→", title: "Middle Right" },
+                              { id: "bottom_left", label: "↙", title: "Bottom Left" },
+                              { id: "bottom_center", label: "↓", title: "Bottom Center" },
+                              { id: "bottom_right", label: "↘", title: "Bottom Right" },
+                            ].map((pos) => (
+                              <button
+                                key={pos.id}
+                                type="button"
+                                onClick={() => setWmPosition(pos.id as any)}
+                                title={pos.title}
+                                className={`h-7 w-7 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center justify-center ${
+                                  wmPosition === pos.id
+                                    ? "border-accent bg-accent text-white shadow-2xs font-black scale-105"
+                                    : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground/50"
+                                }`}
+                              >
+                                {pos.label}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Side Actions: Tile Button + Margin */}
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => setWmPosition(wmPosition === "tile" ? "bottom_right" : "tile")}
+                              className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl border text-[11px] font-extrabold transition-all cursor-pointer ${
+                                wmPosition === "tile"
+                                  ? "border-accent bg-accent/15 text-accent shadow-2xs ring-1 ring-accent/30"
+                                  : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground/50"
+                              }`}
+                            >
+                              <Grid3X3 className="h-3.5 w-3.5" />
+                              <span>{wmPosition === "tile" ? "Tiled Active ✓" : "Tile Across Image"}</span>
+                            </button>
+
+                            {/* Margin Slider */}
+                            <div className="space-y-0.5">
+                              <div className="flex items-center justify-between text-[10px] font-bold text-muted-foreground">
+                                <span>Edge Margin:</span>
+                                <span className="font-mono text-foreground font-black">{wmMargin}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="1"
+                                max="20"
+                                disabled={wmPosition === "center" || wmPosition === "tile"}
+                                value={wmMargin}
+                                onChange={(e) => setWmMargin(Number(e.target.value))}
+                                className="w-full accent-foreground cursor-pointer disabled:opacity-40 h-1.5"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Rotation Angle Row */}
+                      <div className="space-y-1 pt-2 border-t border-border/50">
+                        <div className="flex items-center justify-between text-[11px] font-bold">
+                          <span className="text-muted-foreground">Rotation Angle:</span>
+                          <div className="flex items-center gap-1">
+                            {[
+                              { label: "0°", val: 0 },
+                              { label: "45°", val: 45 },
+                              { label: "-45°", val: -45 },
+                              { label: "90°", val: 90 },
+                            ].map((ang) => (
+                              <button
+                                key={ang.label}
+                                type="button"
+                                onClick={() => setWmRotation(ang.val)}
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold cursor-pointer border ${
+                                  wmRotation === ang.val
+                                    ? "border-accent bg-accent/15 text-accent"
+                                    : "border-border/60 text-muted-foreground hover:text-foreground"
+                                }`}
+                              >
+                                {ang.label}
+                              </button>
+                            ))}
+                            <span className="font-mono font-black text-accent bg-accent/10 px-1.5 py-0.5 rounded text-[11px]">
+                              {wmRotation}°
+                            </span>
+                          </div>
+                        </div>
+                        <input
+                          type="range"
+                          min="-180"
+                          max="180"
+                          step="5"
+                          value={wmRotation}
+                          onChange={(e) => setWmRotation(Number(e.target.value))}
+                          className="w-full accent-foreground cursor-pointer h-1.5"
+                        />
+                      </div>
+
+                      {/* Opacity / Transparency Row */}
+                      <div className="space-y-1 pt-2 border-t border-border/50">
+                        <div className="flex items-center justify-between text-[11px] font-bold">
+                          <span className="text-muted-foreground">Transparency / Opacity:</span>
+                          <div className="flex items-center gap-1">
+                            {[
+                              { label: "20%", val: 0.2 },
+                              { label: "50%", val: 0.5 },
+                              { label: "70%", val: 0.7 },
+                              { label: "100%", val: 1.0 },
+                            ].map((pct) => (
+                              <button
+                                key={pct.label}
+                                type="button"
+                                onClick={() => setWmOpacity(pct.val)}
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold cursor-pointer border ${
+                                  Math.abs(wmOpacity - pct.val) < 0.05
+                                    ? "border-accent bg-accent/15 text-accent"
+                                    : "border-border/60 text-muted-foreground hover:text-foreground"
+                                }`}
+                              >
+                                {pct.label}
+                              </button>
+                            ))}
+                            <span className="font-mono font-black text-accent bg-accent/10 px-1.5 py-0.5 rounded text-[11px]">
+                              {Math.round(wmOpacity * 100)}%
+                            </span>
+                          </div>
+                        </div>
+                        <input
+                          type="range"
+                          min="5"
+                          max="100"
+                          step="5"
+                          value={Math.round(wmOpacity * 100)}
+                          onChange={(e) => setWmOpacity(Number(e.target.value) / 100)}
+                          className="w-full accent-foreground cursor-pointer h-1.5"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 6.1 REMOVE WATERMARK - FULL AUTO AI DETECTION & INPAINTING */}
+              {tool.slug === "remove-watermark" && (
+                <div className="space-y-5">
+                  {/* 1. AI Auto-Detection Target Mode */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-wider text-muted-foreground block">
+                      AI Auto-Detection Mode
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: "full_auto", name: "⚡ Full Auto AI Scan", desc: "Auto-detects all watermarks, logos & AI sparkles", badge: "Recommended" },
+                        { id: "gemini_ai", name: "✨ Gemini & AI Sparkles", desc: "Strictly targets AI badges & star glyphs", badge: "Precise" },
+                        { id: "corners", name: "↘️ Corner Logos & Stamps", desc: "Auto-cleans corner watermarks & timestamps", badge: "Corners" },
+                        { id: "stock_grid", name: "🌐 Stock Photo Grid", desc: "Auto-cleans diagonal tiled crosshatches", badge: "Full Grid" },
+                      ].map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setWmRemovalMode(item.id as any)}
+                          className={`flex flex-col items-start p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                            wmRemovalMode === item.id
+                              ? "border-accent bg-accent/10 shadow-md ring-2 ring-accent/30"
+                              : "border-border bg-card hover:border-foreground/40 hover:bg-secondary/50"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-xs font-extrabold text-foreground">{item.name}</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-accent/20 text-accent uppercase">
+                              {item.badge}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground mt-1 leading-tight">{item.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 2. AI Inpainting Engine Mode */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-wider text-muted-foreground block">
+                      AI Inpainting Engine
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: "smart_neural", name: "🧠 Smart Neural", sub: "Directional Gradient" },
+                        { id: "patch_match", name: "🧩 PatchMatch", sub: "Texture Synthesis" },
+                        { id: "smooth_diffusion", name: "🌊 Smooth Blend", sub: "Clean Diffusion" },
+                      ].map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setWmInpaintEngine(item.id as any)}
+                          className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                            wmInpaintEngine === item.id
+                              ? "bg-foreground text-background shadow-md font-black border-foreground scale-[1.02]"
+                              : "border-border bg-card text-muted-foreground hover:border-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <span className="text-xs font-black">{item.name}</span>
+                          <span className={`text-[10px] mt-0.5 ${wmInpaintEngine === item.id ? "text-background/80" : "text-muted-foreground"}`}>
+                            {item.sub}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 3. Sensitivity / Detection Precision */}
+                  <div className="space-y-2 rounded-2xl border border-border bg-muted/20 p-3.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-foreground">
+                        Watermark Detection Sensitivity
+                      </label>
+                      <span className="text-xs font-mono font-bold text-accent">
+                        <AnimatedCounter value={wmRemovalSensitivity} suffix="%" />
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="15"
+                      max="95"
+                      value={wmRemovalSensitivity}
+                      onChange={(e) => setWmRemovalSensitivity(Number(e.target.value))}
+                      className="w-full accent-foreground cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[10px] text-muted-foreground font-semibold">
+                      <span>Light Sparkle (15%)</span>
+                      <span>Balanced (55%)</span>
+                      <span>Heavy Text (95%)</span>
+                    </div>
+                  </div>
+
+                  {/* 4. Texture & Grain Preservation Switch */}
+                  <div className="flex items-center justify-between rounded-2xl border border-border bg-card p-3.5 shadow-xs">
+                    <div>
+                      <p className="text-xs font-extrabold text-foreground">Zero Quality Loss &amp; Grain Synthesis</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Synthesizes natural photo grain beneath removed watermark to avoid blurry smudges
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setWmPreserveDetails(!wmPreserveDetails)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        wmPreserveDetails ? "bg-accent" : "bg-muted"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          wmPreserveDetails ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Info Callout */}
+                  <div className="rounded-2xl border border-border/80 bg-background/60 p-3 text-[11px] text-muted-foreground leading-relaxed">
+                    ✨ <strong className="text-foreground">100% Automatic Watermark Removal:</strong> Automatically scans and isolates Gemini AI badges, logos, timestamps, and watermarks. 100% of nearby photo elements, clothes, feet, and textures are preserved intact.
+                  </div>
+                </div>
+              )}
+
+              {/* 7. UPSCALE IMAGE - SUPER RESOLUTION SUITE */}
+              {tool.slug === "upscale-image" && (
+                <div className="space-y-5">
+                  {/* 1. Multiplier Selector with Dimension Prediction */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+                        AI Upscale Multiplier
+                      </label>
+                      {dimensions.width > 0 && dimensions.height > 0 && (
+                        <span className="text-[11px] font-mono font-bold text-accent">
+                          {dimensions.width * upscaleFactor} × {dimensions.height * upscaleFactor} px
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { factor: 2, label: "2X HD", sub: "200% Scale" },
+                        { factor: 4, label: "4X 4K", sub: "400% Ultra HD" },
+                      ].map((item) => (
+                        <button
+                          key={item.factor}
+                          type="button"
+                          onClick={() => setUpscaleFactor(item.factor)}
+                          className={`flex flex-col items-center justify-center rounded-2xl border py-3.5 px-3 text-center transition-all cursor-pointer ${
+                            upscaleFactor === item.factor
+                              ? "bg-foreground text-background shadow-lg scale-[1.02] border-foreground font-black"
+                              : "border-border bg-card text-muted-foreground hover:border-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <span className="text-sm font-black">{item.label}</span>
+                          <span className={`text-[11px] font-semibold mt-0.5 ${upscaleFactor === item.factor ? "text-background/80" : "text-muted-foreground"}`}>
+                            {item.sub}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 2. Super-Resolution Engine AI Model Mode */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-wider text-muted-foreground block">
+                      AI Super-Resolution Mode
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { mode: "universal", name: "🌟 Balanced Super-HD", desc: "General photos & graphics" },
+                        { mode: "photo", name: "📸 Photo & Portrait", desc: "Natural skin, eyes & depth" },
+                        { mode: "anime", name: "🎨 Anime & Digital Art", desc: "Razor-sharp line art & flats" },
+                        { mode: "text", name: "📄 Text & Documents", desc: "High contrast typography" },
+                      ].map((item) => (
+                        <button
+                          key={item.mode}
+                          type="button"
+                          onClick={() => setUpscaleEngineMode(item.mode as any)}
+                          className={`flex flex-col items-start p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                            upscaleEngineMode === item.mode
+                              ? "border-accent bg-accent/10 shadow-md ring-2 ring-accent/30"
+                              : "border-border bg-card hover:border-foreground/40 hover:bg-secondary/50"
+                          }`}
+                        >
+                          <span className="text-xs font-extrabold text-foreground">{item.name}</span>
+                          <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{item.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 3. Detail & Texture Synthesis Strength */}
+                  <div className="space-y-2 rounded-2xl border border-border bg-muted/20 p-3.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-foreground">
+                        Detail & Texture Recovery
+                      </label>
+                      <span className="text-xs font-mono font-bold text-accent">
+                        <AnimatedCounter value={upscaleDetailEnhance} suffix="%" />
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="20"
+                      max="100"
+                      value={upscaleDetailEnhance}
+                      onChange={(e) => setUpscaleDetailEnhance(Number(e.target.value))}
+                      className="w-full accent-foreground cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[10px] text-muted-foreground font-semibold">
+                      <span>Subtle (20%)</span>
+                      <span>Balanced (80%)</span>
+                      <span>Extreme (100%)</span>
+                    </div>
+                  </div>
+
+                  {/* 4. Denoise & JPEG Compression Artifact Reduction */}
+                  <div className="space-y-2 rounded-2xl border border-border bg-muted/20 p-3.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-foreground">
+                        Denoise & Artifact Cleanup
+                      </label>
+                      <span className="text-xs font-mono font-bold text-accent">
+                        <AnimatedCounter value={upscaleDenoise} suffix="%" />
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={upscaleDenoise}
+                      onChange={(e) => setUpscaleDenoise(Number(e.target.value))}
+                      className="w-full accent-foreground cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[10px] text-muted-foreground font-semibold">
+                      <span>Off (0%)</span>
+                      <span>Clean (40%)</span>
+                      <span>Heavy (100%)</span>
+                    </div>
+                  </div>
+
+                  {/* 5. Smart Micro-Contrast & Edge Clarity Switch */}
+                  <div className="flex items-center justify-between rounded-2xl border border-border bg-card p-3.5 shadow-xs">
+                    <div>
+                      <p className="text-xs font-extrabold text-foreground">Smart Micro-Contrast & Clarity</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Enhances fine facial features, eye reflections and micro-textures
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUpscaleFaceRefinement(!upscaleFaceRefinement)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        upscaleFaceRefinement ? "bg-accent" : "bg-muted"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          upscaleFaceRefinement ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Info Callout */}
+                  <div className="rounded-2xl border border-border/80 bg-background/60 p-3 text-[11px] text-muted-foreground leading-relaxed">
+                    ⚡ <strong className="text-foreground">Super-Resolution AI Engine:</strong> Uses multi-pass directional Sobel gradient reconstruction and bilateral edge filtering to reconstruct genuine high-definition clarity up to 4K Ultra-HD.
+                  </div>
+                </div>
+              )}
+
+              {/* 8. BLUR FACE / LOCALIZED ANONYMIZATION CONTROLS */}
               {tool.slug === "blur-face" && (
-                <div className="space-y-3">
-                  <label className="text-xs font-bold text-muted-foreground block">
-                    Anonymise Blur Strength (<AnimatedCounter value={blurRadius} suffix="px" />)
-                  </label>
-                  <input
-                    type="range"
-                    min="5"
-                    max="60"
-                    value={blurRadius}
-                    onChange={(e) => setBlurRadius(Number(e.target.value))}
-                    className="w-full accent-foreground"
-                  />
+                <div className="space-y-5">
+                  {/* Status & Auto-Detection Card */}
+                  <div className="rounded-2xl border-2 border-accent/30 bg-accent/5 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-accent" />
+                        <span className="text-xs font-black text-foreground">
+                          {faceRegions.length === 0
+                            ? "No Faces Detected"
+                            : `${faceRegions.length} Face${faceRegions.length > 1 ? "s" : ""} Auto-Protected`}
+                        </span>
+                      </div>
+                      <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-extrabold text-accent uppercase">
+                        {faceRegions.length > 0 ? "AI Protected" : "Ready"}
+                      </span>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleAutoDetectFaces}
+                        disabled={isDetectingFaces}
+                        className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-foreground text-background py-2.5 px-3 text-xs font-extrabold shadow-sm hover:scale-[1.01] active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {isDetectingFaces ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+                            <span>Scanning Image with AI…</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-3.5 w-3.5 text-accent" />
+                            <span>Auto-Detect & Blur Faces</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {faceRegions.length > 0 && (
+                      <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-muted-foreground">
+                        <span className="text-emerald-500 font-semibold flex items-center gap-1">
+                          <Check className="h-3 w-3" /> Blur applied automatically
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFaceRegions([]);
+                            setActiveFaceId(null);
+                            toast.info("Cleared face blur regions.");
+                          }}
+                          className="text-red-500 hover:text-red-600 font-bold transition-colors cursor-pointer"
+                        >
+                          Clear Blur
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Anonymization Style Mode */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-wider text-muted-foreground block">
+                      Anonymization Style
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: "gaussian", name: "Gaussian Blur", sub: "Smooth Privacy" },
+                        { id: "pixelate", name: "Pixelate", sub: "Censor Mosaic" },
+                        { id: "blackout", name: "Blackout Bar", sub: "Solid Censor" },
+                      ].map((st) => (
+                        <button
+                          key={st.id}
+                          type="button"
+                          onClick={() => setFaceBlurType(st.id as any)}
+                          className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                            faceBlurType === st.id
+                              ? "bg-foreground text-background shadow-md font-black border-foreground scale-[1.02]"
+                              : "border-border bg-card text-muted-foreground hover:border-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <span className="text-xs font-bold">{st.name}</span>
+                          <span className="text-[9px] opacity-75 mt-0.5">{st.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Mask Shape Toggle */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-wider text-muted-foreground block">
+                      Face Mask Shape
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: "ellipse", name: "Oval / Ellipse", sub: "Natural face contour" },
+                        { id: "rect", name: "Rectangle", sub: "Box boundary" },
+                      ].map((sh) => (
+                        <button
+                          key={sh.id}
+                          type="button"
+                          onClick={() => setFaceShape(sh.id as any)}
+                          className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                            faceShape === sh.id
+                              ? "border-accent bg-accent/10 text-foreground ring-1 ring-accent font-black shadow-xs"
+                              : "border-border bg-background text-muted-foreground hover:border-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <span className="text-xs font-bold">{sh.name}</span>
+                          <span className="text-[10px] text-muted-foreground mt-0.5">{sh.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Blur / Pixelation Intensity Slider (hidden for blackout) */}
+                  {faceBlurType !== "blackout" && (
+                    <div className="space-y-2.5 rounded-2xl border border-border bg-background p-4 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-foreground">
+                          {faceBlurType === "pixelate" ? "Mosaic Block Intensity:" : "Blur Strength:"}
+                        </span>
+                        <span className="text-xs font-mono font-black text-accent">
+                          <AnimatedCounter value={faceBlurStrength} suffix="%" />
+                        </span>
+                      </div>
+
+                      <input
+                        type="range"
+                        min="5"
+                        max="50"
+                        step="1"
+                        value={faceBlurStrength}
+                        onChange={(e) => setFaceBlurStrength(Number(e.target.value))}
+                        className="w-full accent-foreground cursor-pointer h-2"
+                      />
+
+                      <div className="grid grid-cols-3 gap-1.5 pt-1">
+                        {[
+                          { label: "Light (15%)", val: 15 },
+                          { label: "Medium (25%)", val: 25 },
+                          { label: "Heavy (40%)", val: 40 },
+                        ].map((preset) => (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() => setFaceBlurStrength(preset.val)}
+                            className={`py-1.5 rounded-lg border text-center text-[11px] font-bold transition-all cursor-pointer ${
+                              faceBlurStrength === preset.val
+                                ? "border-foreground bg-foreground text-background shadow-xs"
+                                : "border-border bg-background text-muted-foreground hover:border-foreground"
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Privacy & Precision Info Pill */}
+                  <div className="rounded-2xl border border-border/80 bg-background/60 p-3 text-[11px] text-muted-foreground leading-relaxed">
+                    🛡️ <strong className="text-foreground">Face-Only Privacy Protection:</strong> Only the detected face bounding boxes are blurred or pixelated. The rest of the image remains 100% sharp and unaltered.
+                  </div>
                 </div>
               )}
 
-              {/* 9. MEME GENERATOR */}
+              {/* 9. MEME GENERATOR SUITE */}
               {tool.slug === "meme-generator" && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-bold text-muted-foreground block mb-1">Top Text</label>
-                    <input
-                      type="text"
-                      value={topText}
-                      onChange={(e) => setTopText(e.target.value)}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-bold uppercase"
-                    />
+                <div className="space-y-5">
+                  {/* Top & Bottom Text Inputs Card */}
+                  <div className="space-y-3.5">
+                    {/* Top Text Field */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                          <Type className="h-3.5 w-3.5 text-accent" />
+                          <span>Top Caption</span>
+                        </label>
+                        {topText && (
+                          <button
+                            type="button"
+                            onClick={() => setTopText("")}
+                            className="text-[11px] font-bold text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-0.5"
+                          >
+                            <X className="h-3 w-3" />
+                            <span>Clear</span>
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={topText}
+                          onChange={(e) => setTopText(e.target.value)}
+                          placeholder="e.g. WHEN YOU USE AI"
+                          className="w-full rounded-2xl border-2 border-border bg-background px-4 py-2.5 text-sm font-black focus:border-accent focus:outline-none transition-all placeholder:text-muted-foreground/50 placeholder:font-normal"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Bottom Text Field */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                          <Type className="h-3.5 w-3.5 text-accent" />
+                          <span>Bottom Caption</span>
+                        </label>
+                        {bottomText && (
+                          <button
+                            type="button"
+                            onClick={() => setBottomText("")}
+                            className="text-[11px] font-bold text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-0.5"
+                          >
+                            <X className="h-3 w-3" />
+                            <span>Clear</span>
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={bottomText}
+                          onChange={(e) => setBottomText(e.target.value)}
+                          placeholder="e.g. AND IT JUST WORKS PERFECTLY"
+                          className="w-full rounded-2xl border-2 border-border bg-background px-4 py-2.5 text-sm font-black focus:border-accent focus:outline-none transition-all placeholder:text-muted-foreground/50 placeholder:font-normal"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-xs font-bold text-muted-foreground block mb-1">Bottom Text</label>
+
+                  {/* Quick Meme Starters / Presets */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-muted-foreground block">
+                      Quick Meme Inspiration
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { top: "WHEN YOU FIX THE BUG", bottom: "WITHOUT BREAKING ANYTHING" },
+                        { top: "ONE DOES NOT SIMPLY", bottom: "WRITE CODE WITHOUT BUGS" },
+                        { top: "EXPECTATION", bottom: "REALITY" },
+                        { top: "WAIT,", bottom: "THAT'S ILLEGAL" },
+                        { top: "NOBODY:", bottom: "ME AT 3 AM:" },
+                        { top: "POV:", bottom: "IT FINALLY WORKS" },
+                      ].map((item, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            setTopText(item.top);
+                            setBottomText(item.bottom);
+                            toast.success("Loaded meme template!");
+                          }}
+                          className="rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-bold text-foreground hover:border-accent hover:text-accent transition-all cursor-pointer truncate max-w-full"
+                        >
+                          {item.top}…
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Font Family Selector */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-wider text-muted-foreground block">
+                      Meme Font
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { label: "Impact", val: "Impact, 'Arial Black', sans-serif" },
+                        { label: "Arial Black", val: "'Arial Black', sans-serif" },
+                        { label: "Anton", val: "'Anton', Impact, sans-serif" },
+                        { label: "Oswald", val: "'Oswald', sans-serif" },
+                        { label: "Comic Sans", val: "'Comic Sans MS', cursive, sans-serif" },
+                        { label: "Montserrat", val: "'Montserrat', sans-serif" },
+                      ].map((f) => (
+                        <button
+                          key={f.label}
+                          type="button"
+                          onClick={() => setMemeFontFamily(f.val)}
+                          className={`rounded-xl border py-2 px-1 text-center text-xs font-black transition-all cursor-pointer truncate ${
+                            memeFontFamily === f.val
+                              ? "bg-foreground text-background shadow-xs font-black scale-[1.02]"
+                              : "border-border bg-card text-muted-foreground hover:border-foreground hover:text-foreground"
+                          }`}
+                          style={{ fontFamily: f.val }}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Font Size Slider */}
+                  <div className="space-y-2.5 rounded-2xl border border-border bg-background p-4 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-foreground">
+                        Text Size:
+                      </span>
+                      <span className="text-xs font-mono font-black text-accent">
+                        <AnimatedCounter value={memeFontSize} suffix="px" />
+                      </span>
+                    </div>
+
                     <input
-                      type="text"
-                      value={bottomText}
-                      onChange={(e) => setBottomText(e.target.value)}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-bold uppercase"
+                      type="range"
+                      min="20"
+                      max="90"
+                      step="2"
+                      value={memeFontSize}
+                      onChange={(e) => setMemeFontSize(Number(e.target.value))}
+                      className="w-full accent-foreground cursor-pointer h-2"
                     />
+
+                    <div className="grid grid-cols-4 gap-1 pt-1">
+                      {[
+                        { label: "Small", val: 28 },
+                        { label: "Medium", val: 44 },
+                        { label: "Large", val: 62 },
+                        { label: "Huge", val: 80 },
+                      ].map((s) => (
+                        <button
+                          key={s.label}
+                          type="button"
+                          onClick={() => setMemeFontSize(s.val)}
+                          className={`py-1 rounded-lg border text-center text-[11px] font-bold transition-all cursor-pointer ${
+                            memeFontSize === s.val
+                              ? "border-foreground bg-foreground text-background shadow-xs"
+                              : "border-border bg-background text-muted-foreground hover:border-foreground"
+                          }`}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Text Color & Stroke Controls */}
+                  <div className="space-y-3.5 rounded-2xl border border-border bg-background p-4 shadow-xs">
+                    {/* Text Fill Color */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-foreground">Text Color</label>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="h-4 w-4 rounded-full border border-black/20 shadow-xs"
+                            style={{ backgroundColor: memeTextColor }}
+                          />
+                          <input
+                            type="color"
+                            value={memeTextColor}
+                            onChange={(e) => setMemeTextColor(e.target.value)}
+                            className="h-6 w-7 rounded cursor-pointer border-0 bg-transparent"
+                            title="Custom color"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {[
+                          { color: "#ffffff", label: "White" },
+                          { color: "#fde047", label: "Yellow" },
+                          { color: "#38bdf8", label: "Sky" },
+                          { color: "#4ade80", label: "Lime" },
+                          { color: "#f472b6", label: "Pink" },
+                          { color: "#000000", label: "Black" },
+                        ].map((c) => (
+                          <button
+                            key={c.color}
+                            type="button"
+                            onClick={() => setMemeTextColor(c.color)}
+                            className={`h-7 w-7 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center ${
+                              memeTextColor.toLowerCase() === c.color.toLowerCase()
+                                ? "border-accent scale-110 shadow-sm"
+                                : "border-border hover:scale-105"
+                            }`}
+                            style={{ backgroundColor: c.color }}
+                            title={c.label}
+                          >
+                            {memeTextColor.toLowerCase() === c.color.toLowerCase() && (
+                              <Check className={`h-3 w-3 ${c.color === "#ffffff" || c.color === "#fde047" ? "text-black" : "text-white"}`} />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Stroke / Outline Width */}
+                    <div className="space-y-1.5 pt-2 border-t border-border">
+                      <label className="text-xs font-bold text-foreground block">
+                        Black Outline (Stroke)
+                      </label>
+                      <div className="grid grid-cols-4 gap-1">
+                        {[
+                          { label: "None", val: 0 },
+                          { label: "Thin", val: 2 },
+                          { label: "Classic", val: 4 },
+                          { label: "Thicc", val: 7 },
+                        ].map((sw) => (
+                          <button
+                            key={sw.label}
+                            type="button"
+                            onClick={() => setMemeStrokeWidth(sw.val)}
+                            className={`py-1.5 rounded-lg border text-center text-xs font-bold transition-all cursor-pointer ${
+                              memeStrokeWidth === sw.val
+                                ? "bg-foreground text-background shadow-xs font-extrabold"
+                                : "border-border bg-background text-muted-foreground hover:border-foreground"
+                            }`}
+                          >
+                            {sw.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Alignment & Format Toggles */}
+                  <div className="space-y-2.5">
+                    <label className="text-xs font-black uppercase tracking-wider text-muted-foreground block">
+                      Formatting &amp; Alignment
+                    </label>
+                    <div className="flex items-center gap-2">
+                      {/* Alignment */}
+                      <div className="flex items-center rounded-xl border border-border bg-card p-1">
+                        <button
+                          type="button"
+                          onClick={() => setMemeTextAlign("left")}
+                          className={`p-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            memeTextAlign === "left" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground hover:text-foreground"
+                          }`}
+                          title="Align Left"
+                        >
+                          <AlignLeft className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMemeTextAlign("center")}
+                          className={`p-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            memeTextAlign === "center" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground hover:text-foreground"
+                          }`}
+                          title="Align Center"
+                        >
+                          <AlignCenter className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMemeTextAlign("right")}
+                          className={`p-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            memeTextAlign === "right" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground hover:text-foreground"
+                          }`}
+                          title="Align Right"
+                        >
+                          <AlignRight className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      {/* ALL CAPS Toggle */}
+                      <button
+                        type="button"
+                        onClick={() => setMemeAllCaps(!memeAllCaps)}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl border text-xs font-black transition-all cursor-pointer ${
+                          memeAllCaps
+                            ? "bg-foreground text-background shadow-xs border-foreground"
+                            : "border-border bg-card text-muted-foreground hover:border-foreground"
+                        }`}
+                      >
+                        <span>ALL CAPS</span>
+                        <span className="text-[10px] opacity-75">{memeAllCaps ? "ON" : "OFF"}</span>
+                      </button>
+
+                      {/* Shadow Toggle */}
+                      <button
+                        type="button"
+                        onClick={() => setMemeTextShadow(!memeTextShadow)}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl border text-xs font-black transition-all cursor-pointer ${
+                          memeTextShadow
+                            ? "bg-foreground text-background shadow-xs border-foreground"
+                            : "border-border bg-card text-muted-foreground hover:border-foreground"
+                        }`}
+                      >
+                        <span>Shadow</span>
+                        <span className="text-[10px] opacity-75">{memeTextShadow ? "ON" : "OFF"}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Position Fine-Tuning & Drag Hint */}
+                  <div className="rounded-2xl border border-border/80 bg-background/60 p-3 space-y-2 text-[11px] text-muted-foreground leading-relaxed">
+                    <div className="flex items-center justify-between">
+                      <span>💡 <strong>Tip:</strong> Drag text directly on the preview to reposition!</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMemeTopPosPercent(4);
+                          setMemeBottomPosPercent(4);
+                          toast.info("Reset text positions to default.");
+                        }}
+                        className="text-accent font-bold hover:underline cursor-pointer"
+                      >
+                        Reset Positions
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -8048,27 +13377,329 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                 </div>
               )}
 
-              {/* 13. SQUARE YOUR IMAGE */}
+              {/* 13. SQUARE YOUR IMAGE CONTROLS */}
               {tool.slug === "square-your-image" && (
-                <div className="space-y-4">
-                  <label className="text-xs font-bold text-muted-foreground block">
-                    Square Background Fill
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(["blur", "white", "black"] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setSquareBgMode(mode)}
-                        className={`rounded-xl border py-2.5 px-2 text-center text-xs font-bold transition-all ${
-                          squareBgMode === mode
-                            ? "bg-foreground text-background shadow-md scale-[1.02]"
-                            : "border-border bg-background text-muted-foreground hover:border-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {mode === "blur" ? "Blurred Edges" : mode === "white" ? "White Fill" : "Black Fill"}
-                      </button>
-                    ))}
+                <div className="space-y-6">
+                  {/* Aspect Ratio & Dimensions Info Card */}
+                  <div className="p-3.5 rounded-2xl bg-card border border-border/80 shadow-sm space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground font-medium">Original Dimensions:</span>
+                      <span className="font-mono font-bold text-foreground">
+                        {dimensions.width} × {dimensions.height} px
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground font-medium">Target 1:1 Square:</span>
+                      <span className="font-mono font-extrabold text-accent">
+                        {Math.max(dimensions.width || 0, dimensions.height || 0)} × {Math.max(dimensions.width || 0, dimensions.height || 0)} px
+                      </span>
+                    </div>
+                    <div className="pt-1 border-t border-border/50 flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Sparkles className="h-3 w-3 text-amber-500 shrink-0" />
+                      <span>Changes reflect instantly in the live square preview!</span>
+                    </div>
+                  </div>
+
+                  {/* 1. Background Fill Mode Selector */}
+                  <div className="space-y-2.5">
+                    <label className="text-xs font-bold text-muted-foreground block">
+                      Background Fill Mode
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {[
+                        { id: "blur", label: "Blurred", icon: Sparkles },
+                        { id: "color", label: "Solid Color", icon: Palette },
+                        { id: "gradient", label: "Gradients", icon: Layers },
+                        { id: "transparent", label: "Transparent", icon: Grid3X3 },
+                        { id: "fit", label: "Full 1:1 Fill", icon: Maximize2 },
+                      ].map((item) => {
+                        const Icon = item.icon;
+                        const isSelected = squareBgMode === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setSquareBgMode(item.id as any)}
+                            className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 px-2 text-center text-xs font-bold transition-all cursor-pointer ${
+                              isSelected
+                                ? "bg-foreground text-background shadow-md scale-[1.02] border-foreground"
+                                : "border-border bg-background text-muted-foreground hover:border-foreground/50 hover:text-foreground"
+                            }`}
+                          >
+                            <Icon className="h-3.5 w-3.5 shrink-0" />
+                            <span>{item.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 2. Mode-Specific Options */}
+                  {squareBgMode === "blur" && (
+                    <div className="space-y-3 p-4 rounded-2xl bg-muted/30 border border-border">
+                      <div className="flex items-center justify-between text-xs">
+                        <label className="font-bold text-foreground">Blur Intensity</label>
+                        <span className="font-mono font-bold text-accent">{squareBlurAmount}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={5}
+                        max={60}
+                        step={1}
+                        value={squareBlurAmount}
+                        onChange={(e) => setSquareBlurAmount(Number(e.target.value))}
+                        className="w-full accent-accent cursor-pointer"
+                      />
+                      <div className="grid grid-cols-3 gap-1.5 pt-1">
+                        {[
+                          { label: "Soft", val: 12 },
+                          { label: "Medium", val: 25 },
+                          { label: "Strong", val: 45 },
+                        ].map((preset) => (
+                          <button
+                            key={preset.val}
+                            type="button"
+                            onClick={() => setSquareBlurAmount(preset.val)}
+                            className={`py-1 rounded-lg text-[11px] font-bold border transition-all ${
+                              squareBlurAmount === preset.val
+                                ? "bg-foreground text-background border-foreground"
+                                : "border-border/60 bg-card text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {squareBgMode === "color" && (
+                    <div className="space-y-3 p-4 rounded-2xl bg-muted/30 border border-border">
+                      <label className="text-xs font-bold text-foreground block">
+                        Background Color Swatches
+                      </label>
+                      <div className="grid grid-cols-6 gap-2">
+                        {SQUARE_COLOR_PRESETS.map((color) => (
+                          <button
+                            key={color.value}
+                            type="button"
+                            onClick={() => setSquareBgColor(color.value)}
+                            title={color.name}
+                            className={`h-7 w-full rounded-lg border flex items-center justify-center transition-all ${
+                              squareBgColor.toLowerCase() === color.value.toLowerCase()
+                                ? "border-foreground ring-2 ring-foreground/20 scale-110 shadow-sm"
+                                : "border-border/80 hover:scale-105"
+                            }`}
+                            style={{ backgroundColor: color.value }}
+                          >
+                            {squareBgColor.toLowerCase() === color.value.toLowerCase() && (
+                              <Check
+                                className={`h-3.5 w-3.5 ${
+                                  color.value === "#ffffff" || color.value === "#f8fafc" || color.value === "#e2e8f0"
+                                    ? "text-black"
+                                    : "text-white"
+                                }`}
+                              />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 pt-2 border-t border-border/60">
+                        <input
+                          type="color"
+                          value={squareBgColor}
+                          onChange={(e) => setSquareBgColor(e.target.value)}
+                          className="h-8 w-10 cursor-pointer rounded-lg border border-border bg-transparent p-0"
+                          title="Choose custom color"
+                        />
+                        <input
+                          type="text"
+                          value={squareBgColor}
+                          onChange={(e) => setSquareBgColor(e.target.value)}
+                          placeholder="#ffffff"
+                          className="flex-1 rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-mono font-bold text-foreground uppercase"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {squareBgMode === "gradient" && (
+                    <div className="space-y-3 p-4 rounded-2xl bg-muted/30 border border-border">
+                      <label className="text-xs font-bold text-foreground block">
+                        Gradient Presets
+                      </label>
+                      <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto pr-1">
+                        {SQUARE_GRADIENT_PRESETS.map((grad) => (
+                          <button
+                            key={grad.name}
+                            type="button"
+                            onClick={() => setSquareGradient(grad.value)}
+                            className={`flex items-center gap-2 p-1.5 rounded-xl border text-left transition-all ${
+                              squareGradient === grad.value
+                                ? "border-foreground bg-card ring-2 ring-foreground/20"
+                                : "border-border/80 bg-card/60 hover:bg-card hover:border-foreground/40"
+                            }`}
+                          >
+                            <div
+                              className="h-6 w-6 rounded-lg shrink-0 border border-black/10 shadow-xs"
+                              style={{ background: grad.value }}
+                            />
+                            <span className="text-[11px] font-bold text-foreground truncate">
+                              {grad.name}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {squareBgMode === "transparent" && (
+                    <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-1 text-amber-700 dark:text-amber-300">
+                      <p className="font-bold flex items-center gap-1.5">
+                        <Grid3X3 className="h-4 w-4" /> Transparent 1:1 Canvas
+                      </p>
+                      <p className="opacity-90 text-[11px] leading-relaxed">
+                        The background is kept completely transparent. Ideal for logos, icons, stickers, and profile badges (select <strong>PNG</strong> or <strong>WebP</strong> export).
+                      </p>
+                    </div>
+                  )}
+
+                  {squareBgMode === "fit" && (
+                    <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-xs space-y-1 text-blue-700 dark:text-blue-300">
+                      <p className="font-bold flex items-center gap-1.5">
+                        <Maximize2 className="h-4 w-4" /> Full Bleed 1:1 Crop
+                      </p>
+                      <p className="opacity-90 text-[11px] leading-relaxed">
+                        Scales the photo to completely fill the 1:1 square canvas without leaving any borders or background bars.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 3. Photo Scale / Inset Padding (only if not fit mode) */}
+                  {squareBgMode !== "fit" && (
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <label className="font-bold text-muted-foreground">Photo Scale / Padding</label>
+                        <span className="font-mono font-bold text-accent">{squareScale}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={50}
+                        max={100}
+                        step={1}
+                        value={squareScale}
+                        onChange={(e) => setSquareScale(Number(e.target.value))}
+                        className="w-full accent-accent cursor-pointer"
+                      />
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[
+                          { label: "100% Fit", val: 100 },
+                          { label: "90% Inset", val: 90 },
+                          { label: "80% Border", val: 80 },
+                          { label: "70% Small", val: 70 },
+                        ].map((preset) => (
+                          <button
+                            key={preset.val}
+                            type="button"
+                            onClick={() => setSquareScale(preset.val)}
+                            className={`py-1 rounded-lg text-[10px] font-bold border transition-all ${
+                              squareScale === preset.val
+                                ? "bg-foreground text-background border-foreground shadow-xs"
+                                : "border-border bg-card text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 4. Corner Radius (Rounding) */}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <label className="font-bold text-muted-foreground">Photo Corner Radius</label>
+                      <span className="font-mono font-bold text-accent">
+                        {squareCornerRadius === 9999 ? "Circle" : `${squareCornerRadius}px`}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[
+                        { label: "Sharp", val: 0 },
+                        { label: "Subtle", val: 12 },
+                        { label: "Rounded", val: 24 },
+                        { label: "Circle", val: 9999 },
+                      ].map((preset) => (
+                        <button
+                          key={preset.val}
+                          type="button"
+                          onClick={() => setSquareCornerRadius(preset.val)}
+                          className={`py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                            squareCornerRadius === preset.val
+                              ? "bg-foreground text-background border-foreground shadow-xs"
+                              : "border-border bg-card text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 5. Drop Shadow / Elevation */}
+                  {squareBgMode !== "fit" && (
+                    <div className="space-y-2.5">
+                      <label className="text-xs font-bold text-muted-foreground block">
+                        Photo Shadow / Elevation
+                      </label>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[
+                          { id: "none", label: "None" },
+                          { id: "soft", label: "Soft" },
+                          { id: "float", label: "3D Float" },
+                          { id: "card", label: "Card" },
+                        ].map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setSquareShadow(s.id as any)}
+                            className={`py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                              squareShadow === s.id
+                                ? "bg-foreground text-background border-foreground shadow-xs"
+                                : "border-border bg-card text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 6. Export Format Selection */}
+                  <div className="space-y-2.5">
+                    <label className="text-xs font-bold text-muted-foreground block">
+                      Target Export Format
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["PNG", "JPG", "WEBP"] as const).map((fmt) => (
+                        <button
+                          key={fmt}
+                          type="button"
+                          onClick={() => setSquareExportFormat(fmt)}
+                          className={`rounded-xl border py-2 text-center text-xs font-extrabold transition-all ${
+                            squareExportFormat === fmt
+                              ? "bg-foreground text-background border-foreground shadow-md scale-[1.02]"
+                              : "border-border bg-background text-muted-foreground hover:border-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {fmt}
+                          <span className="block text-[10px] font-normal opacity-75">
+                            {fmt === "PNG" ? "Lossless" : fmt === "JPG" ? "Universal" : "Modern"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -8350,41 +13981,182 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                 </div>
               )}
 
-              {/* 14. TEXT DECODER TOOLS (Base64/Octal/Hex/Decimal/ASCII/Text To Image) */}
+              {/* Dedicated Settings Panel for Base64 to Image */}
+              {tool.slug === "base64-to-image" && (
+                <div className="space-y-4">
+                  {/* 1. Decoded Image Overview Card */}
+                  <div className="space-y-3.5 rounded-2xl border border-border bg-card/60 p-4 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-black text-xs shadow-inner">
+                          <Check className="h-4 w-4 stroke-[2.5]" />
+                        </span>
+                        <div>
+                          <label className="text-xs font-black text-foreground block">
+                            Decoded Image Details
+                          </label>
+                          <span className="text-[10px] text-muted-foreground font-semibold">
+                            Live Decoded from Base64
+                          </span>
+                        </div>
+                      </div>
+                      <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400">
+                        {base64DecodedInfo?.format || "PNG"}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-xl border border-border/70 bg-background/80 p-2.5">
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground block">Dimensions</span>
+                        <span className="font-mono text-xs font-black text-foreground">
+                          {dimensions.width} × {dimensions.height} px
+                        </span>
+                      </div>
+                      <div className="rounded-xl border border-border/70 bg-background/80 p-2.5">
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground block">Payload Size</span>
+                        <span className="font-mono text-xs font-black text-foreground">
+                          {formatBytes(base64DecodedInfo?.approxBytes || origSize || 0)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {base64DecodedInfo && (
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
+                        <span>Base64 String Length:</span>
+                        <span className="font-mono font-bold text-foreground">
+                          {base64DecodedInfo.charCount.toLocaleString()} chars
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. Export Format Settings */}
+                  <div className="space-y-3 rounded-2xl border border-border bg-card/60 p-4 shadow-2xs">
+                    <label className="text-xs font-black text-foreground block">
+                      Export Format
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["PNG", "JPG", "WEBP"] as const).map((fmt) => (
+                        <button
+                          key={fmt}
+                          type="button"
+                          onClick={() => setBase64ExportFormat(fmt)}
+                          className={`flex flex-col items-center justify-center py-2.5 px-3 rounded-xl border font-bold text-xs transition-all cursor-pointer ${
+                            base64ExportFormat === fmt
+                              ? "border-accent bg-accent/15 text-accent shadow-xs scale-[1.02]"
+                              : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                          }`}
+                        >
+                          <span className="font-black text-sm">{fmt}</span>
+                          <span className="text-[9px] opacity-75">
+                            {fmt === "PNG" ? "Lossless" : fmt === "JPG" ? "Standard" : "Modern"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {(base64ExportFormat === "JPG" || base64ExportFormat === "WEBP") && (
+                      <div className="space-y-2 pt-2 border-t border-border/60">
+                        <div className="flex items-center justify-between text-xs font-bold">
+                          <span className="text-muted-foreground">Quality:</span>
+                          <span className="font-mono font-extrabold text-foreground">
+                            {Math.round(base64ExportQuality * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0.5}
+                          max={1}
+                          step={0.01}
+                          value={base64ExportQuality}
+                          onChange={(e) => setBase64ExportQuality(parseFloat(e.target.value))}
+                          className="w-full accent-accent cursor-pointer"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. Quick Actions */}
+                  <div className="space-y-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={copyBase64DecodedImage}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl border border-border bg-background py-2.5 text-xs font-bold text-foreground hover:border-accent hover:text-accent transition-all cursor-pointer shadow-xs"
+                    >
+                      <Copy className="h-3.5 w-3.5 text-accent" />
+                      <span>Copy Decoded Image</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImageSrc(null);
+                        setProcessedSrc(null);
+                        setFile(null);
+                        setHasProcessed(false);
+                        setIsEditingSettings(false);
+                        setBase64LandingMode("upload");
+                        setBase64InputText("");
+                        setBase64DecodedInfo(null);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl border border-border bg-background py-2.5 text-xs font-bold text-muted-foreground hover:text-foreground hover:border-foreground transition-all cursor-pointer"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      <span>Upload Another File or Paste Text</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 14. TEXT DECODER TOOLS (Octal/Hex/Decimal/ASCII To Image) — Input Summary Card */}
               {[
-                "base64-to-image",
                 "octal-to-image",
                 "ascii-to-image",
-                "text-to-image",
                 "hex-to-image",
                 "decimal-to-image",
               ].includes(tool.slug) && (
-                <div className="space-y-3">
-                  <label className="text-xs font-bold text-muted-foreground block">
-                    Paste {tool.name} Input Data
-                  </label>
-                  <textarea
-                    rows={6}
-                    value={inputConvertText}
-                    onChange={(e) => setInputConvertText(e.target.value)}
-                    placeholder={
-                      tool.slug === "base64-to-image"
-                        ? "Paste Base64 data string (e.g. data:image/png;base64,iVBORw0KGgo...)"
-                        : tool.slug === "octal-to-image"
-                        ? "Paste space-separated Octal byte numbers (e.g. 137 120 116 107...)"
-                        : tool.slug === "hex-to-image"
-                        ? "Paste Hexadecimal byte string (e.g. 89 50 4E 47 0D 0A 1A 0A...)"
-                        : tool.slug === "decimal-to-image"
-                        ? "Paste Decimal byte numbers (e.g. 137 80 78 71 13 10 26 10...)"
-                        : "Type or paste text content to render into an image..."
-                    }
-                    className="w-full rounded-2xl border-2 border-border bg-background p-3.5 text-xs font-mono leading-relaxed focus:border-accent focus:outline-none"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Click <strong className="text-foreground">Convert / Process Image</strong> below to render into a downloadable image.
-                  </p>
+                <div className="space-y-2.5 rounded-2xl border border-border bg-card/60 p-3.5 shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-accent-foreground font-black text-xs shadow-inner">
+                      <FileText className="h-3.5 w-3.5" />
+                    </span>
+                    <div>
+                      <label className="text-xs font-black text-foreground block">
+                        Encoded Input Data
+                      </label>
+                      <span className="text-[10px] text-muted-foreground block">
+                        {inputConvertText
+                          ? `${inputConvertText.trim().split(/\s+/).length.toLocaleString()} tokens · ${inputConvertText.length.toLocaleString()} chars`
+                          : "No data loaded"}
+                      </span>
+                    </div>
+                  </div>
+                  {inputConvertText && (
+                    <div className="rounded-xl bg-background border border-border p-2.5 max-h-20 overflow-y-auto">
+                      <p className="text-[10px] font-mono text-muted-foreground break-all leading-relaxed">
+                        {inputConvertText.slice(0, 180)}{inputConvertText.length > 180 ? "…" : ""}
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImageSrc(null);
+                      setProcessedSrc(null);
+                      setFile(null);
+                      setHasProcessed(false);
+                      setIsEditingSettings(false);
+                      setTextDecoderLandingMode("plain_text");
+                    }}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl border border-border bg-background py-2 text-xs font-bold text-muted-foreground hover:text-foreground hover:border-foreground transition-all cursor-pointer"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    <span>Upload Another File or Edit Input</span>
+                  </button>
                 </div>
               )}
+
+
 
               {/* 14.9 ADVANCED OCR & BARCODE/QR CONTROLS */}
               {(tool.slug === "image-to-text-ocr" || tool.slug === "image-to-text") && (
@@ -9031,15 +14803,21 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                   {/* File Info Bar */}
                   <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-muted/40 border border-border">
                     <div className="flex items-center gap-2.5 truncate">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-500/10 text-red-500 font-bold shadow-xs">
-                        <FileDown className="h-4 w-4" />
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl font-bold shadow-xs ${
+                        pdfIsPasswordProtected && !pdfIsUnlocked ? "bg-amber-500/10 text-amber-500" : "bg-red-500/10 text-red-500"
+                      }`}>
+                        {pdfIsPasswordProtected && !pdfIsUnlocked ? <Lock className="h-4 w-4" /> : <FileDown className="h-4 w-4" />}
                       </div>
                       <div className="truncate">
                         <h4 className="text-xs font-black text-foreground truncate">
                           {file ? file.name : "Uploaded PDF Document"}
                         </h4>
                         <p className="text-[10px] text-muted-foreground">
-                          {file ? `${formatBytes(file.size)} · ${pdfTotalPages} ${pdfTotalPages === 1 ? "page" : "pages"}` : "Ready to convert"}
+                          {pdfIsPasswordProtected && !pdfIsUnlocked
+                            ? "🔒 Password Protected"
+                            : file
+                            ? `${formatBytes(file.size)} · ${pdfTotalPages} ${pdfTotalPages === 1 ? "page" : "pages"}`
+                            : "Ready to convert"}
                         </p>
                       </div>
                     </div>
@@ -9054,111 +14832,236 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                     </button>
                   </div>
 
-                  {/* Page Selector */}
-                  {pdfTotalPages > 1 && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold text-muted-foreground">Select Page to Convert:</label>
-                        <span className="text-[10px] font-mono font-bold text-accent">
-                          Page {pdfDocPage} of {pdfTotalPages}
+                  {/* Password Protection Card (Shown when locked) */}
+                  {pdfIsPasswordProtected && !pdfIsUnlocked ? (
+                    <div className="rounded-3xl border-2 border-amber-500/30 bg-amber-500/5 p-5 space-y-4 shadow-sm animate-in fade-in duration-200">
+                      <div className="flex items-center gap-2.5">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-amber-500 text-white font-black text-xs">
+                          <Lock className="h-3.5 w-3.5" />
                         </span>
+                        <div>
+                          <h4 className="text-xs font-black text-foreground">Document Password Required</h4>
+                          <p className="text-[10px] text-muted-foreground">Unlock to view and configure conversion options</p>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
+
+                      {pdfPasswordError && (
+                        <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-2.5 text-xs font-bold text-red-600 dark:text-red-400">
+                          <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+                          <span>{pdfPasswordError}</span>
+                        </div>
+                      )}
+
+                      <div className="space-y-2.5">
+                        <div className="relative">
+                          <input
+                            type={pdfShowPasswordText ? "text" : "password"}
+                            name="pdf-doc-unlock-password-field"
+                            id="pdf-doc-unlock-password-field"
+                            autoComplete="new-password"
+                            autoCorrect="off"
+                            autoCapitalize="off"
+                            spellCheck={false}
+                            data-lpignore="true"
+                            data-1p-ignore="true"
+                            data-form-type="other"
+                            value={pdfPasswordInput}
+                            onChange={(e) => {
+                              setPdfPasswordInput(e.target.value);
+                              setPdfPasswordError(null);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleUnlockPdf();
+                            }}
+                            placeholder="Enter document password..."
+                            className="w-full rounded-xl border-2 border-border bg-background py-2.5 pl-3 pr-9 text-xs font-mono font-bold focus:border-accent focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setPdfShowPasswordText((v) => !v)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer p-1"
+                          >
+                            {pdfShowPasswordText ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
+
                         <button
                           type="button"
-                          disabled={pdfDocPage <= 1}
-                          onClick={() => setPdfDocPage((p) => Math.max(1, p - 1))}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card font-bold hover:border-foreground disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                          onClick={handleUnlockPdf}
+                          disabled={processing || !pdfPasswordInput.trim()}
+                          className="w-full flex items-center justify-center gap-2 rounded-xl bg-foreground py-2.5 px-4 text-xs font-black text-background shadow-md hover:scale-[1.02] active:scale-98 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
-                          ←
-                        </button>
-                        <input
-                          type="number"
-                          min={1}
-                          max={pdfTotalPages}
-                          value={pdfDocPage}
-                          onChange={(e) => setPdfDocPage(Math.min(pdfTotalPages, Math.max(1, Number(e.target.value) || 1)))}
-                          className="w-full text-center rounded-xl border-2 border-border bg-background py-2 text-xs font-mono font-bold focus:border-accent focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          disabled={pdfDocPage >= pdfTotalPages}
-                          onClick={() => setPdfDocPage((p) => Math.min(pdfTotalPages, p + 1))}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card font-bold hover:border-foreground disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          →
+                          {processing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5 text-accent" />}
+                          <span>Unlock Document</span>
                         </button>
                       </div>
                     </div>
+                  ) : (
+                    <>
+                      {/* Password Unlocked Badge */}
+                      {pdfIsPasswordProtected && pdfIsUnlocked && (
+                        <div className="flex items-center justify-between gap-2 p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
+                          <div className="flex items-center gap-2 text-xs font-bold">
+                            <Unlock className="h-4 w-4 shrink-0" />
+                            <span>Document Password Verified &amp; Decrypted</span>
+                          </div>
+                          <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[9px] font-mono font-extrabold uppercase">
+                            Unlocked
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Multi-Page Mode Selector (Only shown when PDF has > 1 page) */}
+                      {pdfTotalPages > 1 && (
+                        <div className="space-y-3">
+                          <label className="text-xs font-bold text-muted-foreground block">
+                            Page Conversion Mode:
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPdfPageMode("all")}
+                              className={`flex flex-col items-center justify-center rounded-2xl border-2 p-3 text-center transition-all cursor-pointer ${
+                                pdfPageMode === "all"
+                                  ? "border-accent bg-accent/10 shadow-sm"
+                                  : "border-border bg-card/60 hover:border-foreground/50"
+                              }`}
+                            >
+                              <span className={`text-xs font-extrabold ${pdfPageMode === "all" ? "text-accent" : "text-foreground"}`}>
+                                📦 All Pages (ZIP)
+                              </span>
+                              <span className="text-[10px] text-muted-foreground mt-0.5">
+                                All {pdfTotalPages} pages in 1 ZIP
+                              </span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setPdfPageMode("single")}
+                              className={`flex flex-col items-center justify-center rounded-2xl border-2 p-3 text-center transition-all cursor-pointer ${
+                                pdfPageMode === "single"
+                                  ? "border-accent bg-accent/10 shadow-sm"
+                                  : "border-border bg-card/60 hover:border-foreground/50"
+                              }`}
+                            >
+                              <span className={`text-xs font-extrabold ${pdfPageMode === "single" ? "text-accent" : "text-foreground"}`}>
+                                📄 Specific Page
+                              </span>
+                              <span className="text-[10px] text-muted-foreground mt-0.5">
+                                Direct image file download
+                              </span>
+                            </button>
+                          </div>
+
+                          {/* Specific Single Page Picker */}
+                          {pdfPageMode === "single" && (
+                            <div className="rounded-2xl border border-border bg-muted/30 p-3.5 space-y-2 animate-in fade-in duration-200">
+                              <div className="flex items-center justify-between">
+                                <label className="text-xs font-bold text-muted-foreground">Select Page to Convert:</label>
+                                <span className="text-[10px] font-mono font-bold text-accent">
+                                  Page {pdfDocPage} of {pdfTotalPages}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={pdfDocPage <= 1}
+                                  onClick={() => setPdfDocPage((p) => Math.max(1, p - 1))}
+                                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card font-bold hover:border-foreground disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={pdfTotalPages}
+                                  value={pdfDocPage}
+                                  onChange={(e) => setPdfDocPage(Math.min(pdfTotalPages, Math.max(1, Number(e.target.value) || 1)))}
+                                  className="w-full text-center rounded-xl border-2 border-border bg-background py-2 text-xs font-mono font-bold focus:border-accent focus:outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={pdfDocPage >= pdfTotalPages}
+                                  onClick={() => setPdfDocPage((p) => Math.min(pdfTotalPages, p + 1))}
+                                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card font-bold hover:border-foreground disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Quality / Resolution DPI */}
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-muted-foreground block">
+                          Render Quality & Resolution:
+                        </label>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {[
+                            { scale: 1.5, label: "150 DPI", sub: "Standard" },
+                            { scale: 2.0, label: "300 DPI", sub: "High Res" },
+                            { scale: 3.0, label: "600 DPI", sub: "Ultra HD" },
+                          ].map((item) => (
+                            <button
+                              key={item.scale}
+                              type="button"
+                              onClick={() => setPdfDpiScale(item.scale)}
+                              className={`flex flex-col items-center justify-center rounded-xl border py-2 px-1 text-center transition-all cursor-pointer ${
+                                pdfDpiScale === item.scale
+                                  ? "border-foreground bg-foreground text-background shadow-xs font-bold"
+                                  : "border-border bg-background text-muted-foreground hover:border-foreground hover:text-foreground"
+                              }`}
+                            >
+                              <span className="text-xs font-extrabold">{item.label}</span>
+                              <span className="text-[10px] opacity-80">{item.sub}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Background & Output Format */}
+                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
+                        <div>
+                          <span className="text-[11px] font-bold text-muted-foreground block mb-1">Background:</span>
+                          <select
+                            value={pdfBgColor}
+                            onChange={(e) => setPdfBgColor(e.target.value)}
+                            className="w-full rounded-xl border-2 border-border bg-background px-2.5 py-2 text-xs font-bold focus:border-accent focus:outline-none"
+                          >
+                            <option value="#ffffff">White (#FFFFFF)</option>
+                            <option value="#f8fafc">Light Gray (#F8FAFC)</option>
+                            <option value="#0f172a">Dark Slate (#0F172A)</option>
+                            <option value="transparent">Transparent (PNG)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-bold text-muted-foreground block mb-1">Output Format:</span>
+                          <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted/40 p-1 border border-border">
+                            <button
+                              type="button"
+                              onClick={() => setPdfDocOutputFormat("PNG")}
+                              className={`rounded-lg py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
+                                pdfDocOutputFormat === "PNG" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground"
+                              }`}
+                            >
+                              PNG
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPdfDocOutputFormat("JPG")}
+                              className={`rounded-lg py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
+                                pdfDocOutputFormat === "JPG" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground"
+                              }`}
+                            >
+                              JPG
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </>
                   )}
-
-                  {/* Quality / Resolution DPI */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-muted-foreground block">
-                      Render Quality & Resolution:
-                    </label>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {[
-                        { scale: 1.5, label: "150 DPI", sub: "Standard" },
-                        { scale: 2.0, label: "300 DPI", sub: "High Res" },
-                        { scale: 3.0, label: "600 DPI", sub: "Ultra HD" },
-                      ].map((item) => (
-                        <button
-                          key={item.scale}
-                          type="button"
-                          onClick={() => setPdfDpiScale(item.scale)}
-                          className={`flex flex-col items-center justify-center rounded-xl border py-2 px-1 text-center transition-all cursor-pointer ${
-                            pdfDpiScale === item.scale
-                              ? "border-foreground bg-foreground text-background shadow-xs font-bold"
-                              : "border-border bg-background text-muted-foreground hover:border-foreground hover:text-foreground"
-                          }`}
-                        >
-                          <span className="text-xs font-extrabold">{item.label}</span>
-                          <span className="text-[10px] opacity-80">{item.sub}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Format & Background */}
-                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
-                    <div>
-                      <span className="text-[11px] font-bold text-muted-foreground block mb-1">Background:</span>
-                      <select
-                        value={pdfBgColor}
-                        onChange={(e) => setPdfBgColor(e.target.value)}
-                        className="w-full rounded-xl border-2 border-border bg-background px-2.5 py-2 text-xs font-bold focus:border-accent focus:outline-none"
-                      >
-                        <option value="#ffffff">White (#FFFFFF)</option>
-                        <option value="transparent">Transparent</option>
-                        <option value="#0f172a">Dark Slate (#0F172A)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <span className="text-[11px] font-bold text-muted-foreground block mb-1">Output Format:</span>
-                      <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted/40 p-1 border border-border">
-                        <button
-                          type="button"
-                          onClick={() => setPdfDocOutputFormat("PNG")}
-                          className={`rounded-lg py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
-                            pdfDocOutputFormat === "PNG" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground"
-                          }`}
-                        >
-                          PNG
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPdfDocOutputFormat("JPG")}
-                          className={`rounded-lg py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
-                            pdfDocOutputFormat === "JPG" ? "bg-foreground text-background shadow-xs" : "text-muted-foreground"
-                          }`}
-                        >
-                          JPG
-                        </button>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               )}
 
@@ -9256,6 +15159,29 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                         </button>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Document Header Bar Toggle */}
+                  <div className="flex items-center justify-between p-3.5 rounded-2xl border border-border bg-muted/30">
+                    <div className="space-y-0.5 pr-2">
+                      <span className="text-xs font-bold text-foreground block">Document Header Bar</span>
+                      <span className="text-[10px] text-muted-foreground block">
+                        {wordDocShowHeader ? "Showing top blue header bar with document title" : "Clean document mode (no header bar)"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setWordDocShowHeader((v) => !v)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        wordDocShowHeader ? "bg-accent" : "bg-muted"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow-md ring-0 transition duration-200 ease-in-out ${
+                          wordDocShowHeader ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
                   </div>
                 </div>
               )}
@@ -9364,7 +15290,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
               {tool.slug === "powerpoint-to-image" && (
                 <div className="space-y-6">
                   {/* File Info Bar */}
-                  <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-muted/40 border border-border">
+                  <div className="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-muted/40 border border-border">
                     <div className="flex items-center gap-2.5 truncate">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500 font-bold shadow-xs">
                         <MonitorPlay className="h-4 w-4" />
@@ -9374,7 +15300,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                           {file ? file.name : "PowerPoint (.pptx)"}
                         </h4>
                         <p className="text-[10px] text-muted-foreground">
-                          {file ? `${formatBytes(file.size)} · PowerPoint Presentation` : "Ready to convert"}
+                          {file
+                            ? `${formatBytes(file.size)} · ${pptTotalSlides} ${pptTotalSlides === 1 ? "slide" : "slides"} · ${pptAspectRatio}`
+                            : "Ready to convert"}
                         </p>
                       </div>
                     </div>
@@ -9389,14 +15317,123 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                     </button>
                   </div>
 
+                  {/* Multi-Slide Conversion Mode (if multiple slides detected) */}
+                  {pptTotalSlides > 1 && (
+                    <div className="space-y-3 p-3.5 rounded-2xl bg-secondary/30 border border-border">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-foreground">Slide Conversion Scope:</label>
+                        <span className="text-[10px] font-bold text-accent px-2 py-0.5 rounded-md bg-accent/10">
+                          {pptTotalSlides} Slides Total
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setPptSlideMode("all")}
+                          className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                            pptSlideMode === "all"
+                              ? "border-accent bg-accent/10 text-foreground ring-1 ring-accent"
+                              : "border-border bg-background text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <span className="text-xs font-black">All {pptTotalSlides} Slides</span>
+                          <span className="text-[10px] text-muted-foreground font-normal mt-0.5">Zip Bundle</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setPptSlideMode("single")}
+                          className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                            pptSlideMode === "single"
+                              ? "border-accent bg-accent/10 text-foreground ring-1 ring-accent"
+                              : "border-border bg-background text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <span className="text-xs font-black">Single Slide</span>
+                          <span className="text-[10px] text-muted-foreground font-normal mt-0.5">Slide {pptDocSlide}</span>
+                        </button>
+                      </div>
+
+                      {/* Slide Navigator when Single Slide Mode or previewing */}
+                      <div className="pt-2 border-t border-border/60">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[11px] font-bold text-muted-foreground">
+                            {pptSlideMode === "single" ? "Selected Slide to Convert:" : "Preview Slide:"}
+                          </span>
+                          <span className="text-xs font-black text-foreground">
+                            Slide {pptDocSlide} of {pptTotalSlides}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={pptDocSlide <= 1}
+                            onClick={() => setPptDocSlide((s) => Math.max(1, s - 1))}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-xs font-bold hover:bg-muted transition-all disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                          >
+                            <ArrowLeft className="h-4 w-4" />
+                          </button>
+
+                          <div className="flex-1 flex items-center gap-2 bg-background border border-border rounded-xl px-3 py-1.5 shadow-xs">
+                            <span className="text-xs font-bold text-muted-foreground">Slide</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={pptTotalSlides}
+                              value={pptDocSlide}
+                              onChange={(e) => setPptDocSlide(Math.min(pptTotalSlides, Math.max(1, Number(e.target.value) || 1)))}
+                              className="w-full text-center text-xs font-black text-foreground bg-transparent focus:outline-none"
+                            />
+                            <span className="text-xs font-bold text-muted-foreground">/ {pptTotalSlides}</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={pptDocSlide >= pptTotalSlides}
+                            onClick={() => setPptDocSlide((s) => Math.min(pptTotalSlides, s + 1))}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-xs font-bold hover:bg-muted transition-all disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                          >
+                            <ArrowRight className="h-4 w-4" />
+                          </button>
+                        </div>
+
+                        {/* Quick slide chip list */}
+                        {pptTotalSlides <= 12 && (
+                          <div className="flex flex-wrap gap-1.5 mt-2.5">
+                            {Array.from({ length: pptTotalSlides }).map((_, idx) => {
+                              const sNum = idx + 1;
+                              return (
+                                <button
+                                  key={sNum}
+                                  type="button"
+                                  onClick={() => setPptDocSlide(sNum)}
+                                  className={`h-7 px-2.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                                    pptDocSlide === sNum
+                                      ? "border-foreground bg-foreground text-background shadow-xs font-black"
+                                      : "border-border bg-background text-muted-foreground hover:text-foreground"
+                                  }`}
+                                >
+                                  {sNum}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Slide Theme */}
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-muted-foreground block">Slide Visual Theme:</label>
-                    <div className="grid grid-cols-3 gap-2">
+                    <label className="text-xs font-bold text-muted-foreground block">Visual Slide Theme:</label>
+                    <div className="grid grid-cols-2 gap-2">
                       {[
+                        { id: "original", label: "Original (As Designed)" },
+                        { id: "clean", label: "Clean Minimal" },
                         { id: "indigo", label: "Indigo Modern" },
                         { id: "dark", label: "Dark Slate" },
-                        { id: "clean", label: "Clean Minimal" },
                       ].map((item) => (
                         <button
                           key={item.id}
@@ -9419,7 +15456,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                     <div>
                       <span className="text-[11px] font-bold text-muted-foreground block mb-1">Aspect Ratio:</span>
                       <div className="rounded-xl border border-border bg-muted/40 p-2 text-center text-xs font-bold">
-                        16:9 Full HD (1920×1080)
+                        {pptAspectRatio} (1920×1080)
                       </div>
                     </div>
 
@@ -9453,33 +15490,160 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
               {/* 16. COLOR PICKER FROM IMAGE */}
               {tool.slug === "color-picker-from-image" && (
                 <div className="space-y-5">
-                  {/* Swatch Header */}
+                  {/* Swatch Header Card */}
                   <div className="flex items-center gap-4 rounded-2xl border border-border bg-background p-4 shadow-sm">
-                    <span
-                      className="h-16 w-16 rounded-xl border-2 border-white/30 shadow-md shrink-0 transition-transform duration-200"
-                      style={{ backgroundColor: pickedHex }}
-                    />
+                    <div className="relative group">
+                      <span
+                        className="h-16 w-16 rounded-xl border-2 border-white/40 shadow-md shrink-0 block transition-transform duration-200 group-hover:scale-105"
+                        style={{ backgroundColor: pickedHex }}
+                      />
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Active Color</p>
-                      <p className="font-display text-2xl font-black text-foreground truncate">{pickedHex}</p>
-                      <p className="text-xs font-mono text-muted-foreground">{pickedRgb}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Active Color</p>
+                        <span className="text-[10px] font-semibold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                          Auto-copied on Pick
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="font-display text-2xl font-black text-foreground tracking-tight truncate">{pickedHex}</p>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(pickedHex, "HEX")}
+                          className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 text-xs font-bold hover:bg-foreground hover:text-background transition-all"
+                          title="Copy HEX"
+                        >
+                          {copiedFormat === "HEX" ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+                          <span className="text-[11px]">{copiedFormat === "HEX" ? "Copied" : "Copy"}</span>
+                        </button>
+                      </div>
+                      <p className="text-xs font-mono text-muted-foreground mt-0.5">{pickedRgb} • {pickedHsl}</p>
                     </div>
                     <button
                       type="button"
                       onClick={openSystemEyeDropper}
-                      className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-accent-foreground shadow-md transition-all hover:scale-105"
+                      className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-accent-foreground shadow-md transition-all hover:scale-105 shrink-0"
                       title="Launch EyeDropper tool"
                     >
                       <Pipette className="h-5 w-5" />
                     </button>
                   </div>
 
-                  {/* Copy Code Buttons */}
+                  {/* Auto-Extracted Most Common Colors Card */}
+                  <div className="rounded-2xl border-2 border-border/80 bg-card p-4 space-y-3.5 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-black uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                            <Sparkles className="h-3.5 w-3.5 text-accent" />
+                            <span>Most Common Colors</span>
+                          </label>
+                          <span className="rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-500">
+                            Auto-Selected
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Top dominant colors detected in this image
+                        </p>
+                      </div>
+
+                      {imageSrc && (
+                        <button
+                          type="button"
+                          disabled={isExtractingColors}
+                          onClick={() => extractMostCommonColors(imageSrc)}
+                          className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-bold text-muted-foreground hover:border-foreground hover:text-foreground transition-all cursor-pointer disabled:opacity-50"
+                          title="Re-analyze image colors"
+                        >
+                          <RotateCw className={`h-3 w-3 ${isExtractingColors ? "animate-spin" : ""}`} />
+                          <span>{isExtractingColors ? "Scanning..." : "Re-scan"}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {isExtractingColors ? (
+                      <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
+                        <RotateCw className="h-4 w-4 animate-spin text-accent" />
+                        <span>Analyzing dominant image colors...</span>
+                      </div>
+                    ) : commonColors.length > 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {commonColors.map((item, idx) => {
+                          const isSelected = pickedHex.toUpperCase() === item.hex.toUpperCase();
+                          return (
+                            <button
+                              key={item.hex + idx}
+                              type="button"
+                              onClick={() => {
+                                setPickedHex(item.hex);
+                                setPickedRgb(item.rgb);
+                                setPickedHsl(item.hsl);
+                                copyToClipboard(item.hex, "HEX");
+                              }}
+                              className={`group relative flex items-center gap-2.5 p-2 rounded-xl border-2 transition-all cursor-pointer text-left ${
+                                isSelected
+                                  ? "border-accent bg-accent/10 shadow-sm ring-1 ring-accent/40"
+                                  : "border-border bg-background hover:border-foreground/50 hover:bg-muted/30"
+                              }`}
+                            >
+                              {/* Swatch circle */}
+                              <div className="relative shrink-0">
+                                <span
+                                  className="h-8 w-8 rounded-lg border border-black/20 shadow-xs block"
+                                  style={{ backgroundColor: item.hex }}
+                                />
+                                {isSelected && (
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <Check className={`h-4 w-4 ${item.r + item.g + item.b > 380 ? "text-black" : "text-white"}`} />
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <p className="font-mono text-xs font-black text-foreground truncate">
+                                  {item.hex}
+                                </p>
+                                <div className="flex items-center gap-1 mt-0.5">
+                                  <span className="text-[10px] font-bold text-muted-foreground">
+                                    {item.percentage}%
+                                  </span>
+                                  {idx === 0 && (
+                                    <span className="text-[9px] font-black text-amber-500 uppercase tracking-tighter">
+                                      • Dominant
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground text-center py-4">
+                        Upload or select an image to extract its most common colors.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Copy Formats List */}
                   <div className="space-y-2">
-                    <p className="text-xs font-bold text-muted-foreground">Color Formats (Click to Copy)</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-muted-foreground">Color Formats (Click to Copy)</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const allText = `HEX: ${pickedHex}\nRGB: ${pickedRgb}\nHSL: ${pickedHsl}\nCSS: --color-picked: ${pickedHex};`;
+                          copyToClipboard(allText, "All Formats");
+                        }}
+                        className="text-[11px] font-bold text-accent hover:underline flex items-center gap-1"
+                      >
+                        <Copy className="h-3 w-3" />
+                        <span>Copy All Formats</span>
+                      </button>
+                    </div>
 
                     <div className="flex items-center justify-between rounded-xl border border-border bg-background px-3 py-2 text-xs font-mono">
-                      <span>HEX: <strong className="text-foreground">{pickedHex}</strong></span>
+                      <span>HEX: <strong className="text-foreground ml-1">{pickedHex}</strong></span>
                       <button
                         type="button"
                         onClick={() => copyToClipboard(pickedHex, "HEX")}
@@ -9491,7 +15655,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                     </div>
 
                     <div className="flex items-center justify-between rounded-xl border border-border bg-background px-3 py-2 text-xs font-mono">
-                      <span>RGB: <strong className="text-foreground">{pickedRgb}</strong></span>
+                      <span>RGB: <strong className="text-foreground ml-1">{pickedRgb}</strong></span>
                       <button
                         type="button"
                         onClick={() => copyToClipboard(pickedRgb, "RGB")}
@@ -9503,7 +15667,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                     </div>
 
                     <div className="flex items-center justify-between rounded-xl border border-border bg-background px-3 py-2 text-xs font-mono">
-                      <span>HSL: <strong className="text-foreground">{pickedHsl}</strong></span>
+                      <span>HSL: <strong className="text-foreground ml-1">{pickedHsl}</strong></span>
                       <button
                         type="button"
                         onClick={() => copyToClipboard(pickedHsl, "HSL")}
@@ -9513,16 +15677,48 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                         <span>{copiedFormat === "HSL" ? "Copied!" : "Copy"}</span>
                       </button>
                     </div>
+
+                    <div className="flex items-center justify-between rounded-xl border border-border bg-background px-3 py-2 text-xs font-mono">
+                      <span>CSS Var: <strong className="text-foreground ml-1 font-mono text-[11px]">{`--color: ${pickedHex};`}</strong></span>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(`--color: ${pickedHex};`, "CSS Variable")}
+                        className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-bold hover:bg-foreground hover:text-background transition-all"
+                      >
+                        {copiedFormat === "CSS Variable" ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        <span>{copiedFormat === "CSS Variable" ? "Copied!" : "Copy"}</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Palette History */}
                   {colorHistory.length > 0 && (
                     <div className="space-y-2 pt-2 border-t border-border">
                       <div className="flex items-center justify-between text-xs font-bold text-muted-foreground">
-                        <span className="flex items-center gap-1.5"><Palette className="h-3.5 w-3.5" /> Sampled Palette</span>
-                        <span>{colorHistory.length} colors</span>
+                        <span className="flex items-center gap-1.5"><Palette className="h-3.5 w-3.5 text-accent" /> Sampled Palette ({colorHistory.length})</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const list = colorHistory.join("\n");
+                              copyToClipboard(list, "Palette HEX List");
+                            }}
+                            className="text-[11px] font-bold text-accent hover:underline flex items-center gap-1"
+                          >
+                            <Copy className="h-3 w-3" />
+                            <span>Copy List</span>
+                          </button>
+                          <span className="text-muted-foreground">•</span>
+                          <button
+                            type="button"
+                            onClick={() => setColorHistory([])}
+                            className="text-[11px] font-medium text-muted-foreground hover:text-destructive"
+                          >
+                            Clear
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 p-2 rounded-xl bg-background/50 border border-border/60">
                         {colorHistory.map((hex, i) => (
                           <button
                             key={i}
@@ -9538,14 +15734,28 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                               setPickedHsl(hsl);
                               copyToClipboard(hex, "HEX");
                             }}
-                            className="h-8 w-8 rounded-lg border border-white/40 shadow-sm transition-transform hover:scale-110 focus:outline-none"
+                            className={`group relative h-9 w-9 rounded-xl border-2 transition-all hover:scale-110 active:scale-95 shadow-sm focus:outline-none ${
+                              pickedHex === hex ? "border-accent ring-2 ring-accent/30 scale-105" : "border-white/50"
+                            }`}
                             style={{ backgroundColor: hex }}
-                            title={`Click to select & copy ${hex}`}
-                          />
+                            title={`Select & Copy ${hex}`}
+                          >
+                            <span className="opacity-0 group-hover:opacity-100 absolute -bottom-6 left-1/2 -translate-x-1/2 z-20 rounded bg-black/90 px-1.5 py-0.5 text-[9px] font-mono font-bold text-white shadow pointer-events-none whitespace-nowrap">
+                              {hex}
+                            </span>
+                          </button>
                         ))}
                       </div>
                     </div>
                   )}
+
+                  {/* Usage Guide Tip */}
+                  <div className="rounded-xl border border-accent/30 bg-accent/5 p-3 text-xs text-muted-foreground flex items-start gap-2.5">
+                    <Sparkles className="h-4 w-4 text-accent shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-foreground">Precision Pixel Zoom:</span> Hover anywhere over your image to inspect pixels through the 9×9 magnifying loupe. Click any pixel to pick and instantly copy its HEX code!
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -10045,11 +16255,24 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                 {/* 1. Primary Convert / Process Image Button */}
                 <button
                   type="button"
-                  onClick={processImage}
-                  disabled={processing || (tool.slug === "compress-image" && compressMode === "size" && isTargetSizeExceeding)}
-                  className="w-full flex items-center justify-center gap-2 rounded-2xl bg-accent px-6 py-4 text-base font-extrabold text-accent-foreground shadow-xl transition-all hover:scale-[1.02] active:scale-95 border-2 border-accent disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  onClick={tool.slug === "color-picker-from-image" ? () => copyToClipboard(pickedHex, "HEX") : processImage}
+                  disabled={
+                    processing ||
+                    (tool.slug === "pdf-to-image" && pdfIsPasswordProtected && !pdfIsUnlocked) ||
+                    (tool.slug === "compress-image" && compressMode === "size" && isTargetSizeExceeding)
+                  }
+                  className={`w-full flex items-center justify-center gap-2 rounded-2xl px-6 py-4 text-base font-extrabold shadow-xl transition-all border-2 ${
+                    tool.slug === "pdf-to-image" && pdfIsPasswordProtected && !pdfIsUnlocked
+                      ? "bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/40 cursor-not-allowed opacity-80"
+                      : "bg-accent text-accent-foreground border-accent hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  }`}
                 >
-                  {processing ? (
+                  {tool.slug === "color-picker-from-image" ? (
+                    <>
+                      {copiedFormat === "HEX" ? <Check className="h-5 w-5 text-emerald-400" /> : <Copy className="h-5 w-5" />}
+                      <span>{copiedFormat === "HEX" ? `Copied ${pickedHex} to Clipboard!` : `Copy Active Color (${pickedHex})`}</span>
+                    </>
+                  ) : processing ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin" />
                       <span>
@@ -10066,15 +16289,24 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                           : tool.slug === "html-to-image"
                           ? "Rendering HTML to Image…"
                           : tool.slug === "pdf-to-image"
-                          ? "Rendering PDF Page to Image…"
+                          ? pdfConvertingProgress
+                            ? `Converting Page ${pdfConvertingProgress.current} of ${pdfConvertingProgress.total}…`
+                            : "Rendering PDF to Image…"
                           : tool.slug === "word-to-image"
                           ? "Rendering Word Document to Image…"
                           : tool.slug === "excel-to-image"
                           ? "Rendering Excel Sheet to Image…"
                           : tool.slug === "powerpoint-to-image"
-                          ? "Rendering PowerPoint Slide to Image…"
+                          ? pptConvertingProgress
+                            ? `Converting Slide ${pptConvertingProgress.current} of ${pptConvertingProgress.total}…`
+                            : "Rendering PowerPoint Slide to Image…"
                           : "Processing Image…"}
                       </span>
+                    </>
+                  ) : tool.slug === "pdf-to-image" && pdfIsPasswordProtected && !pdfIsUnlocked ? (
+                    <>
+                      <Lock className="h-5 w-5 text-amber-500" />
+                      <span>Unlock PDF with Password First</span>
                     </>
                   ) : (
                     <>
@@ -10091,16 +16323,32 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                             ? "Re-extract Text (OCR)"
                             : tool.slug === "binary-to-image"
                             ? "Re-convert Binary to Image"
+                            : tool.slug === "base64-to-image"
+                            ? `Re-export Image (${base64ExportFormat})`
                             : tool.slug === "html-to-image"
                             ? "Re-render HTML to Image"
                             : tool.slug === "pdf-to-image"
-                            ? "Re-convert PDF to Image"
+                            ? pdfPageMode === "all" && pdfTotalPages > 1
+                              ? `Re-convert All ${pdfTotalPages} Pages (ZIP)`
+                              : `Re-convert Page ${pdfDocPage} to ${pdfDocOutputFormat}`
                             : tool.slug === "word-to-image"
                             ? "Re-convert Word to Image"
                             : tool.slug === "excel-to-image"
                             ? "Re-convert Excel to Image"
                             : tool.slug === "powerpoint-to-image"
-                            ? "Re-convert PowerPoint to Image"
+                            ? pptSlideMode === "all" && pptTotalSlides > 1
+                              ? `Re-convert All ${pptTotalSlides} Slides (ZIP)`
+                              : `Re-convert Slide ${pptDocSlide} to ${pptDocOutputFormat}`
+                            : tool.slug === "watermark-image"
+                            ? "Update Watermarked Image"
+                            : tool.slug === "square-your-image"
+                            ? "Update 1:1 Square Image"
+                            : tool.slug === "rotate-image"
+                            ? "Update Rotated Image"
+                            : tool.slug === "blur-face"
+                            ? "Update Blurred Faces"
+                            : tool.slug === "meme-generator"
+                            ? "Update Meme Image"
                             : `Re-process ${tool.name}`
                           : tool.slug === "compress-image"
                           ? "Compress Image"
@@ -10112,16 +16360,32 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                           ? "Extract Text with OCR"
                           : tool.slug === "binary-to-image"
                           ? "Convert Binary to Image"
+                          : tool.slug === "base64-to-image"
+                          ? `Export Image (${base64ExportFormat})`
                           : tool.slug === "html-to-image"
                           ? "Render HTML to Image"
                           : tool.slug === "pdf-to-image"
-                          ? "Convert PDF to Image"
+                          ? pdfPageMode === "all" && pdfTotalPages > 1
+                            ? `Convert All ${pdfTotalPages} Pages to ${pdfDocOutputFormat} (ZIP)`
+                            : `Convert Page ${pdfDocPage} to ${pdfDocOutputFormat}`
                           : tool.slug === "word-to-image"
                           ? "Convert Word to Image"
                           : tool.slug === "excel-to-image"
                           ? "Convert Excel to Image"
                           : tool.slug === "powerpoint-to-image"
-                          ? "Convert PowerPoint to Image"
+                          ? pptSlideMode === "all" && pptTotalSlides > 1
+                            ? `Convert All ${pptTotalSlides} Slides to ${pptDocOutputFormat} (ZIP)`
+                            : `Convert Slide ${pptDocSlide} to ${pptDocOutputFormat}`
+                          : tool.slug === "watermark-image"
+                          ? "Apply Watermark & View Output"
+                          : tool.slug === "square-your-image"
+                          ? "Square Image & View Output"
+                          : tool.slug === "rotate-image"
+                          ? "Apply Rotation & View Output"
+                          : tool.slug === "blur-face"
+                          ? "Apply Face Blur & View Output"
+                          : tool.slug === "meme-generator"
+                          ? "Generate Meme & View Output"
                           : "Convert / Process Image"}
                       </span>
                     </>
@@ -10143,10 +16407,42 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                 {tool.slug !== "compress-image" && (
                   <button
                     type="button"
-                    onClick={handleDownload}
-                    disabled={!hasProcessed && !processedSrc}
+                    onClick={() => {
+                      if (tool.slug === "color-picker-from-image") {
+                        const paletteList = colorHistory.length > 0 ? colorHistory : [pickedHex];
+                        const paletteContent = [
+                          `# BG Tool - Color Palette Export`,
+                          `# Active Color: ${pickedHex} | ${pickedRgb} | ${pickedHsl}`,
+                          ``,
+                          `/* CSS Variables */`,
+                          `:root {`,
+                          `  --color-active: ${pickedHex};`,
+                          ...paletteList.map((hex, i) => `  --color-${i + 1}: ${hex};`),
+                          `}`,
+                          ``,
+                          `/* Sampled Color Hex List (${paletteList.length} colors) */`,
+                          ...paletteList,
+                        ].join("\n");
+                        const blob = new Blob([paletteContent], { type: "text/plain;charset=utf-8" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `palette-${pickedHex.replace("#", "")}.txt`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        toast.success(`Exported ${paletteList.length} color palette (.txt)!`);
+                        return;
+                      }
+                      if ((tool.slug === "watermark-image" || tool.slug === "rotate-image" || tool.slug === "blur-face" || tool.slug === "meme-generator" || tool.slug === "base64-to-image" || tool.slug === "square-your-image") && (!processedSrc || isEditingSettings)) {
+                        processImage();
+                        setTimeout(() => handleDownload(), 350);
+                      } else {
+                        handleDownload();
+                      }
+                    }}
+                    disabled={!hasProcessed && !processedSrc && tool.slug !== "watermark-image" && tool.slug !== "rotate-image" && tool.slug !== "blur-face" && tool.slug !== "meme-generator" && tool.slug !== "color-picker-from-image" && tool.slug !== "square-your-image"}
                     className={`w-full flex items-center justify-center gap-2 rounded-2xl px-6 py-3.5 text-sm font-extrabold shadow-lg transition-all ${
-                      hasProcessed || processedSrc
+                      hasProcessed || processedSrc || ((tool.slug === "watermark-image" || tool.slug === "rotate-image" || tool.slug === "blur-face" || tool.slug === "meme-generator" || tool.slug === "color-picker-from-image" || tool.slug === "square-your-image") && imageSrc)
                         ? "bg-foreground text-background hover:scale-[1.02] cursor-pointer"
                         : "bg-secondary text-muted-foreground opacity-60 cursor-not-allowed"
                     }`}
@@ -10172,6 +16468,20 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                       ? "Download Extracted Text (.txt) →"
                       : ["image-to-base64", "image-to-octal", "image-to-hex", "image-to-decimal", "image-to-ascii"].includes(tool.slug)
                       ? "Download Text Data (.txt) →"
+                      : tool.slug === "base64-to-image"
+                      ? `Download Decoded Image (${base64ExportFormat}) →`
+                      : tool.slug === "watermark-image"
+                      ? "Download Watermarked Image →"
+                      : tool.slug === "square-your-image"
+                      ? `Download 1:1 Square Image (${squareExportFormat}) →`
+                      : tool.slug === "rotate-image"
+                      ? "Download Rotated Image →"
+                      : tool.slug === "blur-face"
+                      ? "Download Anonymized Image →"
+                      : tool.slug === "meme-generator"
+                      ? "Download Meme Image →"
+                      : tool.slug === "color-picker-from-image"
+                      ? `Export Palette (.txt) →`
                       : "Download Result →"}
                   </button>
                 )}

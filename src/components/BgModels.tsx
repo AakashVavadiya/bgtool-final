@@ -5,15 +5,15 @@ export function BgModels({ compact = false }: { compact?: boolean }) {
     <section id="models" className="w-full border-t border-border px-6 py-20 md:px-12 md:py-28">
       <div className="w-full">
         <p className="font-display text-xs font-bold uppercase tracking-[0.35em] text-muted-foreground">
-          removal models
+          AI Model Suite
         </p>
         <h2 className="mt-4 max-w-5xl font-display text-4xl font-extrabold leading-[1.05] sm:text-5xl md:text-6xl lg:text-7xl">
-          Five engines. Each one obsessed with a different problem
+          Five specialized engines. Orchestrated by universal intelligence
           <span className="text-accent">.</span>
         </h2>
         {!compact ? (
           <p className="mt-5 max-w-3xl text-lg leading-relaxed text-muted-foreground md:text-xl">
-            Pick the model that matches your image and the cutout stops being a compromise.
+            From precision background removal and format conversion to OCR, AI summaries, meme generation, and deep research.
           </p>
         ) : null}
 
@@ -33,7 +33,7 @@ export function BgModels({ compact = false }: { compact?: boolean }) {
                     </span>
                     <div>
                       <h3 className="font-display text-2xl font-bold md:text-3xl leading-tight text-foreground">{m.name}</h3>
-                      <p className="mt-1 text-xs md:text-sm font-extrabold uppercase tracking-wider text-accent-foreground">
+                      <p className="mt-1 text-xs md:text-sm font-bold uppercase tracking-wider text-muted-foreground">
                         {m.specialty}
                       </p>
                     </div>

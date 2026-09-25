@@ -82,7 +82,7 @@ export function SiteFooter() {
         <div className="grid gap-10 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
           {/* Brand Column */}
           <div className="sm:col-span-2 md:col-span-3 lg:col-span-1">
-            <Link to="/" className="font-display text-4xl font-extrabold tracking-tight">
+            <Link to="/" className="notranslate font-display text-4xl font-extrabold tracking-tight">
               bg<span className="text-accent">.</span>
             </Link>
             <p className="mt-4 text-sm leading-relaxed font-medium text-muted-foreground">
@@ -174,33 +174,33 @@ export function SiteFooter() {
           {/* AI Models */}
           <div>
             <h4 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">
-              Neural Models
+              AI Models Suite
             </h4>
             <ul className="mt-4 space-y-2.5 text-sm font-semibold">
               <li>
                 <Link to="/models" className="hover:text-accent transition-colors flex items-center gap-1.5">
-                  <span>Karudi 1.0 Prime Engine</span>
+                  <span>Karudi (Universal Master)</span>
                   <span className="rounded-full bg-foreground text-background px-1.5 py-0.2 text-[9px] font-bold">★</span>
                 </Link>
               </li>
               <li>
                 <Link to="/models" className="hover:text-accent transition-colors">
-                  Ganga (Blurry Cleaner)
+                  Ganga (Background Removal)
                 </Link>
               </li>
               <li>
                 <Link to="/models" className="hover:text-accent transition-colors">
-                  Brahmaputra (E-Commerce)
+                  Brahmaputra (Format Conversion)
                 </Link>
               </li>
               <li>
                 <Link to="/models" className="hover:text-accent transition-colors">
-                  Narmada (Hair Matting)
+                  Narmada (OCR, Summary & Memes)
                 </Link>
               </li>
               <li>
                 <Link to="/models" className="hover:text-accent transition-colors">
-                  Saraswati (Art Direction)
+                  Saraswati (Research Tools)
                 </Link>
               </li>
             </ul>
@@ -314,7 +314,6 @@ export function SiteFooter() {
             <Link to="/terms" className="hover:text-foreground transition-colors">Terms of Service</Link>
             <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy Notice</Link>
             <Link to="/contact" className="hover:text-foreground transition-colors">Contact</Link>
-            <Link to="/admin" className="hover:text-accent transition-colors font-bold text-xs uppercase tracking-wider">Admin Portal</Link>
             <span className="flex items-center gap-1">
               Built with <Heart className="h-3.5 w-3.5 fill-rose-500 text-rose-500" /> for creators
             </span>

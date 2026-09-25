@@ -59,40 +59,39 @@ export function UsersManagement() {
     const matchesSearch =
       u.name.toLowerCase().includes(search.toLowerCase()) ||
       u.email.toLowerCase().includes(search.toLowerCase()) ||
-      u.ip.includes(search) ||
-      u.location.toLowerCase().includes(search.toLowerCase());
+      (u.ip && u.ip.includes(search)) ||
+      (u.location && u.location.toLowerCase().includes(search.toLowerCase()));
 
     const matchesPlan = planFilter === "all" || u.plan === planFilter;
-
     return matchesSearch && matchesPlan;
   });
 
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header & Controls */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="font-display text-2xl font-extrabold text-white">Logged Users Directory</h2>
-          <p className="text-xs text-zinc-400 mt-1">Manage user balances, allocate credits, and manage account restrictions.</p>
+          <h2 className="font-display text-2xl font-extrabold text-foreground">Logged Users Directory</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Manage real registered user accounts, allocate credits, and manage account statuses.</p>
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="rounded-full bg-white/5 border border-white/10 px-4 py-1.5 text-xs font-bold text-zinc-300">
-            {filteredUsers.length} Users Listed
+          <span className="rounded-full bg-muted/60 border border-border px-4 py-1.5 text-xs font-bold text-foreground">
+            {filteredUsers.length} User{filteredUsers.length === 1 ? "" : "s"}
           </span>
         </div>
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-white/10 bg-[#121216] p-4">
+      <div className="flex flex-wrap items-center gap-4 rounded-3xl border border-border bg-card p-4 shadow-xs">
         <div className="relative flex-1 min-w-[240px]">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name, email, IP or city…"
-            className="w-full rounded-xl border border-white/10 bg-white/[0.03] pl-10 pr-4 py-2.5 text-xs font-medium text-white placeholder:text-zinc-500 focus:border-orange-500 focus:outline-none"
+            className="w-full rounded-2xl border border-input bg-background/60 pl-10 pr-4 py-2.5 text-xs font-medium text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-all shadow-xs"
           />
         </div>
 
@@ -103,10 +102,10 @@ export function UsersManagement() {
               key={p}
               type="button"
               onClick={() => setPlanFilter(p)}
-              className={`rounded-xl px-3.5 py-2 text-xs font-bold capitalize transition-all ${
+              className={`rounded-xl px-3.5 py-2 text-xs font-bold capitalize transition-all cursor-pointer ${
                 planFilter === p
-                  ? "bg-orange-500 text-white shadow-md"
-                  : "border border-white/5 bg-white/[0.02] text-zinc-400 hover:text-white"
+                  ? "bg-foreground text-background shadow-xs font-extrabold"
+                  : "border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted"
               }`}
             >
               {p}
@@ -116,159 +115,136 @@ export function UsersManagement() {
       </div>
 
       {/* Users Table */}
-      <div className="overflow-x-auto rounded-3xl border border-white/10 bg-[#121216] shadow-sm">
-        <table className="w-full text-left text-xs">
-          <thead className="border-b border-white/10 bg-white/[0.02] font-display text-[11px] uppercase tracking-wider text-zinc-400">
-            <tr>
-              <th className="px-6 py-4">User</th>
-              <th className="px-6 py-4">Plan & Status</th>
-              <th className="px-6 py-4">Credits Balance</th>
-              <th className="px-6 py-4">Total Processed</th>
-              <th className="px-6 py-4">IP & Location</th>
-              <th className="px-6 py-4">Registered</th>
-              <th className="px-6 py-4 text-right">Credit & Status Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/5 font-medium text-zinc-300">
-            {filteredUsers.length === 0 ? (
+      <div className="overflow-x-auto rounded-3xl border border-border bg-card shadow-xs">
+        {filteredUsers.length === 0 ? (
+          <div className="p-12 text-center text-xs text-muted-foreground">
+            <Users className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+            <p className="font-semibold text-foreground text-sm">No registered users found</p>
+            <p className="mt-1 text-[11px]">When users sign up or log in on the website, their accounts will appear here.</p>
+          </div>
+        ) : (
+          <table className="w-full text-left text-xs">
+            <thead className="border-b border-border bg-muted/40 font-bold uppercase tracking-wider text-[11px] text-muted-foreground">
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-zinc-500">
-                  No users found matching your search filters.
-                </td>
+                <th className="py-4 px-6">User & Profile</th>
+                <th className="py-4 px-6">Current Plan</th>
+                <th className="py-4 px-6">Credits Balance</th>
+                <th className="py-4 px-6">Total Processed</th>
+                <th className="py-4 px-6">Location & Last Active</th>
+                <th className="py-4 px-6">Status</th>
+                <th className="py-4 px-6 text-right">Actions</th>
               </tr>
-            ) : null}
-
-            {filteredUsers.map((u) => {
-              const isRestricted = u.status === "restricted";
-
-              return (
-                <tr key={u.id} className="hover:bg-white/[0.02] transition-colors">
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filteredUsers.map((u) => (
+                <tr key={u.id} className="hover:bg-muted/30 transition-colors">
                   {/* User Profile */}
-                  <td className="px-6 py-4">
+                  <td className="py-4 px-6">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500/20 to-amber-500/20 border border-orange-500/30 text-orange-400 font-bold font-display text-sm">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 border border-accent/20 font-bold text-accent">
                         {u.name.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-bold text-white text-sm leading-none">{u.name}</p>
-                        <p className="text-[11px] text-zinc-500 mt-1">{u.email}</p>
+                        <p className="font-bold text-foreground text-xs leading-snug">{u.name}</p>
+                        <p className="font-mono text-[11px] text-muted-foreground">{u.email}</p>
                       </div>
                     </div>
                   </td>
 
-                  {/* Plan & Status */}
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase ${
-                          u.plan === "enterprise"
-                            ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
-                            : u.plan === "pro"
-                            ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
-                            : u.plan === "lite"
-                            ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                            : "bg-zinc-800 text-zinc-300"
-                        }`}
-                      >
-                        {u.plan}
-                      </span>
-
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          isRestricted
-                            ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                            : "bg-emerald-500/20 text-emerald-400"
-                        }`}
-                      >
-                        {u.status}
-                      </span>
-                    </div>
+                  {/* Plan Badge */}
+                  <td className="py-4 px-6">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase ${
+                        u.plan === "enterprise"
+                          ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
+                          : u.plan === "pro"
+                          ? "bg-accent/10 text-accent border border-accent/20"
+                          : u.plan === "lite"
+                          ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+                          : "bg-muted text-muted-foreground border border-border"
+                      }`}
+                    >
+                      {u.plan}
+                    </span>
                   </td>
 
                   {/* Credits */}
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1.5 font-display text-base font-extrabold text-white">
-                      <Coins className="h-4 w-4 text-amber-400" />
-                      <span>{u.credits}</span>
+                  <td className="py-4 px-6">
+                    <div className="flex items-center gap-2 font-mono font-bold text-foreground">
+                      <Coins className="h-3.5 w-3.5 text-amber-500" />
+                      <span>{u.credits.toLocaleString()}</span>
                     </div>
                   </td>
 
                   {/* Total Processed */}
-                  <td className="px-6 py-4 font-semibold text-zinc-300">
+                  <td className="py-4 px-6 font-mono text-muted-foreground">
                     {u.totalProcessed.toLocaleString()} images
                   </td>
 
-                  {/* IP & Location */}
-                  <td className="px-6 py-4">
-                    <div className="text-[11px]">
-                      <p className="font-semibold text-zinc-200 flex items-center gap-1">
-                        <MapPin className="h-3 w-3 text-zinc-500" /> {u.location}
-                      </p>
-                      <p className="text-zinc-500 mt-0.5 font-mono">{u.ip}</p>
+                  {/* Location & Last Active */}
+                  <td className="py-4 px-6 text-muted-foreground">
+                    <div className="flex items-center gap-1.5 text-foreground font-medium">
+                      <MapPin className="h-3 w-3 text-muted-foreground" />
+                      <span>{u.location}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[11px] mt-0.5 font-mono">
+                      <Clock className="h-3 w-3 text-muted-foreground" />
+                      <span>{u.lastActive}</span>
                     </div>
                   </td>
 
-                  {/* Registered & Last Active */}
-                  <td className="px-6 py-4 text-[11px] text-zinc-400">
-                    <p>{u.registeredAt}</p>
-                    <p className="text-zinc-500 mt-0.5 flex items-center gap-1">
-                      <Clock className="h-3 w-3" /> {u.lastActive}
-                    </p>
+                  {/* Status */}
+                  <td className="py-4 px-6">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase ${
+                        u.status === "active"
+                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                          : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
+                      }`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${u.status === "active" ? "bg-emerald-500" : "bg-rose-500"}`} />
+                      <span>{u.status}</span>
+                    </span>
                   </td>
 
                   {/* Actions */}
-                  <td className="px-6 py-4 text-right">
-                    <div className="inline-flex items-center gap-1.5">
-                      {/* Add +10 Credits */}
+                  <td className="py-4 px-6 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
                       <button
                         type="button"
                         onClick={() => handleAdjustCredits(u.id, 10)}
                         title="Add 10 Credits"
-                        className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-zinc-300 hover:border-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                        className="rounded-lg border border-border p-1.5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors cursor-pointer"
                       >
                         <Plus className="h-3.5 w-3.5" />
                       </button>
-
-                      {/* Deduct -5 Credits */}
                       <button
                         type="button"
-                        onClick={() => handleAdjustCredits(u.id, -5)}
-                        title="Deduct 5 Credits"
-                        className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-zinc-300 hover:border-amber-500 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                        onClick={() => handleAdjustCredits(u.id, -10)}
+                        title="Deduct 10 Credits"
+                        className="rounded-lg border border-border p-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors cursor-pointer"
                       >
                         <Minus className="h-3.5 w-3.5" />
                       </button>
-
-                      {/* Add +100 Credits */}
-                      <button
-                        type="button"
-                        onClick={() => handleAdjustCredits(u.id, 100)}
-                        title="Add 100 Credits Bonus"
-                        className="rounded-lg border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-[10px] font-bold text-orange-400 hover:bg-orange-500 hover:text-white transition-colors"
-                      >
-                        +100
-                      </button>
-
-                      {/* Restrict / Unban Toggle */}
                       <button
                         type="button"
                         onClick={() => handleToggleRestriction(u.id)}
-                        title={isRestricted ? "Unban Account" : "Restrict Account"}
-                        className={`rounded-lg border p-1.5 transition-colors ${
-                          isRestricted
-                            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500 hover:text-white"
-                            : "border-rose-500/40 bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white"
+                        title={u.status === "active" ? "Restrict User" : "Activate User"}
+                        className={`rounded-lg border p-1.5 transition-colors cursor-pointer ${
+                          u.status === "active"
+                            ? "border-border text-muted-foreground hover:border-destructive hover:text-destructive hover:bg-destructive/10"
+                            : "border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
                         }`}
                       >
-                        {isRestricted ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+                        <Ban className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

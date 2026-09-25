@@ -686,3 +686,50 @@ body {
 .notranslate {
   translate: no;
 }
+
+/* ── INLINE ANIMATED TYPING CARET ──────────────────────────────────── */
+@keyframes typing-caret-blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.typewriter-active .prose > *:last-child::after,
+.typewriter-active .prose p:last-of-type::after,
+.typewriter-active .prose > ul:last-child > li:last-child::after,
+.typewriter-active .prose > ol:last-child > li:last-child::after,
+.typewriter-active .prose > div:last-child > p:last-of-type::after {
+  content: "";
+  display: inline-block;
+  width: 2.5px;
+  height: 1.15em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background-color: currentColor;
+  border-radius: 1.5px;
+  animation: typing-caret-blink 0.75s infinite;
+}
+
+/* ── LASER / SCANLINE ANIMATION FOR IMAGE BACKGROUND REMOVAL ────────────────── */
+@keyframes laser-sweep {
+  0% {
+    top: 0%;
+    opacity: 0.8;
+  }
+  50% {
+    top: 98%;
+    opacity: 1;
+  }
+  100% {
+    top: 0%;
+    opacity: 0.8;
+  }
+}
+
+.animate-laser-sweep {
+  animation: laser-sweep 2.4s ease-in-out infinite;
+}
+

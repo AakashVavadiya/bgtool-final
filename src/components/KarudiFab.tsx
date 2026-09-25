@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Sparkles, X, ArrowRight, Send } from "lucide-react";
-import { KarudiAvatar } from "@/components/KrishnaAvatar";
+import { KarudiAvatar } from "@/components/KarudiAvatar";
 
 export function KarudiFab() {
   const [open, setOpen] = useState(false);

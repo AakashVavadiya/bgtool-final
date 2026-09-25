@@ -9,13 +9,12 @@ import {
   Eye,
   Image as ImageIcon,
   FolderUp,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
-import girlBefore from "@/assets/girl-before.jpg";
-import girlAfter from "@/assets/girl-after.png";
-import subjectImg from "@/assets/subject.jpg";
-import subjectCutout from "@/assets/subject-cutout.png";
 import { bgModels } from "@/lib/bg-models";
+import { CutoutBrushEditorModal } from "@/components/CutoutBrushEditorModal";
+import { AuthUser } from "@/lib/auth-user";
 
 const steps = [
   { label: "Uploading image", detail: "Secure transfer · discarded after processing" },
@@ -32,14 +31,87 @@ const checkerStyle = {
   backgroundPosition: "0 0,0 11px,11px -11px,-11px 0",
 };
 
+// Custom client-side Canvas Alpha Matting Engine (Zero external dependencies)
+export const removeBackgroundClientCanvas = (imageSrc: string): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return resolve(imageSrc);
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imgData.data;
+
+      // Sample background colors along outer boundary
+      let bgR = 0, bgG = 0, bgB = 0, samples = 0;
+      const width = canvas.width;
+      const height = canvas.height;
+
+      for (let x = 0; x < width; x += Math.max(1, Math.floor(width / 20))) {
+        const idx1 = (0 * width + x) * 4;
+        const idx2 = ((height - 1) * width + x) * 4;
+        bgR += (data[idx1] ?? 0) + (data[idx2] ?? 0);
+        bgG += (data[idx1 + 1] ?? 0) + (data[idx2 + 1] ?? 0);
+        bgB += (data[idx1 + 2] ?? 0) + (data[idx2 + 2] ?? 0);
+        samples += 2;
+      }
+
+      for (let y = 0; y < height; y += Math.max(1, Math.floor(height / 20))) {
+        const idx1 = (y * width + 0) * 4;
+        const idx2 = (y * width + (width - 1)) * 4;
+        bgR += (data[idx1] ?? 0) + (data[idx2] ?? 0);
+        bgG += (data[idx1 + 1] ?? 0) + (data[idx2 + 1] ?? 0);
+        bgB += (data[idx1 + 2] ?? 0) + (data[idx2 + 2] ?? 0);
+        samples += 2;
+      }
+
+      bgR = Math.round(bgR / Math.max(1, samples));
+      bgG = Math.round(bgG / Math.max(1, samples));
+      bgB = Math.round(bgB / Math.max(1, samples));
+
+      // Alpha matting with edge feathering and precision color distance
+      const threshold = 38;
+      const softBand = 28;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i] ?? 0;
+        const g = data[i + 1] ?? 0;
+        const b = data[i + 2] ?? 0;
+
+        const dr = r - bgR;
+        const dg = g - bgG;
+        const db = b - bgB;
+        const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+
+        if (dist < threshold) {
+          data[i + 3] = 0; // Transparent cutout
+        } else if (dist < threshold + softBand) {
+          const alphaRatio = (dist - threshold) / softBand;
+          data[i + 3] = Math.round(alphaRatio * 255);
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => resolve(imageSrc);
+    img.src = imageSrc;
+  });
+};
+
 export function RemovalProcess() {
   const [beforeImage, setBeforeImage] = useState<string | null>(null);
   const [afterImage, setAfterImage] = useState<string | null>(null);
-  const [activeSample, setActiveSample] = useState<"girl" | "subject" | null>(null);
   const [fileName, setFileName] = useState<string>("");
 
   const [step, setStep] = useState<number>(0);
-  const [model, setModel] = useState<string>("birefnet-general-lite");
+  const [model, setModel] = useState<string>("karudi");
   const [processing, setProcessing] = useState<boolean>(false);
   const [hasProcessed, setHasProcessed] = useState<boolean>(false);
   const [duration, setDuration] = useState<number | null>(null);
@@ -47,6 +119,7 @@ export function RemovalProcess() {
   const [bgType, setBgType] = useState<"checker" | "white" | "black">("checker");
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [showDynamicIsland, setShowDynamicIsland] = useState<boolean>(false);
+  const [showCutoutEditor, setShowCutoutEditor] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -70,81 +143,11 @@ export function RemovalProcess() {
       ? 100
       : 0;
 
-  // Custom client-side Canvas Alpha Matting Engine (Zero external dependencies)
-  const removeBackgroundClientCanvas = (imageSrc: string): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return resolve(imageSrc);
-
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-
-        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imgData.data;
-
-        // Sample background colors along outer boundary
-        let bgR = 0, bgG = 0, bgB = 0, samples = 0;
-        const width = canvas.width;
-        const height = canvas.height;
-
-        for (let x = 0; x < width; x += Math.max(1, Math.floor(width / 20))) {
-          const idx1 = (0 * width + x) * 4;
-          const idx2 = ((height - 1) * width + x) * 4;
-          bgR += (data[idx1] ?? 0) + (data[idx2] ?? 0);
-          bgG += (data[idx1 + 1] ?? 0) + (data[idx2 + 1] ?? 0);
-          bgB += (data[idx1 + 2] ?? 0) + (data[idx2 + 2] ?? 0);
-          samples += 2;
-        }
-
-        for (let y = 0; y < height; y += Math.max(1, Math.floor(height / 20))) {
-          const idx1 = (y * width + 0) * 4;
-          const idx2 = (y * width + (width - 1)) * 4;
-          bgR += (data[idx1] ?? 0) + (data[idx2] ?? 0);
-          bgG += (data[idx1 + 1] ?? 0) + (data[idx2 + 1] ?? 0);
-          bgB += (data[idx1 + 2] ?? 0) + (data[idx2 + 2] ?? 0);
-          samples += 2;
-        }
-
-        bgR = Math.round(bgR / Math.max(1, samples));
-        bgG = Math.round(bgG / Math.max(1, samples));
-        bgB = Math.round(bgB / Math.max(1, samples));
-
-        // Alpha matting with edge feathering and precision color distance
-        const threshold = 38;
-        const softBand = 28;
-
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i] ?? 0;
-          const g = data[i + 1] ?? 0;
-          const b = data[i + 2] ?? 0;
-
-          const dr = r - bgR;
-          const dg = g - bgG;
-          const db = b - bgB;
-          const dist = Math.sqrt(dr * dr + dg * dg + db * db);
-
-          if (dist < threshold) {
-            data[i + 3] = 0; // Transparent cutout
-          } else if (dist < threshold + softBand) {
-            const alphaRatio = (dist - threshold) / softBand;
-            data[i + 3] = Math.round(alphaRatio * 255);
-          }
-        }
-
-        ctx.putImageData(imgData, 0, 0);
-        resolve(canvas.toDataURL("image/png"));
-      };
-      img.onerror = () => resolve(imageSrc);
-      img.src = imageSrc;
-    });
-  };
-
   const handleSelectFile = (file: File) => {
+    if (AuthUser.isUserRestricted()) {
+      window.dispatchEvent(new CustomEvent("bg:show_restricted_dialog"));
+      return;
+    }
     if (!file.type.startsWith("image/")) {
       toast.error("Please select a valid image file (PNG, JPG, WebP).");
       return;
@@ -154,7 +157,6 @@ export function RemovalProcess() {
       const b64 = e.target?.result as string;
       setBeforeImage(b64);
       setAfterImage(null);
-      setActiveSample(null);
       setFileName(file.name);
       setHasProcessed(false);
       setProcessing(false);
@@ -165,25 +167,11 @@ export function RemovalProcess() {
     reader.readAsDataURL(file);
   };
 
-  const handleSelectSample = (sampleType: "girl" | "subject") => {
-    if (sampleType === "girl") {
-      setBeforeImage(girlBefore);
-      setActiveSample("girl");
-      setFileName("sample-portrait.jpg");
-    } else {
-      setBeforeImage(subjectImg);
-      setActiveSample("subject");
-      setFileName("sample-subject.jpg");
-    }
-    setAfterImage(null);
-    setHasProcessed(false);
-    setProcessing(false);
-    setStep(0);
-    setDuration(null);
-    toast.success("Sample loaded! Click image or 'Remove Background' to start.");
-  };
-
   const startRemovalProcess = async () => {
+    if (AuthUser.isUserRestricted()) {
+      window.dispatchEvent(new CustomEvent("bg:show_restricted_dialog"));
+      return;
+    }
     if (!beforeImage || processing) return;
 
     setProcessing(true);
@@ -205,32 +193,27 @@ export function RemovalProcess() {
 
     let outputResult = "";
 
-    // If pre-defined high-resolution samples are used, provide their pixel-perfect master mask
-    if (activeSample === "girl") {
-      outputResult = girlAfter;
-    } else if (activeSample === "subject") {
-      outputResult = subjectCutout;
-    } else {
-      try {
-        const res = await fetch("/api/remove-bg", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            base64Image: beforeImage,
-            model,
-            alphaMatting: true,
-            smoothEdge: 0.5,
-          }),
-        });
-        const data = await res.json();
-        if (data.success && data.base64Image) {
-          outputResult = data.base64Image;
-        } else {
-          outputResult = await removeBackgroundClientCanvas(beforeImage);
-        }
-      } catch {
-        outputResult = await removeBackgroundClientCanvas(beforeImage);
+    try {
+      const res = await fetch("/api/remove-bg", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base64Image: beforeImage,
+          model,
+          smoothEdge: 0.0,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.base64Image) {
+        outputResult = data.base64Image;
+      } else {
+        throw new Error(data.error || "AI background removal failed. Please check server.");
       }
+    } catch (err: any) {
+      console.error("AI removal error:", err);
+      toast.error(err.message || "Failed to remove background with AI. Please try again.");
+      setProcessing(false);
+      return;
     }
 
     await new Promise((r) => setTimeout(r, 250));
@@ -247,8 +230,12 @@ export function RemovalProcess() {
     import("@/lib/telemetry").then(({ Telemetry }) => {
       Telemetry.trackToolUsage("remove-background", "Background Remover");
     });
-    import("@/lib/auth-user").then(({ AuthUser }) => {
-      AuthUser.deductCredit(1);
+    import("@/admin/lib/admin-store").then(({ AdminStore }) => {
+      AdminStore.recordToolDailyUsage("remove-background");
+      const cost = AdminStore.getToolCreditCost("remove-background");
+      import("@/lib/auth-user").then(({ AuthUser }) => {
+        AuthUser.deductCredit(cost);
+      });
     });
 
     toast.success("Background removed cleanly with AI!");
@@ -266,7 +253,6 @@ export function RemovalProcess() {
   const handleReset = () => {
     setBeforeImage(null);
     setAfterImage(null);
-    setActiveSample(null);
     setFileName("");
     setHasProcessed(false);
     setProcessing(false);
@@ -275,7 +261,7 @@ export function RemovalProcess() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="w-full">
       {/* ── TOP DYNAMIC ISLAND FLOATING BAR (Animated on Scroll) ─────── */}
       {hasProcessed && (
         <div className="fixed top-4 sm:top-6 inset-x-0 flex justify-center items-center z-50 pointer-events-none px-3">
@@ -310,7 +296,18 @@ export function RemovalProcess() {
               </div>
             </div>
 
-            {/* 2. Primary Large Download Button */}
+            {/* 2. Edit Cutout Button */}
+            <button
+              type="button"
+              onClick={() => setShowCutoutEditor(true)}
+              className="wobbly-btn flex items-center gap-2 rounded-full border border-white/20 bg-white/10 text-white hover:bg-white hover:text-black px-4 sm:px-5 py-2.5 sm:py-3 text-sm font-bold shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
+              title="Edit cutout with remove brush, restore brush, and magic brush"
+            >
+              <Pencil className="h-4 w-4" />
+              <span>Edit</span>
+            </button>
+
+            {/* 3. Primary Large Download Button */}
             <button
               type="button"
               onClick={handleDownload}
@@ -389,42 +386,11 @@ export function RemovalProcess() {
           </div>
 
           <p className="mt-4 text-xs font-bold text-muted-foreground">
-            🔒 100% Free · Private client-side AI rendering · Up to 4K resolution
+            🔒 Secure server-side AI processing · Up to 4K resolution
           </p>
-
-          {/* Quick Sample Selector */}
-          <div className="mt-8 pt-6 border-t border-border/60 w-full max-w-md flex flex-col items-center gap-3">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-              Or test with sample photos:
-            </span>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSelectSample("girl");
-                }}
-                className="flex items-center gap-2 rounded-2xl border border-border bg-card px-4 py-2 text-xs font-bold text-foreground hover:scale-105 hover:border-foreground transition-all shadow-sm"
-              >
-                <img src={girlBefore} alt="Portrait sample" className="h-7 w-7 rounded-lg object-cover" />
-                Portrait Model
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSelectSample("subject");
-                }}
-                className="flex items-center gap-2 rounded-2xl border border-border bg-card px-4 py-2 text-xs font-bold text-foreground hover:scale-105 hover:border-foreground transition-all shadow-sm"
-              >
-                <img src={subjectImg} alt="Fashion sample" className="h-7 w-7 rounded-lg object-cover" />
-                Fashion Subject
-              </button>
-            </div>
-          </div>
         </div>
       ) : (
-        /* Active Workspace: Image Preview + Pipeline Status Panel */
+        /* Active Workspace: Image Preview (Left) + Settings Panel (Right) */
         <div className="grid items-start gap-8 lg:grid-cols-[1.8fr_1fr] w-full">
           {/* Left Column: Canvas Preview Area */}
           <div className="flex flex-col gap-3 w-full">
@@ -476,14 +442,11 @@ export function RemovalProcess() {
 
                     <button
                       type="button"
-                      onMouseDown={() => setShowOriginal(true)}
-                      onMouseUp={() => setShowOriginal(false)}
-                      onTouchStart={() => setShowOriginal(true)}
-                      onTouchEnd={() => setShowOriginal(false)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground transition-all hover:bg-secondary"
-                      title="Press and hold to view original photo"
+                      onClick={() => setShowCutoutEditor(true)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground transition-all hover:bg-secondary cursor-pointer shadow-xs"
+                      title="Edit cutout with remove brush, restore brush, and magic brush"
                     >
-                      <Eye className="h-3.5 w-3.5" /> Hold for Original
+                      <Pencil className="h-3.5 w-3.5 text-primary" /> Edit Cutout
                     </button>
                   </>
                 )}
@@ -500,16 +463,7 @@ export function RemovalProcess() {
 
             {/* Main Visual Canvas Frame */}
             <div
-              onClick={() => {
-                if (!hasProcessed && !processing) {
-                  startRemovalProcess();
-                }
-              }}
-              className={`group relative flex h-[540px] sm:h-[620px] md:h-[680px] lg:h-[720px] w-full items-center justify-center overflow-hidden rounded-3xl border-2 transition-all shadow-xl select-none ${
-                !hasProcessed && !processing
-                  ? "border-border bg-card hover:border-accent cursor-pointer"
-                  : "border-border bg-card"
-              }`}
+              className="group relative flex h-[540px] sm:h-[620px] md:h-[680px] lg:h-[720px] w-full items-center justify-center overflow-hidden rounded-3xl border-2 border-border bg-card transition-all shadow-xl select-none"
               style={hasProcessed && bgType === "checker" ? checkerStyle : { backgroundColor: bgType === "black" ? "#0a0a0c" : bgType === "white" ? "#ffffff" : undefined }}
             >
               {/* Loaded Image Display */}
@@ -528,23 +482,6 @@ export function RemovalProcess() {
                   alt="Cutout PNG"
                   className="max-h-full max-w-full object-contain p-6 md:p-8 transition-opacity duration-300"
                 />
-              ) : null}
-
-              {/* Click to Process Prompt (When Uploaded & Idle) */}
-              {beforeImage && !hasProcessed && !processing ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[1px] opacity-90 group-hover:opacity-100 transition-opacity">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      startRemovalProcess();
-                    }}
-                    className="inline-flex items-center gap-3 rounded-full bg-foreground px-8 py-4 text-sm md:text-base font-extrabold text-background shadow-2xl transition-all duration-300 hover:scale-110 hover:shadow-accent/40"
-                  >
-                    <Sparkles className="h-5 w-5 text-amber-400" />
-                    Click to Remove Background
-                  </button>
-                </div>
               ) : null}
 
               {/* Scanning Laser Sweep Animation during processing */}
@@ -570,29 +507,41 @@ export function RemovalProcess() {
                 ) : (
                   <>
                     <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                    <span>Image ready · click to process</span>
+                    <span>Image ready</span>
                   </>
                 )}
               </div>
 
-              {/* Bottom Right Download Trigger on Canvas */}
+              {/* Bottom Right Actions on Canvas (Edit + Download) */}
               {hasProcessed && afterImage && !processing ? (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDownload();
-                  }}
-                  className="absolute bottom-6 right-6 inline-flex items-center gap-2 rounded-full bg-foreground px-6 py-3 text-xs md:text-sm font-extrabold text-background shadow-xl transition-all hover:scale-105 z-20"
-                >
-                  <Download className="h-4 w-4" /> Download PNG →
-                </button>
+                <div className="absolute bottom-6 right-6 flex items-center gap-2.5 z-20">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowCutoutEditor(true);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full border-2 border-foreground/30 bg-background/90 backdrop-blur-md px-5 py-3 text-xs md:text-sm font-extrabold text-foreground shadow-xl transition-all hover:scale-105 hover:bg-foreground hover:text-background cursor-pointer"
+                  >
+                    <Pencil className="h-4 w-4" /> Edit Cutout
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDownload();
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full bg-foreground px-6 py-3 text-xs md:text-sm font-extrabold text-background shadow-xl transition-all hover:scale-105 cursor-pointer"
+                  >
+                    <Download className="h-4 w-4" /> Download PNG →
+                  </button>
+                </div>
               ) : null}
             </div>
           </div>
 
-          {/* Right Column: Pipeline & Control Panel */}
-          <div className="rounded-3xl border-2 border-border bg-card p-6 md:p-8 shadow-md flex flex-col justify-between h-full">
+          {/* Right Column: Pipeline & Settings Control Panel */}
+          <div className="rounded-3xl border-2 border-border bg-card p-6 md:p-8 shadow-md flex flex-col justify-between min-h-[540px] sm:min-h-[620px] md:min-h-[680px] lg:min-h-[720px] lg:sticky lg:top-6">
             <div>
               <div className="flex items-center justify-between text-xs md:text-sm font-bold text-foreground">
                 <span>Pipeline Status</span>
@@ -679,18 +628,25 @@ export function RemovalProcess() {
                     <Loader2 className="h-5 w-5 animate-spin text-amber-500" /> Processing AI Pipeline…
                   </button>
                 ) : (
-                  <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex flex-col sm:flex-row gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowCutoutEditor(true)}
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-full border-2 border-foreground bg-background px-4 py-4 text-xs md:text-sm font-extrabold text-foreground shadow-lg transition-all hover:scale-105 hover:bg-foreground hover:text-background cursor-pointer"
+                    >
+                      <Pencil className="h-4 w-4" /> Edit
+                    </button>
                     <button
                       type="button"
                       onClick={handleDownload}
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-full bg-foreground px-6 py-4 text-sm font-extrabold text-background shadow-xl transition-all hover:scale-105"
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-full bg-foreground px-4 py-4 text-xs md:text-sm font-extrabold text-background shadow-xl transition-all hover:scale-105 cursor-pointer"
                     >
-                      <Download className="h-4 w-4" /> Download PNG
+                      <Download className="h-4 w-4" /> Download
                     </button>
                     <button
                       type="button"
                       onClick={handleReset}
-                      className="inline-flex items-center justify-center gap-2 rounded-full border-2 border-border bg-card px-5 py-4 text-xs font-bold text-muted-foreground hover:text-foreground transition-all hover:scale-105"
+                      className="inline-flex items-center justify-center gap-2 rounded-full border-2 border-border bg-card px-4 py-4 text-xs font-bold text-muted-foreground hover:text-foreground transition-all hover:scale-105 cursor-pointer"
                     >
                       <RefreshCw className="h-3.5 w-3.5" /> Another
                     </button>
@@ -701,7 +657,28 @@ export function RemovalProcess() {
           </div>
         </div>
       )}
+
+      {/* Interactive Cutout Editor Modal (Remove Brush, Restore Brush, Magic Brush) */}
+      {showCutoutEditor && beforeImage && afterImage && (
+        <CutoutBrushEditorModal
+          originalImageSrc={beforeImage}
+          cutoutImageSrc={afterImage}
+          filename={fileName || "cutout.png"}
+          onClose={() => setShowCutoutEditor(false)}
+          onSave={(newCutoutSrc) => {
+            setAfterImage(newCutoutSrc);
+          }}
+          onDownload={(newCutoutSrc, fname) => {
+            const a = document.createElement("a");
+            a.href = newCutoutSrc;
+            a.download = fname;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            toast.success(`Downloaded ${fname}`);
+          }}
+        />
+      )}
     </div>
   );
 }
-

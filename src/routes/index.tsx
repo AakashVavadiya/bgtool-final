@@ -3,14 +3,14 @@ import { useEffect, useRef, useState } from "react";
 import shapeTwo from "@/assets/shape-2.png";
 import girlBefore from "@/assets/girl-before.jpg";
 import girlAfter from "@/assets/girl-after.png";
-import krishnaMark from "@/assets/krishna-mark.png";
 import { ToolsGrid } from "@/components/ToolsGrid";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { BgModels } from "@/components/BgModels";
 import { Faq } from "@/components/Faq";
 import { ScrollBeforeAfter } from "@/components/ScrollBeforeAfter";
-import { krishnaModels } from "@/lib/krishna";
+import { KarudiAvatar } from "@/components/KarudiAvatar";
+import { karudiModels } from "@/lib/krishna";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -126,6 +126,104 @@ const checkerStyle = {
   backgroundPosition: "0 0,0 13px,13px -13px,-13px 0",
 };
 
+const HERO_PHRASES = [
+  { line1: "remove any background", line2: "in one Click." },
+  { line1: "Convert any File", line2: "in one Click." },
+  { line1: "Analyze any File", line2: "in one Click." },
+  { line1: "Compress any Image", line2: "in one Click." },
+  { line1: "Upscale to 4K", line2: "in one Click." },
+  { line1: "Square your Image", line2: "in one Click." },
+];
+
+const DEFAULT_PHRASE = { line1: "remove any background", line2: "in one Click." };
+
+function TypewriterHeroTitle() {
+  const [phraseIndex, setPhraseIndex] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const currentPhrase = HERO_PHRASES[phraseIndex] || DEFAULT_PHRASE;
+  const fullTextLength = currentPhrase.line1.length + currentPhrase.line2.length;
+
+  // Start with full text so first paint is instantly readable and SEO-ready
+  const [charCount, setCharCount] = useState(fullTextLength);
+  const [isWaiting, setIsWaiting] = useState(true);
+
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+
+    if (isWaiting) {
+      const waitDuration = isDeleting ? 320 : 2200;
+      timeout = setTimeout(() => {
+        setIsWaiting(false);
+        if (isDeleting) {
+          setIsDeleting(false);
+          setPhraseIndex((prev) => (prev + 1) % HERO_PHRASES.length);
+        } else {
+          setIsDeleting(true);
+        }
+      }, waitDuration);
+      return () => clearTimeout(timeout);
+    }
+
+    if (isDeleting) {
+      if (charCount > 0) {
+        timeout = setTimeout(() => {
+          setCharCount((prev) => prev - 1);
+        }, 34);
+      } else {
+        setIsWaiting(true);
+      }
+    } else {
+      if (charCount < fullTextLength) {
+        timeout = setTimeout(() => {
+          setCharCount((prev) => prev + 1);
+        }, 65);
+      } else {
+        setIsWaiting(true);
+      }
+    }
+
+    return () => clearTimeout(timeout);
+  }, [charCount, isDeleting, isWaiting, fullTextLength]);
+
+  const l1Len = currentPhrase.line1.length;
+  const currentLine1 = charCount <= l1Len ? currentPhrase.line1.slice(0, charCount) : currentPhrase.line1;
+  const currentLine2 = charCount > l1Len ? currentPhrase.line2.slice(0, charCount - l1Len) : "";
+
+  const showCursorOnLine1 = charCount <= l1Len;
+  const showCursorOnLine2 = charCount > l1Len;
+
+  return (
+    <h1 className="rise-in halftone-text relative mx-auto w-full text-center font-display text-5xl font-black leading-[1.02] pb-3 tracking-tighter text-foreground sm:text-7xl md:text-[5.5vw] lg:text-[6vw] xl:text-[6.5vw] min-h-[2.3em] flex flex-col items-center justify-center select-none">
+      <span className="block min-h-[1.05em]">
+        {currentLine1 || "\u00A0"}
+        {showCursorOnLine1 && (
+          <span
+            aria-hidden="true"
+            className="inline-block ml-1.5 w-[3px] sm:w-[4px] md:w-[6px] h-[0.82em] bg-accent align-baseline rounded-full animate-pulse shadow-[0_0_10px_var(--color-accent)]"
+            style={{
+              WebkitBackgroundClip: "border-box",
+              backgroundClip: "border-box",
+            }}
+          />
+        )}
+      </span>
+      <span className="block mt-2 min-h-[1.05em]">
+        {currentLine2 || "\u00A0"}
+        {showCursorOnLine2 && (
+          <span
+            aria-hidden="true"
+            className="inline-block ml-1.5 w-[3px] sm:w-[4px] md:w-[6px] h-[0.82em] bg-accent align-baseline rounded-full animate-pulse shadow-[0_0_10px_var(--color-accent)]"
+            style={{
+              WebkitBackgroundClip: "border-box",
+              backgroundClip: "border-box",
+            }}
+          />
+        )}
+      </span>
+    </h1>
+  );
+}
+
 function Index() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
@@ -146,10 +244,7 @@ function Index() {
             BG.
           </span>
 
-          <h1 className="rise-in halftone-text relative mx-auto w-full text-center font-display text-5xl font-black leading-[1.02] pb-3 tracking-tighter text-foreground sm:text-7xl md:text-[5.5vw] lg:text-[6vw] xl:text-[6.5vw]">
-            <span className="block">remove any background</span>
-            <span className="block mt-2">in one Click.</span>
-          </h1>
+          <TypewriterHeroTitle />
         </div>
 
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
@@ -176,7 +271,7 @@ function Index() {
             to="/chat"
             className="inline-flex items-center gap-3 rounded-full border-2 border-foreground px-9 py-5 text-base font-bold transition-all hover:scale-105 hover:bg-foreground hover:text-background shadow-md"
           >
-            <img src={krishnaMark} alt="" width={512} height={512} className="h-6 w-6" />
+            <KarudiAvatar size="sm" />
             Try Karudi 1.0 Prime
           </Link>
           <Link
@@ -331,7 +426,7 @@ function Index() {
               to="/chat"
               className="mt-10 inline-flex items-center gap-3 rounded-full bg-foreground px-8 py-4 text-sm font-medium text-background transition-all hover:gap-6"
             >
-              <img src={krishnaMark} alt="" width={512} height={512} className="h-5 w-5" />
+              <KarudiAvatar size="sm" />
               Try Karudi 1.0 Prime
               <span aria-hidden>→</span>
             </Link>
@@ -339,7 +434,7 @@ function Index() {
 
           <Reveal delay={120}>
             <div className="rounded-3xl border border-border bg-card p-6 md:p-8">
-              {krishnaModels.map((m, i) => (
+              {karudiModels.map((m, i) => (
                 <div
                   key={m.id}
                   className={`flex items-center justify-between gap-4 py-4 ${

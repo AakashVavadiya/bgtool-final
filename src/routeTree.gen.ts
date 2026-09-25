@@ -20,8 +20,14 @@ import { Route as ModelsRouteImport } from './routes/models'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as ApiBlurFaceRouteImport } from './routes/api/blur-face'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
+import { Route as ApiContactRouteImport } from './routes/api/contact'
+import { Route as ApiPlansConfigRouteImport } from './routes/api/plans-config'
 import { Route as ApiRemoveBgRouteImport } from './routes/api/remove-bg'
+import { Route as ApiRemoveWatermarkRouteImport } from './routes/api/remove-watermark'
+import { Route as ApiToolsConfigRouteImport } from './routes/api/tools-config'
+import { Route as ApiUsersRouteImport } from './routes/api/users'
 import { Route as ChatIndexRouteImport } from './routes/chat.index'
 import { Route as ChatThreadIdRouteImport } from './routes/chat.$threadId'
 import { Route as ToolsSlugRouteImport } from './routes/tools.$slug'
@@ -81,14 +87,44 @@ const TermsRoute = TermsRouteImport.update({
   path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiBlurFaceRoute = ApiBlurFaceRouteImport.update({
+  id: '/api/blur-face',
+  path: '/api/blur-face',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiChatRoute = ApiChatRouteImport.update({
   id: '/api/chat',
   path: '/api/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiContactRoute = ApiContactRouteImport.update({
+  id: '/api/contact',
+  path: '/api/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPlansConfigRoute = ApiPlansConfigRouteImport.update({
+  id: '/api/plans-config',
+  path: '/api/plans-config',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiRemoveBgRoute = ApiRemoveBgRouteImport.update({
   id: '/api/remove-bg',
   path: '/api/remove-bg',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRemoveWatermarkRoute = ApiRemoveWatermarkRouteImport.update({
+  id: '/api/remove-watermark',
+  path: '/api/remove-watermark',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiToolsConfigRoute = ApiToolsConfigRouteImport.update({
+  id: '/api/tools-config',
+  path: '/api/tools-config',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiUsersRoute = ApiUsersRouteImport.update({
+  id: '/api/users',
+  path: '/api/users',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatIndexRoute = ChatIndexRouteImport.update({
@@ -119,8 +155,14 @@ export interface FileRoutesByFullPath {
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
+  '/api/blur-face': typeof ApiBlurFaceRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/contact': typeof ApiContactRoute
+  '/api/plans-config': typeof ApiPlansConfigRoute
   '/api/remove-bg': typeof ApiRemoveBgRoute
+  '/api/remove-watermark': typeof ApiRemoveWatermarkRoute
+  '/api/tools-config': typeof ApiToolsConfigRoute
+  '/api/users': typeof ApiUsersRoute
   '/chat/$threadId': typeof ChatThreadIdRoute
   '/tools/$slug': typeof ToolsSlugRoute
   '/chat/': typeof ChatIndexRoute
@@ -136,8 +178,14 @@ export interface FileRoutesByTo {
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
+  '/api/blur-face': typeof ApiBlurFaceRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/contact': typeof ApiContactRoute
+  '/api/plans-config': typeof ApiPlansConfigRoute
   '/api/remove-bg': typeof ApiRemoveBgRoute
+  '/api/remove-watermark': typeof ApiRemoveWatermarkRoute
+  '/api/tools-config': typeof ApiToolsConfigRoute
+  '/api/users': typeof ApiUsersRoute
   '/chat/$threadId': typeof ChatThreadIdRoute
   '/tools/$slug': typeof ToolsSlugRoute
   '/chat': typeof ChatIndexRoute
@@ -155,8 +203,14 @@ export interface FileRoutesById {
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
+  '/api/blur-face': typeof ApiBlurFaceRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/contact': typeof ApiContactRoute
+  '/api/plans-config': typeof ApiPlansConfigRoute
   '/api/remove-bg': typeof ApiRemoveBgRoute
+  '/api/remove-watermark': typeof ApiRemoveWatermarkRoute
+  '/api/tools-config': typeof ApiToolsConfigRoute
+  '/api/users': typeof ApiUsersRoute
   '/chat/$threadId': typeof ChatThreadIdRoute
   '/tools/$slug': typeof ToolsSlugRoute
   '/chat/': typeof ChatIndexRoute
@@ -175,8 +229,14 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/privacy'
     | '/terms'
+    | '/api/blur-face'
     | '/api/chat'
+    | '/api/contact'
+    | '/api/plans-config'
     | '/api/remove-bg'
+    | '/api/remove-watermark'
+    | '/api/tools-config'
+    | '/api/users'
     | '/chat/$threadId'
     | '/tools/$slug'
     | '/chat/'
@@ -192,8 +252,14 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/privacy'
     | '/terms'
+    | '/api/blur-face'
     | '/api/chat'
+    | '/api/contact'
+    | '/api/plans-config'
     | '/api/remove-bg'
+    | '/api/remove-watermark'
+    | '/api/tools-config'
+    | '/api/users'
     | '/chat/$threadId'
     | '/tools/$slug'
     | '/chat'
@@ -210,8 +276,14 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/privacy'
     | '/terms'
+    | '/api/blur-face'
     | '/api/chat'
+    | '/api/contact'
+    | '/api/plans-config'
     | '/api/remove-bg'
+    | '/api/remove-watermark'
+    | '/api/tools-config'
+    | '/api/users'
     | '/chat/$threadId'
     | '/tools/$slug'
     | '/chat/'
@@ -229,8 +301,14 @@ export interface RootRouteChildren {
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
   TermsRoute: typeof TermsRoute
+  ApiBlurFaceRoute: typeof ApiBlurFaceRoute
   ApiChatRoute: typeof ApiChatRoute
+  ApiContactRoute: typeof ApiContactRoute
+  ApiPlansConfigRoute: typeof ApiPlansConfigRoute
   ApiRemoveBgRoute: typeof ApiRemoveBgRoute
+  ApiRemoveWatermarkRoute: typeof ApiRemoveWatermarkRoute
+  ApiToolsConfigRoute: typeof ApiToolsConfigRoute
+  ApiUsersRoute: typeof ApiUsersRoute
   ToolsSlugRoute: typeof ToolsSlugRoute
 }
 
@@ -313,6 +391,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/blur-face': {
+      id: '/api/blur-face'
+      path: '/api/blur-face'
+      fullPath: '/api/blur-face'
+      preLoaderRoute: typeof ApiBlurFaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/chat': {
       id: '/api/chat'
       path: '/api/chat'
@@ -320,11 +405,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/contact': {
+      id: '/api/contact'
+      path: '/api/contact'
+      fullPath: '/api/contact'
+      preLoaderRoute: typeof ApiContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/plans-config': {
+      id: '/api/plans-config'
+      path: '/api/plans-config'
+      fullPath: '/api/plans-config'
+      preLoaderRoute: typeof ApiPlansConfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/remove-bg': {
       id: '/api/remove-bg'
       path: '/api/remove-bg'
       fullPath: '/api/remove-bg'
       preLoaderRoute: typeof ApiRemoveBgRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/remove-watermark': {
+      id: '/api/remove-watermark'
+      path: '/api/remove-watermark'
+      fullPath: '/api/remove-watermark'
+      preLoaderRoute: typeof ApiRemoveWatermarkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/tools-config': {
+      id: '/api/tools-config'
+      path: '/api/tools-config'
+      fullPath: '/api/tools-config'
+      preLoaderRoute: typeof ApiToolsConfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/users': {
+      id: '/api/users'
+      path: '/api/users'
+      fullPath: '/api/users'
+      preLoaderRoute: typeof ApiUsersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/chat/': {
@@ -375,8 +495,14 @@ const rootRouteChildren: RootRouteChildren = {
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
   TermsRoute: TermsRoute,
+  ApiBlurFaceRoute: ApiBlurFaceRoute,
   ApiChatRoute: ApiChatRoute,
+  ApiContactRoute: ApiContactRoute,
+  ApiPlansConfigRoute: ApiPlansConfigRoute,
   ApiRemoveBgRoute: ApiRemoveBgRoute,
+  ApiRemoveWatermarkRoute: ApiRemoveWatermarkRoute,
+  ApiToolsConfigRoute: ApiToolsConfigRoute,
+  ApiUsersRoute: ApiUsersRoute,
   ToolsSlugRoute: ToolsSlugRoute,
 }
 export const routeTree = rootRouteImport

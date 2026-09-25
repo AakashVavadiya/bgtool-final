@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Mail, MessageSquare, Send, CheckCircle2, Clock, MapPin } from "lucide-react";
+import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
 
 export const Route = createFileRoute("/contact")({
   head: () => ({
@@ -28,16 +29,34 @@ function ContactPage() {
   const [message, setMessage] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email || !message) {
       toast.error("Please complete all required fields.");
       return;
     }
     
+    // Save to server persistence
+    try {
+      await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, subject, message }),
+      });
+    } catch (err) {
+      console.warn("Failed to post to /api/contact directly:", err);
+    }
+
     // Save to Admin Support Desk Inbox
     import("@/admin/lib/admin-store").then(({ AdminStore }) => {
       AdminStore.addContactInquiry(name, email, subject, message);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent(REALTIME_EVENT_NAME, {
+            detail: { type: "contact_submission", name, email, subject },
+          })
+        );
+      }
     });
 
     setSubmitted(true);
