@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
-import { Sparkles, Home, Wand2, ArrowRight, Search, RotateCw, Image as ImageIcon, Zap } from "lucide-react";
+import { Home, Wand2, ArrowRight, Search, RotateCw, Image as ImageIcon, Zap } from "lucide-react";
 
 export function NotFoundPage() {
   return (
@@ -25,7 +25,7 @@ export function NotFoundPage() {
                 404
               </span>
               <span className="absolute -top-3 -right-3 flex h-7 w-7 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-lg animate-bounce">
-                <Sparkles className="h-4 w-4" />
+                <Wand2 className="h-4 w-4" />
               </span>
             </div>
           </div>

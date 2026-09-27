@@ -1,4 +1,4 @@
-import { Crown, Scissors, RefreshCw, Sparkles, BookOpen, type LucideIcon } from "lucide-react";
+import { Crown, Scissors, RefreshCw, Wand2, BookOpen, type LucideIcon } from "lucide-react";
 
 export type BgModel = {
   id: string;
@@ -60,7 +60,7 @@ export const bgModels: BgModel[] = [
     id: "narmada",
     name: "Narmada",
     specialty: "Processing & Generative Outputs",
-    icon: Sparkles,
+    icon: Wand2,
     quality: "OCR, AI Summary & Meme Generation",
     blurb:
       "Versatile processing engine delivering diverse smart outputs: multilingual OCR text extraction from images, automated AI summarization, and creative meme generation.",

@@ -14,7 +14,7 @@ import {
   ArrowRight,
   ShieldCheck,
   User,
-  Sparkles,
+  Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -202,7 +202,7 @@ function Auth() {
                   to="/pricing"
                   className="w-full flex items-center justify-center gap-2 rounded-2xl border border-border bg-secondary/60 px-6 py-3 text-xs font-bold text-foreground hover:bg-secondary transition-all"
                 >
-                  <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                  <Wand2 className="h-3.5 w-3.5 text-amber-500" />
                   <span>Get More Credits</span>
                 </Link>
 

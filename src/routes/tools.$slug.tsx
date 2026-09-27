@@ -14,6 +14,7 @@ import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
 import { CheckCircle2, ShieldAlert, Wrench } from "lucide-react";
 
 import { ToolLimitReachedDialog } from "@/components/ToolLimitReachedDialog";
+import { AddCreditsDialog } from "@/components/AddCreditsDialog";
 
 export const Route = createFileRoute("/tools/$slug")({
   loader: ({ params }) => {
@@ -54,6 +55,13 @@ function ToolPage() {
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(() => !AdminStore.isToolEnabled(slug));
   const [dailyStatus, setDailyStatus] = useState(() => AdminStore.checkDailyToolLimit(slug));
   const [showLimitModal, setShowLimitModal] = useState(() => AdminStore.checkDailyToolLimit(slug).reached);
+  const [showAddCreditsModal, setShowAddCreditsModal] = useState(false);
+  const [addCreditsDetail, setAddCreditsDetail] = useState<{
+    toolName?: string;
+    toolSlug?: string;
+    creditCost?: number;
+    currentCredits?: number;
+  }>({});
   const [isRestricted, setIsRestricted] = useState(() => AuthUser.isUserRestricted());
 
   useEffect(() => {
@@ -82,13 +90,23 @@ function ToolPage() {
       }
     };
 
+    const handleAddCreditsEvent = (e: Event) => {
+      const customEvt = e as CustomEvent;
+      if (customEvt.detail) {
+        setAddCreditsDetail(customEvt.detail);
+      }
+      setShowAddCreditsModal(true);
+    };
+
     window.addEventListener(REALTIME_EVENT_NAME, handleUpdate);
     window.addEventListener("storage", handleUpdate);
     window.addEventListener("bg:show_restricted_dialog", handleUpdate);
+    window.addEventListener("bg:show_add_credits_dialog", handleAddCreditsEvent);
     return () => {
       window.removeEventListener(REALTIME_EVENT_NAME, handleUpdate);
       window.removeEventListener("storage", handleUpdate);
       window.removeEventListener("bg:show_restricted_dialog", handleUpdate);
+      window.removeEventListener("bg:show_add_credits_dialog", handleAddCreditsEvent);
     };
   }, [slug]);
 
@@ -113,14 +131,26 @@ function ToolPage() {
           toolSlug={tool.slug}
         />
 
-        {/* Daily Limit Reached Dialog Popup */}
-        <ToolLimitReachedDialog
-          isOpen={dailyStatus.reached && showLimitModal}
-          onClose={() => setShowLimitModal(false)}
-          toolName={tool.name}
-          limit={dailyStatus.limit}
-          usedToday={dailyStatus.usedToday}
+        {/* Add Credits Dialog Popup */}
+        <AddCreditsDialog
+          isOpen={showAddCreditsModal}
+          onClose={() => setShowAddCreditsModal(false)}
+          toolName={addCreditsDetail.toolName || tool.name}
+          toolSlug={addCreditsDetail.toolSlug || tool.slug}
+          creditCost={addCreditsDetail.creditCost ?? creditCost}
+          currentCredits={addCreditsDetail.currentCredits ?? AuthUser.getCredits()}
         />
+
+        {/* Free Daily Limit Reached Dialog Popup (Active for Free Tools only) */}
+        {creditCost === 0 && (
+          <ToolLimitReachedDialog
+            isOpen={dailyStatus.reached && showLimitModal}
+            onClose={() => setShowLimitModal(false)}
+            toolName={tool.name}
+            limit={dailyStatus.limit || 20}
+            usedToday={dailyStatus.usedToday}
+          />
+        )}
 
         {/* ─── UPLOAD ZONE & WORKSPACE ─────────────────────────────────────── */}
         <section className="grain border-b border-border px-4 py-4 md:px-8 md:py-6 relative">
@@ -187,49 +217,46 @@ function ToolPage() {
                 </div>
               </div>
             </div>
-          ) : dailyStatus.reached ? (
-            <div className="relative rounded-3xl border border-amber-500/30 bg-amber-500/5 p-8 sm:p-14 text-center my-4 overflow-hidden shadow-sm">
-              <div className="max-w-lg mx-auto space-y-4">
-                <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
-                  <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                  <span>Daily Quota Reached</span>
-                </div>
-                <h3 className="font-display text-2xl sm:text-3xl font-extrabold text-foreground">
-                  Daily Usage Limit Reached ({dailyStatus.usedToday} of {dailyStatus.limit})
-                </h3>
-                <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                  You have reached the maximum allowed daily runs ({dailyStatus.limit}/day) for {tool.name} on this device. Your quota will automatically reset tonight at midnight.
-                </p>
-                <div className="pt-3 flex flex-wrap justify-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowLimitModal(true)}
-                    className="rounded-2xl bg-foreground px-5 py-3 text-xs font-bold text-background shadow-xs hover:opacity-90 transition-all cursor-pointer"
-                  >
-                    View Quota Details
-                  </button>
-                  <Link
-                    to="/pricing"
-                    className="rounded-2xl bg-accent px-5 py-3 text-xs font-bold text-white shadow-xs hover:opacity-90 transition-all flex items-center"
-                  >
-                    Upgrade Plan
-                  </Link>
-                  <Link
-                    to="/"
-                    hash="tools"
-                    className="rounded-2xl border border-border bg-card px-5 py-3 text-xs font-bold text-muted-foreground hover:text-foreground transition-all flex items-center"
-                  >
-                    Other Tools
-                  </Link>
-                </div>
-              </div>
-            </div>
-          ) : isBgRemover ? (
-            <RemovalProcess />
-          ) : tool.category === "PDF Tools" ? (
-            <PdfToolWorkspace tool={tool} />
           ) : (
-            <InteractiveToolWorkspace tool={tool} />
+            <>
+              {dailyStatus.reached && (
+                <div className="relative rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 mb-6 text-left overflow-hidden shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500 animate-pulse" />
+                    <div>
+                      <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                        Daily Usage Limit Reached ({dailyStatus.usedToday} of {dailyStatus.limit} files today)
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Your free quota automatically resets at midnight. You can review, compare, and download your processed results below!
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setShowLimitModal(true)}
+                      className="rounded-xl bg-foreground px-3.5 py-1.5 text-xs font-bold text-background shadow-xs hover:opacity-90 transition-all cursor-pointer"
+                    >
+                      Quota Details
+                    </button>
+                    <Link
+                      to="/pricing"
+                      className="rounded-xl bg-accent px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:opacity-90 transition-all flex items-center"
+                    >
+                      Upgrade Plan
+                    </Link>
+                  </div>
+                </div>
+              )}
+              {isBgRemover ? (
+                <RemovalProcess />
+              ) : tool.category === "PDF Tools" ? (
+                <PdfToolWorkspace tool={tool} />
+              ) : (
+                <InteractiveToolWorkspace tool={tool} />
+              )}
+            </>
           )}
         </section>
 

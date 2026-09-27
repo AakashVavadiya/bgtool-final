@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import shapeTwo from "@/assets/shape-2.png";
 import girlBefore from "@/assets/girl-before.jpg";
 import girlAfter from "@/assets/girl-after.png";
-import { ToolsGrid } from "@/components/ToolsGrid";
+import { TrendingToolsSection } from "@/components/TrendingToolsSection";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { BgModels } from "@/components/BgModels";
@@ -437,20 +437,12 @@ function Index() {
               {karudiModels.map((m, i) => (
                 <div
                   key={m.id}
-                  className={`flex items-center justify-between gap-4 py-4 ${
+                  className={`py-4 ${
                     i > 0 ? "border-t border-border" : ""
                   }`}
                 >
-                  <div>
-                    <p className="font-display text-lg font-medium">{m.fullName || m.name}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{m.blurb}</p>
-                  </div>
-                  <Link
-                    to="/chat"
-                    className="shrink-0 rounded-full border border-border px-5 py-2.5 text-xs font-bold transition-colors hover:bg-foreground hover:text-background"
-                  >
-                    Try Karudi 1.0 Prime →
-                  </Link>
+                  <p className="font-display text-lg font-medium">{m.fullName || m.name}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{m.blurb}</p>
                 </div>
               ))}
             </div>
@@ -460,9 +452,9 @@ function Index() {
 
 
 
-      {/* Tools */}
+      {/* Trending Tools Section */}
       <div className="border-t border-border">
-        <ToolsGrid />
+        <TrendingToolsSection />
       </div>
 
       {/* Features */}

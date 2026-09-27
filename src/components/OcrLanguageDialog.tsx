@@ -4,7 +4,7 @@ import {
   Search,
   Check,
   X,
-  Sparkles,
+  Wand2,
   Languages,
   CheckCircle2,
   ChevronRight,
@@ -283,7 +283,7 @@ export function OcrLanguageDialog({
                   Select Recognition Language
                 </h3>
                 <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-accent/15 px-2.5 py-0.5 text-[10px] font-extrabold text-accent border border-accent/30">
-                  <Sparkles className="h-3 w-3" /> 60+ Languages &amp; Dual Scripts
+                  <Wand2 className="h-3 w-3" /> 60+ Languages &amp; Dual Scripts
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">

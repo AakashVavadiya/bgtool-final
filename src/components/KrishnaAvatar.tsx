@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Sparkles } from "lucide-react";
+import { Wand2 } from "lucide-react";
 import karudiKLogo from "@/assets/karudi-k-logo.png";
 
 type Props = {
@@ -55,7 +55,7 @@ export function KarudiAvatar({ size = "md", className = "" }: Props) {
       <span
         className={`absolute flex items-center justify-center rounded-full bg-emerald-500 ring-2 ring-background shadow-md ${badgeSize}`}
       >
-        <Sparkles className="h-2/3 w-2/3 text-white animate-pulse" />
+        <Wand2 className="h-2/3 w-2/3 text-white animate-pulse" />
       </span>
     </div>
   );

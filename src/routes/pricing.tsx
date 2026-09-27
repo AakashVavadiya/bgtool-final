@@ -6,7 +6,8 @@ import { Faq } from "@/components/Faq";
 import { AdminStore, type PurchasePlanConfig } from "@/admin/lib/admin-store";
 import { openFestivalOffersDialog } from "@/components/FestivalOffersDialog";
 import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
-import { Sparkles, Gift, Zap } from "lucide-react";
+import { Wand2, Gift, Zap } from "lucide-react";
+import { TokenCoin } from "@/components/TokenCoins";
 import {
   Select,
   SelectContent,
@@ -134,7 +135,7 @@ function Pricing() {
                       {activeOffer.badge || "LIMITED TIME OFFER"}
                     </span>
                     <span className="text-xs font-bold text-amber-500 flex items-center gap-1">
-                      <Sparkles className="h-3.5 w-3.5 fill-current" />
+                      <Wand2 className="h-3.5 w-3.5 fill-current" />
                       Special Festive Pack
                     </span>
                   </div>
@@ -188,12 +189,41 @@ function Pricing() {
           </div>
         )}
 
+        {/* Token Distinction Banner */}
+        <div className="mb-10 rounded-2xl border border-border/80 bg-muted/30 p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex -space-x-2">
+              <TokenCoin type="silver" size="md" />
+              <TokenCoin type="gold" size="md" showGlow />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-sm text-foreground">Understanding Our Tokens</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                <strong className="text-foreground">Silver Tokens</strong> are your free daily allowance. <strong className="text-amber-500">Gold Tokens</strong> are purchased paid credits that never expire.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 text-xs font-semibold shrink-0">
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-card border border-border px-3 py-1.5 text-slate-700 dark:text-slate-300">
+              <TokenCoin type="silver" size="xs" />
+              <span>Silver = Free Daily</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-card border border-amber-500/30 px-3 py-1.5 text-amber-600 dark:text-amber-400">
+              <TokenCoin type="gold" size="xs" />
+              <span>Gold = Paid / Purchased</span>
+            </span>
+          </div>
+        </div>
+
         <div className="grid items-start gap-5 lg:grid-cols-4">
           {/* Free */}
           <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-7">
-            <h2 className="font-display text-2xl font-medium">Free</h2>
-            <p className="mt-4 text-sm text-muted-foreground">
-              <span className="text-foreground">10 credits</span> every day, forever
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-2xl font-medium">Free</h2>
+              <TokenCoin type="silver" size="sm" />
+            </div>
+            <p className="mt-4 text-sm text-muted-foreground flex items-center gap-1.5">
+              <span className="font-bold text-foreground">10 Silver Tokens</span> every day, forever
             </p>
             <p className="mt-6 font-display text-4xl font-medium">
               ₹0 <span className="text-base text-muted-foreground">/ day</span>
@@ -213,9 +243,12 @@ function Pricing() {
 
           {/* Pay-as-you-go */}
           <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-7">
-            <h2 className="font-display text-2xl font-medium">Pay-as-you-go</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-2xl font-medium">Pay-as-you-go</h2>
+              <TokenCoin type="gold" size="sm" showGlow />
+            </div>
             <div className="mt-6">
-              <span className="text-xs font-medium text-muted-foreground">Amount</span>
+              <span className="text-xs font-medium text-muted-foreground">Gold Tokens Pack</span>
               <Select value={pack} onValueChange={setPack}>
                 <SelectTrigger className="mt-2 w-full">
                   <SelectValue />
@@ -223,7 +256,7 @@ function Pricing() {
                 <SelectContent>
                   {payg.map((p) => (
                     <SelectItem key={p.credits} value={String(p.credits)}>
-                      {p.credits.toLocaleString("en-IN")} credits
+                      {p.credits.toLocaleString("en-IN")} Gold Tokens
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -232,29 +265,31 @@ function Pricing() {
             <p className="mt-6 font-display text-4xl font-medium">{inr(selectedPack.price)}</p>
             <button
               type="button"
-              onClick={() => handleBuy(selectedPack.credits, `${selectedPack.credits} Credits Pack`, selectedPack.price)}
+              onClick={() => handleBuy(selectedPack.credits, `${selectedPack.credits} Gold Tokens Pack`, selectedPack.price)}
               className="mt-6 inline-flex justify-center rounded-full bg-foreground px-6 py-3 text-sm font-medium text-background transition-opacity hover:opacity-85"
             >
               Buy now
             </button>
             <p className="mt-7 border-t border-border pt-6 text-sm leading-relaxed text-muted-foreground">
-              Start small with a one-off purchase — upgrade and scale when needed. Top up your
-              credits anytime, on top of your current plan.
+              Start small with a one-off purchase — Gold Tokens never expire. Top up anytime on top of your free Silver Tokens.
             </p>
           </div>
 
           {/* Lite */}
           <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-7">
-            <h2 className="font-display text-2xl font-medium">Lite</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-2xl font-medium">Lite</h2>
+              <TokenCoin type="gold" size="sm" />
+            </div>
             <p className="mt-4 text-sm text-muted-foreground">
-              Use up to <span className="text-foreground">40 credits</span> per month
+              Use up to <span className="font-bold text-foreground">40 Gold Tokens</span> per month
             </p>
             <p className="mt-6 font-display text-4xl font-medium">
               {inr(499)} <span className="text-base text-muted-foreground">/ month</span>
             </p>
             <button
               type="button"
-              onClick={() => handleBuy(40, "Lite Monthly Plan", 499)}
+              onClick={() => handleBuy(40, "Lite Monthly Plan (Gold Tokens)", 499)}
               className="mt-6 inline-flex justify-center rounded-full bg-foreground px-6 py-3 text-sm font-medium text-background transition-opacity hover:opacity-85"
             >
               Subscribe
@@ -271,16 +306,19 @@ function Pricing() {
             <span className="absolute right-6 top-7 rounded-full bg-accent px-3 py-1 text-[0.7rem] font-semibold text-accent-foreground">
               Most Popular
             </span>
-            <h2 className="font-display text-2xl font-medium">Pro</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="font-display text-2xl font-medium">Pro</h2>
+              <TokenCoin type="gold" size="sm" showGlow />
+            </div>
             <p className="mt-4 text-sm text-muted-foreground">
-              Use up to <span className="text-foreground">200 credits</span> per month
+              Use up to <span className="font-bold text-foreground">200 Gold Tokens</span> per month
             </p>
             <p className="mt-6 font-display text-4xl font-medium">
               {inr(1999)} <span className="text-base text-muted-foreground">/ month</span>
             </p>
             <button
               type="button"
-              onClick={() => handleBuy(200, "Pro Monthly Plan", 1999)}
+              onClick={() => handleBuy(200, "Pro Monthly Plan (Gold Tokens)", 1999)}
               className="mt-6 inline-flex justify-center rounded-full bg-foreground px-6 py-3 text-sm font-medium text-background transition-opacity hover:opacity-85"
             >
               Subscribe

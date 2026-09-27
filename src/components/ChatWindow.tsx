@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   Scissors,
   RefreshCw,
-  Sparkles,
+  Wand2,
   BookOpen,
   Crown,
   Download,
@@ -16,10 +16,13 @@ import {
   FileImage,
   Palette,
   ArrowUp,
+  ArrowRight,
+  Plus,
   Paperclip,
   Mic,
   Brain,
   ChevronDown,
+  ChevronUp,
   Shield,
   ShieldCheck,
   Copy,
@@ -30,7 +33,11 @@ import {
   RotateCw,
   Square,
   Archive,
+  ArrowDownToLine,
+  FileSpreadsheet,
+  ScanText,
 } from "lucide-react";
+import karudiKLogo from "@/assets/karudi-k-logo.png";
 import { SingleImageBgRemovalWidget } from "@/components/SingleImageBgRemovalWidget";
 import { KarudiAvatar } from "@/components/KarudiAvatar";
 import {
@@ -45,12 +52,14 @@ import { notifyThreadsChanged } from "@/hooks/use-threads";
 import { TypewriterMessage } from "@/components/TypewriterMessage";
 import { MessageFeedbackToolbar } from "@/components/MessageFeedbackToolbar";
 import { AuthUser } from "@/lib/auth-user";
+import { Telemetry } from "@/lib/telemetry";
 import {
   SUB_MODELS,
   analyzeKarudiIntent,
   executeRemoveBackground,
   executeCompositeBackground,
   executeImageToWord,
+  executeImageToExcel,
   executeImageToPdf,
   executePdfToImages,
   executeConvertImageFormat,
@@ -82,6 +91,8 @@ export interface InlineTaskState {
   resultImageSrc?: string | undefined;
   resultDocxBlob?: Blob | undefined;
   resultDocxFilename?: string | undefined;
+  resultXlsxBlob?: Blob | undefined;
+  resultXlsxFilename?: string | undefined;
   resultPdfBlob?: Blob | undefined;
   resultPdfFilename?: string | undefined;
   resultBinaryText?: string | undefined;
@@ -114,42 +125,306 @@ export interface InlineTaskState {
 }
 
 export const WORK_DONE_MESSAGES: readonly string[] = [
-  "The work has been completed successfully. Let me know if you need any further assistance.",
-  "Everything is completed. Feel free to reach out if you need any additional help.",
-  "The task is now complete. Please let me know if there’s anything else I can help with.",
-  "All done! If you need any further support, I’m happy to help.",
-  "The work is complete. Let me know if you’d like help with anything else.",
-  "Everything is taken care of. Feel free to ask if you need anything further.",
-  "Done and ready to go! Let me know if you need anything else.",
-  "That’s all set! Feel free to reach out if you need further help.",
-  "Everything is ready. Let me know what you’d like to work on next.",
-  "Completed successfully. I’m here if you need anything else.",
-  "All set! Let me know if there’s anything more I can assist with.",
-  "The task is complete. Happy to help with the next step.",
-  "Done! If there’s anything else you need, just let me know.",
-  "Everything has been taken care of. Let me know if you’d like to continue.",
-  "Completed! Feel free to ask if you need further assistance.",
-  "That’s wrapped up. Let me know if you have another task.",
+  "Done — your file is ready.",
+  "Done — your document is ready.",
+  "Done — processing complete.",
 ];
 
-export function getWorkDoneMessage(id?: string): string {
-  if (!id) {
-    const rand = Math.floor(Math.random() * WORK_DONE_MESSAGES.length);
-    return WORK_DONE_MESSAGES[rand]!;
+export function getWorkDoneMessage(actionOrId?: string): string {
+  if (!actionOrId) return "Done — your file is ready.";
+  if (actionOrId === "image_to_pdf") return "Done — your PDF is ready.";
+  if (actionOrId === "jpg_to_word" || actionOrId === "pdf_to_word") return "Done — your Word document is ready.";
+  if (actionOrId === "jpg_to_excel" || actionOrId === "pdf_to_excel") return "Done — your Excel spreadsheet is ready.";
+  if (actionOrId === "pdf_to_image") return "Done — your images are ready.";
+  if (actionOrId === "remove_background") return "Done — background removed.";
+  if (actionOrId === "compress_image") return "Done — your file is compressed.";
+  if (actionOrId === "resize_image") return "Done — your image is resized.";
+  if (actionOrId === "rotate_image") return "Done — your rotated image is ready.";
+  if (actionOrId === "square_image") return "Done — your square image is ready.";
+  if (actionOrId === "convert_format") return "Done — your converted image is ready.";
+  if (actionOrId === "image_to_binary") return "Done — your binary file is ready.";
+  if (actionOrId === "analyze_image") return "Done — color palette analysis complete.";
+  return "Done — your file is ready.";
+}
+
+export function getProcessedFileInfo(
+  task: InlineTaskState,
+  fallbackFilename: string | null,
+  downloadBlob: (blob: Blob, name: string) => void,
+  downloadDataUrl: (url: string, name: string) => void
+) {
+  const baseName =
+    task.originalFilename?.replace(/\.[^.]+$/, "") ||
+    task.uploadedFile?.name?.replace(/\.[^.]+$/, "") ||
+    fallbackFilename?.replace(/\.[^.]+$/, "") ||
+    "file";
+
+  switch (task.action) {
+    case "image_to_pdf": {
+      const filename = task.resultPdfFilename || `${baseName}.pdf`;
+      return {
+        filename,
+        subtitle: "Open file • PDF Document",
+        fileType: "pdf" as const,
+        onDownload: () => {
+          if (task.resultPdfBlob) downloadBlob(task.resultPdfBlob, filename);
+        },
+      };
+    }
+    case "jpg_to_word":
+    case "pdf_to_word": {
+      const filename = task.resultDocxFilename || `${baseName}.docx`;
+      return {
+        filename,
+        subtitle: "Open file • Word Document (.docx)",
+        fileType: "word" as const,
+        onDownload: () => {
+          if (task.resultDocxBlob) downloadBlob(task.resultDocxBlob, filename);
+        },
+      };
+    }
+    case "jpg_to_excel":
+    case "pdf_to_excel": {
+      const filename = task.resultXlsxFilename || `${baseName}.xlsx`;
+      return {
+        filename,
+        subtitle: "Open file • Excel Spreadsheet (.xlsx)",
+        fileType: "excel" as const,
+        onDownload: () => {
+          if (task.resultXlsxBlob) downloadBlob(task.resultXlsxBlob, filename);
+        },
+      };
+    }
+    case "remove_background": {
+      const filename = `${baseName}_cutout.png`;
+      return {
+        filename,
+        subtitle: "Open file • PNG Cutout",
+        fileType: "image" as const,
+        onDownload: () => {
+          if (task.resultImageSrc) downloadDataUrl(task.resultImageSrc, filename);
+        },
+      };
+    }
+    case "compress_image": {
+      const filename = `${baseName}_compressed.jpg`;
+      const sizeStr = task.compressedSize
+        ? `${(task.compressedSize / 1024).toFixed(1)} KB`
+        : "Compressed JPG";
+      return {
+        filename,
+        subtitle: `Open file • ${sizeStr}`,
+        fileType: "image" as const,
+        onDownload: () => {
+          if (task.resultImageSrc) downloadDataUrl(task.resultImageSrc, filename);
+        },
+      };
+    }
+    case "resize_image": {
+      const filename = `${baseName}_${task.targetWidth || 1000}x${task.targetHeight || 1000}.png`;
+      return {
+        filename,
+        subtitle: `Open file • ${task.targetWidth || 1000}×${task.targetHeight || 1000} px`,
+        fileType: "image" as const,
+        onDownload: () => {
+          if (task.resultImageSrc) downloadDataUrl(task.resultImageSrc, filename);
+        },
+      };
+    }
+    case "rotate_image": {
+      const filename = `${baseName}_rotated.png`;
+      return {
+        filename,
+        subtitle: `Open file • Rotated ${task.rotationDegrees || 90}°`,
+        fileType: "image" as const,
+        onDownload: () => {
+          if (task.resultImageSrc) downloadDataUrl(task.resultImageSrc, filename);
+        },
+      };
+    }
+    case "square_image": {
+      const filename = `${baseName}_square.png`;
+      return {
+        filename,
+        subtitle: "Open file • 1:1 Square Image",
+        fileType: "image" as const,
+        onDownload: () => {
+          if (task.resultImageSrc) downloadDataUrl(task.resultImageSrc, filename);
+        },
+      };
+    }
+    case "convert_format":
+    case "pdf_to_image": {
+      const ext = task.selectedFormat || "jpg";
+      const filename = `${baseName}.${ext}`;
+      return {
+        filename,
+        subtitle: `Open file • ${ext.toUpperCase()} Image`,
+        fileType: "image" as const,
+        onDownload: () => {
+          if (task.resultImageSrc) downloadDataUrl(task.resultImageSrc, filename);
+        },
+      };
+    }
+    case "image_to_binary": {
+      const filename = task.resultBinaryFilename || `${baseName}_binary.txt`;
+      return {
+        filename,
+        subtitle: "Open file • Binary Bitstream (.txt)",
+        fileType: "binary" as const,
+        onDownload: () => {
+          if (task.resultBinaryBlob) downloadBlob(task.resultBinaryBlob, filename);
+        },
+      };
+    }
+    default: {
+      const filename = `${baseName}.file`;
+      return {
+        filename,
+        subtitle: "Open file",
+        fileType: "file" as const,
+        onDownload: () => {
+          if (task.resultImageSrc) downloadDataUrl(task.resultImageSrc, filename);
+        },
+      };
+    }
   }
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash << 5) - hash + id.charCodeAt(i);
-    hash |= 0;
-  }
-  const index = Math.abs(hash) % WORK_DONE_MESSAGES.length;
-  return WORK_DONE_MESSAGES[index]!;
+}
+
+const AVAILABLE_MODELS = [
+  {
+    id: "karudi-prime",
+    name: "Karudi 1.0 Prime",
+    desc: "Flagship master orchestrator for complex workflows",
+    icon: Crown,
+    useLogo: true,
+    iconColor: "text-blue-500",
+    bgClass: "bg-blue-500/10 border border-blue-500/20 text-blue-500",
+    tier: "prime-1.0" as KarudiTier,
+    selectable: true,
+  },
+  {
+    id: "ganga-matting",
+    name: "Ganga 1.0",
+    desc: "Specialized sub-pixel alpha matting & background cutout",
+    icon: Scissors,
+    useLogo: false,
+    iconColor: "text-emerald-500",
+    bgClass: "bg-emerald-500/10 border border-emerald-500/20 text-emerald-500",
+    tier: "ganga-matting" as KarudiTier,
+    selectable: false,
+    badge: "Auto-Managed",
+  },
+  {
+    id: "brahmaputra-transcode",
+    name: "Brahmaputra 1.0",
+    desc: "Universal PDF, Word (.docx) & format transcoding",
+    icon: FileText,
+    useLogo: false,
+    iconColor: "text-purple-500",
+    bgClass: "bg-purple-500/10 border border-purple-500/20 text-purple-500",
+    tier: "brahmaputra-transcode" as KarudiTier,
+    selectable: false,
+    badge: "Auto-Managed",
+  },
+  {
+    id: "narmada-vision",
+    name: "Narmada 1.0",
+    desc: "Multilingual OCR & neural document intelligence",
+    icon: ScanText,
+    useLogo: false,
+    iconColor: "text-cyan-500",
+    bgClass: "bg-cyan-500/10 border border-cyan-500/20 text-cyan-500",
+    tier: "narmada-vision" as KarudiTier,
+    selectable: false,
+    badge: "Auto-Managed",
+  },
+  {
+    id: "saraswati-deep",
+    name: "Saraswati 1.0",
+    desc: "Deep research, palette analysis & knowledge synthesis",
+    icon: BookOpen,
+    useLogo: false,
+    iconColor: "text-amber-500",
+    bgClass: "bg-amber-500/10 border border-amber-500/20 text-amber-500",
+    tier: "saraswati-deep" as KarudiTier,
+    selectable: false,
+    badge: "Auto-Managed",
+  },
+];
+
+function InlineAttachmentThumbnail({
+  file,
+  onRemove,
+}: {
+  file: File;
+  onRemove: () => void;
+}) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file.type.startsWith("image/")) return;
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [file]);
+
+  return (
+    <div className="relative group/thumb inline-flex items-center justify-center rounded-xl overflow-hidden border border-border/70 bg-card/60 shadow-xs">
+      {previewUrl ? (
+        <img
+          src={previewUrl}
+          alt={file.name}
+          className="h-13 w-13 md:h-14 md:w-14 object-cover rounded-xl"
+        />
+      ) : (
+        <div className="flex h-13 w-13 md:h-14 md:w-14 flex-col items-center justify-center p-1 bg-muted/40 text-center">
+          <FileText className="h-5 w-5 text-muted-foreground mb-0.5" />
+          <span className="text-[10px] font-semibold text-foreground/80 truncate max-w-[50px]">
+            {file.name.split(".").pop()?.toUpperCase()}
+          </span>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/80 text-white opacity-80 md:opacity-0 group-hover/thumb:opacity-100 transition-opacity hover:bg-black text-[10px] leading-none"
+        title="Remove attachment"
+      >
+        ✕
+      </button>
+    </div>
+  );
 }
 
 export function ChatWindow({ thread }: { thread: ChatThread }) {
-  const [currentTier, setCurrentTier] = useState<KarudiTier>(() => getStoredTier());
+  const [currentTier, setCurrentTier] = useState<KarudiTier>("prime-1.0");
+  const [selectedModelName, setSelectedModelName] = useState("Karudi 1.0 Prime");
+  const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
+  const modelPickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSelectedModelName("Karudi 1.0 Prime");
+    setCurrentTier("prime-1.0");
+    setStoredTier("prime-1.0");
+  }, []);
 
   const activeModelInfo = karudiModels.find((m) => m.id === currentTier) || karudiModels[0];
+
+  useEffect(() => {
+    if (!isModelPickerOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node)) {
+        setIsModelPickerOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isModelPickerOpen]);
 
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -414,6 +689,12 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
       watermarkText?: string | undefined;
     }
   ) => {
+    try {
+      Telemetry.trackToolUsage(action, action.replace(/_/g, " "));
+    } catch {
+      /* ignore */
+    }
+
     // 1. BACKGROUND REMOVAL (Ganga Model)
     if (action === "remove_background") {
       setTaskMap((prev) => ({
@@ -445,7 +726,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
             status: "done",
             resultImageSrc: res.cutoutSrc,
             currentBgType: "transparent",
-            completionMessage: getWorkDoneMessage(msgId),
+            completionMessage: "Done — background removed.",
             progressMessage: "Background removed successfully.",
           },
         }));
@@ -495,6 +776,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
             resultDocxBlob: res.docxBlob,
             resultDocxFilename: filename.replace(/\.[^.]+$/, "") + ".docx",
             extractedText: res.textSnippet,
+            completionMessage: "Done — your Word document is ready.",
             progressMessage: "Narmada (OCR) and Brahmaputra (DOCX) compiled your Word document.",
           },
         }));
@@ -509,6 +791,56 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
           },
         }));
         toast.error("Failed to convert image to Word.");
+      }
+      return;
+    }
+
+    // 2b. JPG OR PDF TO EXCEL (Narmada + Brahmaputra)
+    if (action === "jpg_to_excel" || action === "pdf_to_excel") {
+      setTaskMap((prev) => ({
+        ...prev,
+        [msgId]: {
+          ...prev[msgId]!,
+          action: "jpg_to_excel",
+          toolName: "Image to Excel (.xlsx) Converter",
+          primaryModel: "narmada",
+          secondaryModel: "brahmaputra",
+          status: "processing",
+          originalImageSrc: imageSrc,
+          originalFilename: filename,
+          progressMessage: "Narmada is scanning tables via OCR… Brahmaputra is compiling Excel (.xlsx) spreadsheet…",
+        },
+      }));
+
+      try {
+        const res = await executeImageToExcel(imageSrc, filename.replace(/\.[^.]+$/, ""));
+        setTaskMap((prev) => ({
+          ...prev,
+          [msgId]: {
+            ...prev[msgId]!,
+            action: "jpg_to_excel",
+            toolName: "Image to Excel (.xlsx) Converter",
+            primaryModel: "narmada",
+            secondaryModel: "brahmaputra",
+            status: "done",
+            resultXlsxBlob: res.xlsxBlob,
+            resultXlsxFilename: `${filename.replace(/\.[^.]+$/, "")}-converted.xlsx`,
+            extractedText: res.textSnippet,
+            completionMessage: "Done — your Excel spreadsheet is ready.",
+            progressMessage: `Generated editable Excel spreadsheet (${res.rowCount} rows extracted).`,
+          },
+        }));
+        toast.success("Excel spreadsheet generated successfully!");
+      } catch (err) {
+        setTaskMap((prev) => ({
+          ...prev,
+          [msgId]: {
+            ...prev[msgId]!,
+            status: "error",
+            error: (err as Error).message || "Excel conversion failed",
+          },
+        }));
+        toast.error("Failed to convert to Excel.");
       }
       return;
     }
@@ -543,6 +875,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
             status: "done",
             resultPdfBlob: res.pdfBlob,
             resultPdfFilename: res.filename,
+            completionMessage: "Done — your PDF is ready.",
             progressMessage: "Brahmaputra compiled your authentic PDF document.",
           },
         }));
@@ -603,6 +936,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
             status: "done",
             resultImageSrc: res.firstImage,
             selectedFormat: res.format,
+            completionMessage: `Done — your ${res.format.toUpperCase()} images are ready.`,
             progressMessage: `Brahmaputra extracted and rendered ${res.totalPages} page(s) from your PDF in ${res.format.toUpperCase()} format.`,
           },
         }));
@@ -654,6 +988,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
             resultDocxBlob: res.docxBlob,
             resultDocxFilename: filename.replace(/\.[^.]+$/, "") + ".docx",
             extractedText: res.textSnippet,
+            completionMessage: "Done — your Word document is ready.",
             progressMessage: "Brahmaputra and Narmada compiled your PDF into an editable Word (.docx) document.",
           },
         }));
@@ -767,6 +1102,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
             status: "done",
             resultImageSrc: res.dataUrl,
             selectedFormat: res.format,
+            completionMessage: `Done — your ${targetExt.toUpperCase()} image is ready.`,
             progressMessage: `Brahmaputra transcoded image into crisp ${targetExt.toUpperCase()} format.`,
           },
         }));
@@ -821,6 +1157,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
             resultRawBinFilename: res.binFilename,
             totalBinaryBytes: res.totalBytes,
             totalBinaryBits: res.totalBits,
+            completionMessage: "Done — your binary file is ready.",
             progressMessage: `Brahmaputra generated binary bitstream (${res.totalBytes.toLocaleString()} bytes / ${res.totalBits.toLocaleString()} bits) ready for download.`,
           },
         }));
@@ -878,6 +1215,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
             targetHeight: res.height,
             originalWidth: res.originalWidth,
             originalHeight: res.originalHeight,
+            completionMessage: `Done — image resized to ${res.width} × ${res.height} px.`,
             progressMessage: `Brahmaputra scaled your image to ${res.width} × ${res.height} px with high fidelity.`,
           },
         }));
@@ -930,6 +1268,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
             resultImageSrc: res.dataUrl,
             originalSize: res.originalBytes,
             compressedSize: res.compressedBytes,
+            completionMessage: "Done — your file is compressed.",
             progressMessage: `Brahmaputra reduced size from ${(res.originalBytes / 1024).toFixed(1)} KB to ${(res.compressedBytes / 1024).toFixed(1)} KB (${Math.round((1 - res.compressedBytes / res.originalBytes) * 100)}% smaller).`,
           },
         }));
@@ -981,6 +1320,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
             status: "done",
             resultImageSrc: resUrl,
             rotationDegrees: deg,
+            completionMessage: `Done — image rotated by ${deg}°.`,
             progressMessage: `Brahmaputra rotated image by ${deg}°.`,
           },
         }));
@@ -1029,6 +1369,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
             status: "done",
             resultImageSrc: resUrl,
             currentBgType: "blur",
+            completionMessage: "Done — your square image is ready.",
             progressMessage: "Brahmaputra generated 1:1 square image ready for export.",
           },
         }));
@@ -1203,87 +1544,46 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
 
     const trimmed = text.trim().toLowerCase();
 
-    // Inspect conversation history for background removal intent
-    const lastAssistantMsg = messages.slice().reverse().find((m) => m.role === "assistant");
-    const lastAssistantText =
-      lastAssistantMsg && lastAssistantMsg.parts
-        ? ((lastAssistantMsg.parts.find((p: any) => p.type === "text") as any)?.text || "").toLowerCase()
-        : "";
-    const lastUserMsg = messages.slice().reverse().find((m) => m.role === "user");
-    const lastUserText =
-      lastUserMsg && lastUserMsg.parts
-        ? ((lastUserMsg.parts.find((p: any) => p.type === "text") as any)?.text || "").toLowerCase()
-        : "";
+    // Check if user is explicitly requesting another action or correcting a previous action
+    const isExplicitOtherAction =
+      /\b(excel|xlsx|xls|spreadsheet|sheet|excl|word|docx|doc|pdf|resize|compress|rotate|square|convert|format|binary)\b/i.test(trimmed) ||
+      /^(no|wait|actually|rather|instead)\b/i.test(trimmed) ||
+      /\b(no\s*i\s*need|no\s*i\s*want|actually\s*i\s*need|instead\s*of)\b/i.test(trimmed);
 
-    const assistantWasAskingForBgRemoval =
-      lastAssistantText.includes("remove the background") ||
-      lastAssistantText.includes("remove background") ||
-      lastAssistantText.includes("image you want me to remove the background from") ||
-      lastAssistantText.includes("image you want to remove the background from");
+    const isStandaloneBgWord =
+      !isExplicitOtherAction &&
+      /^(remove|remov|rmv|cutout|cut\s*out|transparent|erase|isolate|remove\s*it|remove\s*this|remove\s*bg|remove\s*background)$/i.test(trimmed);
 
-    const prevUserWantedBgRemoval =
-      lastUserText.includes("remove background") ||
-      lastUserText.includes("remove bg") ||
-      lastUserText.includes("bg removal") ||
-      lastUserText.includes("cutout");
-
-    const isStandaloneBgWord = /^(remove|remov|rmv|cutout|cut\s*out|transparent|erase|isolate|remove\s*it|remove\s*this|do\s*it|bg|remove\s*bg|remove\s*background)$/i.test(trimmed);
-
+    // Background removal intent is ONLY true if user explicitly asks for it in THIS message and is NOT asking for another tool
     const isBgRemovalIntent =
-      assistantWasAskingForBgRemoval ||
-      prevUserWantedBgRemoval ||
-      isStandaloneBgWord ||
-      /(remov|erase|cut\s*out|isolat)\s*(the\s*)?(background|bg)/i.test(trimmed) ||
-      /\b(background|bg)\s*(removal|remover|cutout|remove|erase)\b/i.test(trimmed);
+      !isExplicitOtherAction &&
+      (
+        isStandaloneBgWord ||
+        /(remov|erase|cut\s*out|isolat)\s*(the\s*)?(background|bg)/i.test(trimmed) ||
+        /\b(background|bg)\s*(removal|remover|cutout|remove|erase)\b/i.test(trimmed) ||
+        /(bg|background)\s*(hata\s*do|hatao|nikal\s*do)/i.test(trimmed)
+      );
 
     const isExplicitActionCommand =
       isBgRemovalIntent ||
+      isExplicitOtherAction ||
       /(remov|erase|cut\s*out|isolat)\s*(the\s*)?(background|bg)/i.test(trimmed) ||
       /\b(resize|crop|rotate|flip|compress|upscale|watermark|blur\s*face|square|meme|photo\s*editor|color\s*picker)\b/i.test(trimmed) ||
       /(\d+)\s*[xX×]\s*(\d+)/.test(trimmed) ||
-      /(pdf\s*(to|into|->|2)\s*(img|image|images|jpg|jpeg|png|webp|word|docx))/i.test(trimmed) ||
-      /((jpg|jpeg|png|webp|img|image|photo)\s*(to|into|->|2)\s*(pdf|word|docx|jpg|jpeg|png|webp|excel|pptx))/i.test(trimmed) ||
+      /(pdf\s*(to|into|->|2)\s*(img|image|images|jpg|jpeg|png|webp|word|docx|excel|xlsx))/i.test(trimmed) ||
+      /((jpg|jpeg|png|webp|img|image|photo)\s*(to|into|->|2)\s*(pdf|word|docx|jpg|jpeg|png|webp|excel|xlsx|pptx))/i.test(trimmed) ||
       /((excel|xlsx|csv|powerpoint|pptx)\s*(to|into|->|2)\s*(img|image|images|png|jpg))/i.test(trimmed) ||
-      /(convert|transcode|change)\s*(this|the|my)?\s*(img|image|photo|png|jpg|webp)?\s*(to|into|->|2|as)\s*(jpg|jpeg|png|webp)/i.test(trimmed) ||
-      /(image|img|photo|file)\s*(to|into|->|2|as)\s*(binary|bin|base64|hex|octal|decimal|ascii|txt)/i.test(trimmed) ||
+      /(convert|transcode|change)\s*(this|the|my)?\s*(img|image|photo|png|jpg|webp)?\s*(to|into|->|2|as)\s*(jpg|jpeg|png|webp|excel|xlsx|pdf|word)/i.test(trimmed) ||
+      /(image|img|photo|file)\s*(to|into|->|2|as)\s*(binary|bin|base64|hex|octal|decimal|ascii|txt|excel|xlsx)/i.test(trimmed) ||
       /(binary|base64|hex|octal|decimal|ascii)\s*(to|into|->|2|as)\s*(image|img|png|jpg)/i.test(trimmed) ||
       /binary\s*(file|txt|text)?/i.test(trimmed) ||
       /give\s*(me)?\s*(a|the)?\s*binary/i.test(trimmed) ||
-      /^(to\s*pdf|to\s*word|to\s*docx|to\s*jpg|to\s*png|to\s*webp|to\s*binary)$/i.test(trimmed) ||
-      isStandaloneBgWord ||
-      trimmed === "remove background" ||
-      trimmed === "bg removal" ||
-      trimmed === "remove bg" ||
-      trimmed === "pdf to word" ||
-      trimmed === "pdf to jpg" ||
-      trimmed === "pdf to image" ||
-      trimmed === "image to pdf" ||
-      trimmed === "jpg to word" ||
-      trimmed === "png to jpg" ||
-      trimmed === "jpg to png" ||
-      trimmed === "convert to jpg" ||
-      trimmed === "convert to png" ||
-      trimmed === "binary" ||
-      trimmed === "image to binary" ||
-      trimmed === "binary file";
+      /^(to\s*pdf|to\s*word|to\s*docx|to\s*jpg|to\s*png|to\s*webp|to\s*binary|to\s*excel|in\s*excel)$/i.test(trimmed);
 
-    // Only infer specific workflow if user came directly from an explicit quick action prompt or background removal flow
+    // NEVER default an image upload to remove background!
     let effectiveText = text.trim();
-    if (filesToUpload.length > 0 && isBgRemovalIntent) {
-      effectiveText = "remove background";
-    } else if (!effectiveText && filesToUpload.length > 0) {
-      const isDoc =
-        filesToUpload[0]?.name.toLowerCase().endsWith(".pdf") ||
-        filesToUpload[0]?.name.toLowerCase().endsWith(".docx") ||
-        filesToUpload[0]?.name.toLowerCase().endsWith(".xlsx") ||
-        filesToUpload[0]?.name.toLowerCase().endsWith(".pptx");
-      if (isDoc) {
-        effectiveText = "convert";
-      } else {
-        effectiveText = "remove background";
-      }
-    } else if (isStandaloneBgWord) {
-      effectiveText = "remove background";
+    if (!effectiveText && filesToUpload.length > 0) {
+      effectiveText = "convert";
     }
 
     // Capture the index of the user message being dispatched right now
@@ -1309,6 +1609,8 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
       plan.action === "crop_image" ||
       plan.action === "jpg_to_word" ||
       plan.action === "pdf_to_word" ||
+      plan.action === "jpg_to_excel" ||
+      plan.action === "pdf_to_excel" ||
       plan.action === "image_to_pdf" ||
       plan.action === "pdf_to_image" ||
       plan.action === "convert_format" ||
@@ -1412,7 +1714,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
       case "brahmaputra":
         return <RefreshCw className="h-4 w-4" />;
       case "narmada":
-        return <Sparkles className="h-4 w-4" />;
+        return <Wand2 className="h-4 w-4" />;
       case "saraswati":
         return <BookOpen className="h-4 w-4" />;
       case "karudi":
@@ -1478,7 +1780,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                   className="flex flex-col p-4 rounded-2xl border border-border/70 bg-card hover:bg-muted/50 transition-all hover:scale-[1.02] text-left shadow-xs cursor-pointer group"
                 >
                   <div className="flex items-center gap-2 text-emerald-500 font-bold text-xs">
-                    <Sparkles className="h-3.5 w-3.5 group-hover:scale-110 transition-transform" />
+                    <Wand2 className="h-3.5 w-3.5 group-hover:scale-110 transition-transform" />
                     <span>File Converter</span>
                   </div>
                   <span className="font-extrabold text-sm text-foreground mt-1">PDF to Images / Word</span>
@@ -1558,91 +1860,272 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                         <KarudiAvatar size="sm" />
                       </div>
                       <div className="flex-1 space-y-3 min-w-0">
-                        {/* 1. TOP SIDE: If process is finished (done), show the resulting image card here on top */}
-                        {task && task.status === "done" && task.action === "remove_background" && (
-                          <div className="pt-0.5">
-                            <SingleImageBgRemovalWidget
-                              task={task}
-                              onDownload={(url, filename) => downloadDataUrl(url, filename)}
-                              onUpdateImage={(id, newSrc) => {
-                                setTaskMap((prev) => ({
-                                  ...prev,
-                                  [id]: {
-                                    ...prev[id]!,
-                                    resultImageSrc: newSrc,
-                                  },
-                                }));
-                                setActiveCutoutSrc(newSrc);
-                              }}
-                            />
-                          </div>
-                        )}
-
-                        {/* 2. TEXT: When process is done, show dynamically selected completion phrase */}
+                        {/* 1. COMPLETED TASK (DONE STATE): SHOW ONLY WORK DONE TEXT + PROCESSED FILE + REACTION OPTIONS + OTHER OPTIONS IN BOTTOM */}
                         {task && task.status === "done" ? (
-                          <div className="text-sm md:text-base font-medium text-foreground leading-relaxed">
-                            {task.completionMessage || getWorkDoneMessage(task.id || m.id)}
+                          <div className="space-y-3">
+                            {/* Work done text with checkmark */}
+                            <div className="text-sm md:text-base font-semibold text-foreground leading-relaxed flex items-center gap-2">
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                              <span>{task.completionMessage || getWorkDoneMessage(task.action)}</span>
+                            </div>
+
+                            {/* Visual Preview (if image result) */}
+                            {task.resultImageSrc ? (
+                              task.action === "remove_background" ? (
+                                <div className="max-w-sm rounded-2xl border border-border/80 overflow-hidden shadow-xs p-2 bg-card">
+                                  <div
+                                    className="flex items-center justify-center rounded-xl p-2 max-h-64 overflow-hidden"
+                                    style={{
+                                      backgroundImage:
+                                        "linear-gradient(45deg, rgba(0,0,0,0.06) 25%, transparent 25%), linear-gradient(-45deg, rgba(0,0,0,0.06) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(0,0,0,0.06) 75%), linear-gradient(-45deg, transparent 75%, rgba(0,0,0,0.06) 75%)",
+                                      backgroundSize: "16px 16px",
+                                    }}
+                                  >
+                                    <img
+                                      src={task.resultImageSrc}
+                                      alt="Cutout Result"
+                                      className="max-h-60 w-auto object-contain rounded-lg drop-shadow-md"
+                                    />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="max-w-sm rounded-2xl border border-border/80 overflow-hidden shadow-xs p-1.5 bg-card/60">
+                                  <div className="flex items-center justify-center rounded-xl max-h-60 overflow-hidden bg-muted/30 p-1">
+                                    <img
+                                      src={task.resultImageSrc}
+                                      alt="Processed Image"
+                                      className="max-h-56 w-auto object-contain rounded-lg"
+                                    />
+                                  </div>
+                                </div>
+                              )
+                            ) : null}
+
+                            {/* Extracted text snippet preview for OCR conversions */}
+                            {(task.action === "jpg_to_word" || task.action === "pdf_to_word" || task.action === "jpg_to_excel" || task.action === "pdf_to_excel") && task.extractedText ? (
+                              <div className="max-w-md rounded-xl border border-border/60 bg-muted/40 p-2.5 text-xs font-mono text-muted-foreground max-h-20 overflow-y-auto whitespace-pre-wrap">
+                                {task.extractedText}
+                              </div>
+                            ) : null}
+
+                            {/* 2. Processed File Attachment Pill (Image 1 Style: dark capsule, icon, filename, open file, download icon) */}
+                            {(() => {
+                              const info = getProcessedFileInfo(task, activeFilename, downloadBlob, downloadDataUrl);
+                              return (
+                                <div
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={info.onDownload}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      info.onDownload();
+                                    }
+                                  }}
+                                  className="group flex items-center justify-between gap-3.5 p-3 px-4 rounded-2xl bg-[#1e1f21] hover:bg-[#282a2d] active:scale-[0.99] border border-white/10 text-white shadow-md transition-all cursor-pointer max-w-md w-full select-none"
+                                >
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 group-hover:bg-white/15 text-white/90 group-hover:text-white transition-colors shrink-0">
+                                      {info.fileType === "pdf" ? (
+                                        <FileText className="h-4.5 w-4.5 text-rose-400" />
+                                      ) : info.fileType === "word" ? (
+                                        <FileText className="h-4.5 w-4.5 text-blue-400" />
+                                      ) : info.fileType === "excel" ? (
+                                        <FileSpreadsheet className="h-4.5 w-4.5 text-emerald-400" />
+                                      ) : info.fileType === "binary" ? (
+                                        <Binary className="h-4.5 w-4.5 text-sky-400" />
+                                      ) : info.fileType === "image" ? (
+                                        <ImageIcon className="h-4.5 w-4.5 text-amber-400" />
+                                      ) : (
+                                        <Globe className="h-4.5 w-4.5 text-zinc-300" />
+                                      )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-xs sm:text-sm font-bold text-zinc-100 group-hover:text-white truncate">
+                                        {info.filename}
+                                      </p>
+                                      <p className="text-[11px] text-zinc-400 group-hover:text-zinc-300 font-medium transition-colors">
+                                        {info.subtitle}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      info.onDownload();
+                                    }}
+                                    className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 group-hover:bg-white/20 active:scale-95 text-zinc-200 group-hover:text-white transition-all shrink-0 cursor-pointer"
+                                    title="Download file"
+                                  >
+                                    <ArrowDownToLine className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              );
+                            })()}
+
+                            {/* 3. Reaction Option Toolbar (Copy, Share, Regenerate, Emoji Reaction Popover, Thumbs up/down) */}
+                            <MessageFeedbackToolbar
+                              text={task.completionMessage || getWorkDoneMessage(task.action)}
+                              onRegenerate={() => void handleRegenerateMessage(m.id)}
+                              isRegenerating={regeneratingMsgId === m.id}
+                              timestamp={(m as any).createdAt || thread.updatedAt}
+                              onBranch={() => handleBranchInNewChat(m.id)}
+                            />
+
+                            {/* 4. Other Options in Bottom (1-Click Action Pills) */}
+                            {(() => {
+                              const srcFile = task.originalImageSrc || task.resultImageSrc || task.uploadedFile?.dataUrl || activeImageSrc;
+                              const srcName = task.originalFilename || task.uploadedFile?.name || activeFilename || "file.png";
+                              if (!srcFile) return null;
+
+                              return (
+                                <div className="pt-2 border-t border-border/40 space-y-2 max-w-xl">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-extrabold text-foreground flex items-center gap-1.5">
+                                      <span className="text-amber-500">⚡</span> Other Options:
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground font-medium hidden sm:inline">
+                                      Convert this file instantly with 1 click
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {task.action !== "image_to_pdf" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void executeTaskAction(task.id, "image_to_pdf", srcFile, srcName)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
+                                      >
+                                        <FileText className="h-3.5 w-3.5 text-blue-500" /> Make PDF
+                                      </button>
+                                    )}
+                                    {task.action !== "jpg_to_excel" && task.action !== "pdf_to_excel" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void executeTaskAction(task.id, "jpg_to_excel", srcFile, srcName)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
+                                      >
+                                        <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-500" /> Make Excel
+                                      </button>
+                                    )}
+                                    {task.action !== "jpg_to_word" && task.action !== "pdf_to_word" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void executeTaskAction(task.id, "jpg_to_word", srcFile, srcName)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
+                                      >
+                                        <FileText className="h-3.5 w-3.5 text-purple-500" /> Make Word
+                                      </button>
+                                    )}
+                                    {task.action !== "convert_format" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void executeTaskAction(task.id, "convert_format", srcFile, srcName, { targetFormat: "image/jpeg" })}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
+                                      >
+                                        <RefreshCw className="h-3.5 w-3.5 text-amber-500" /> Make JPG
+                                      </button>
+                                    )}
+                                    {task.action !== "remove_background" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void executeTaskAction(task.id, "remove_background", srcFile, srcName)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
+                                      >
+                                        <Scissors className="h-3.5 w-3.5 text-rose-500" /> Remove BG
+                                      </button>
+                                    )}
+                                    {task.action !== "compress_image" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void executeTaskAction(task.id, "compress_image", srcFile, srcName)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
+                                      >
+                                        <Archive className="h-3.5 w-3.5 text-teal-500" /> Compress
+                                      </button>
+                                    )}
+                                    {task.action !== "resize_image" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void executeTaskAction(task.id, "resize_image", srcFile, srcName, { targetWidth: 1000, targetHeight: 1000 })}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
+                                      >
+                                        <Scaling className="h-3.5 w-3.5 text-indigo-500" /> Resize
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         ) : (
-                          m.parts.map((part, i) => {
-                            if (part.type === "text") {
-                              return (
-                                <TypewriterMessage
-                                  key={`${m.id}-${i}-${regeneratingMsgId === m.id ? "regen" : "idle"}`}
-                                  text={part.text}
-                                  isLatest={idx === messages.length - 1 || m.id === regeneratingMsgId}
-                                  isStreaming={status === "submitted" || status === "streaming" || m.id === regeneratingMsgId}
-                                  onCharacterTyped={() => {
-                                    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+                          <>
+                            {/* Text typewriter messages */}
+                            {m.parts.map((part, i) => {
+                              if (part.type === "text") {
+                                return (
+                                  <TypewriterMessage
+                                    key={`${m.id}-${i}-${regeneratingMsgId === m.id ? "regen" : "idle"}`}
+                                    text={part.text}
+                                    isLatest={idx === messages.length - 1 || m.id === regeneratingMsgId}
+                                    isStreaming={status === "submitted" || status === "streaming" || m.id === regeneratingMsgId}
+                                    onCharacterTyped={() => {
+                                      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+                                    }}
+                                  />
+                                );
+                              }
+                              return null;
+                            })}
+
+                            {/* Processing loader for background removal */}
+                            {task && task.status === "processing" && task.action === "remove_background" && (
+                              <div className="pt-1">
+                                <SingleImageBgRemovalWidget
+                                  task={task}
+                                  onDownload={(url, filename) => downloadDataUrl(url, filename)}
+                                  onUpdateImage={(id, newSrc) => {
+                                    setTaskMap((prev) => ({
+                                      ...prev,
+                                      [id]: {
+                                        ...prev[id]!,
+                                        resultImageSrc: newSrc,
+                                      },
+                                    }));
+                                    setActiveCutoutSrc(newSrc);
                                   }}
                                 />
-                              );
-                            }
-                            return null;
-                          })
-                        )}
+                              </div>
+                            )}
 
-                        {/* 3. If process is still in progress (processing), show the scanline widget under the in-progress text */}
-                        {task && task.status === "processing" && task.action === "remove_background" && (
-                          <div className="pt-1">
-                            <SingleImageBgRemovalWidget
-                              task={task}
-                              onDownload={(url, filename) => downloadDataUrl(url, filename)}
-                              onUpdateImage={(id, newSrc) => {
-                                setTaskMap((prev) => ({
-                                  ...prev,
-                                  [id]: {
-                                    ...prev[id]!,
-                                    resultImageSrc: newSrc,
-                                  },
-                                }));
-                                setActiveCutoutSrc(newSrc);
-                              }}
-                            />
-                          </div>
-                        )}
+                            {/* Processing loader for other actions */}
+                            {task && task.status === "processing" && task.action !== "remove_background" && (
+                              <div className="flex items-center gap-2.5 text-xs md:text-sm font-semibold text-muted-foreground animate-pulse py-2">
+                                <Loader2 className="h-4 w-4 animate-spin text-foreground" />
+                                <span>{task.progressMessage || "Processing file, please wait..."}</span>
+                              </div>
+                            )}
 
-                        {/* 4. BOTTOM: Gemini-style Message Feedback Toolbar (Copy, Share, Regenerate, Thumbs Up, Thumbs Down, More) */}
-                        {(!task || task.status === "done") && (
-                          <MessageFeedbackToolbar
-                            text={
-                              task && task.status === "done"
-                                ? task.completionMessage || getWorkDoneMessage(task.id || m.id)
-                                : m.parts.find((p) => p.type === "text")?.text || ""
-                            }
-                            onRegenerate={() => void handleRegenerateMessage(m.id)}
-                            isRegenerating={regeneratingMsgId === m.id}
-                            timestamp={(m as any).createdAt || thread.updatedAt}
-                            onBranch={() => handleBranchInNewChat(m.id)}
-                          />
+                            {/* Message Feedback Toolbar for non-done messages */}
+                            {(!task || task.status !== "processing") && (
+                              <MessageFeedbackToolbar
+                                text={m.parts.find((p) => p.type === "text")?.text || ""}
+                                onRegenerate={() => void handleRegenerateMessage(m.id)}
+                                isRegenerating={regeneratingMsgId === m.id}
+                                timestamp={(m as any).createdAt || thread.updatedAt}
+                                onBranch={() => handleBranchInNewChat(m.id)}
+                              />
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* 2. INLINE TOOL CARD (For non-remove_background tools, e.g. format conversion, OCR, resize) */}
-                {!isUser && task && task.action !== "remove_background" ? (
+                {/* 2. INLINE TOOL CARD (Only when waiting for user file / options) */}
+                {!isUser && task && task.action !== "remove_background" && task.status === "waiting_file" ? (
                     <div className="ml-11 rounded-3xl border-2 border-border/80 bg-card/90 p-5 md:p-6 shadow-lg backdrop-blur-md">
                     {/* Tool Attribution Header */}
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3.5">
@@ -1810,7 +2293,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                                     className="flex flex-col items-start p-3 rounded-xl border border-border/80 bg-background hover:bg-muted/80 hover:border-foreground/40 transition-all text-left shadow-xs group cursor-pointer"
                                   >
                                     <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                                      <Sparkles className="h-3.5 w-3.5 group-hover:scale-110 transition-transform" /> Neural OCR Scan
+                                      <Wand2 className="h-3.5 w-3.5 group-hover:scale-110 transition-transform" /> Neural OCR Scan
                                     </span>
                                     <span className="text-[11px] text-muted-foreground mt-0.5">Extract raw text & layout</span>
                                   </button>
@@ -1838,7 +2321,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                                     className="flex flex-col items-start p-3 rounded-xl border border-border/80 bg-background hover:bg-muted/80 hover:border-foreground/40 transition-all text-left shadow-xs group cursor-pointer"
                                   >
                                     <span className="flex items-center gap-1.5 text-xs font-bold text-purple-600 dark:text-purple-400">
-                                      <Sparkles className="h-3.5 w-3.5 group-hover:scale-110 transition-transform" /> Extract Text
+                                      <Wand2 className="h-3.5 w-3.5 group-hover:scale-110 transition-transform" /> Extract Text
                                     </span>
                                     <span className="text-[11px] text-muted-foreground mt-0.5">Extract text & content</span>
                                   </button>
@@ -1887,6 +2370,19 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                                   <button
                                     type="button"
                                     onClick={() => {
+                                      void executeTaskAction(task.id, "jpg_to_excel", task.uploadedFile!.dataUrl, task.uploadedFile!.name);
+                                    }}
+                                    className="flex flex-col items-start p-3 rounded-xl border border-border/80 bg-background hover:bg-muted/80 hover:border-foreground/40 transition-all text-left shadow-xs group cursor-pointer"
+                                  >
+                                    <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                      <FileText className="h-3.5 w-3.5 group-hover:scale-110 transition-transform" /> Convert to Excel (.xlsx)
+                                    </span>
+                                    <span className="text-[11px] text-muted-foreground mt-0.5">OCR table into editable .xlsx</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
                                       void executeTaskAction(task.id, "image_to_binary", task.uploadedFile!.dataUrl, task.uploadedFile!.name);
                                     }}
                                     className="flex flex-col items-start p-3 rounded-xl border border-border/80 bg-background hover:bg-muted/80 hover:border-foreground/40 transition-all text-left shadow-xs group cursor-pointer"
@@ -1913,621 +2409,6 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                               )}
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* -------------------------------------------------------- */}
-                    {/* C. PROCESSING STATE                                      */}
-                    {/* -------------------------------------------------------- */}
-                    {task.status === "processing" ? (
-                      <div className="mt-5 flex flex-col items-center justify-center py-6 text-center">
-                        <Loader2 className="h-9 w-9 animate-spin text-foreground mb-3" />
-                        <p className="font-display font-extrabold text-sm text-foreground">
-                          {task.action === "resize_image"
-                            ? `Brahmaputra is resizing image to ${task.targetWidth || 1000}×${task.targetHeight || 1000}px…`
-                            : task.action === "compress_image"
-                            ? "Brahmaputra is compressing image file…"
-                            : task.action === "rotate_image"
-                            ? `Brahmaputra is rotating image by ${task.rotationDegrees || 90}°…`
-                            : task.action === "square_image"
-                            ? "Brahmaputra is formatting into 1:1 square canvas…"
-                            : task.action === "convert_format"
-                            ? `Brahmaputra is converting image to ${(task.selectedFormat || "JPG").toUpperCase()}…`
-                            : task.action === "image_to_binary"
-                            ? "Brahmaputra is encoding image into binary bitstream (.txt)…"
-                            : "Narmada & Brahmaputra are compiling your document…"}
-                        </p>
-                      </div>
-                    ) : null}
-
-                    {/* -------------------------------------------------------- */}
-                    {/* E. DONE: JPG OR PDF TO WORD RESULT                       */}
-                    {/* -------------------------------------------------------- */}
-                    {task.status === "done" && (task.action === "jpg_to_word" || task.action === "pdf_to_word" || !!task.resultDocxBlob) && task.resultDocxBlob ? (
-                      <div className="mt-5 space-y-4">
-                        <div className="rounded-2xl border border-border bg-background/80 p-3">
-                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600">
-                              <FileText className="h-3.5 w-3.5" />
-                              Narmada OCR Extracted Text
-                            </span>
-                            <span className="text-[10px] font-semibold text-muted-foreground">
-                              Editable Word OpenXML
-                            </span>
-                          </div>
-                          <div className="max-h-32 overflow-y-auto rounded-xl border border-border bg-card p-2.5 font-mono text-xs text-foreground whitespace-pre-wrap">
-                            {task.extractedText || "Document structure formatted and ready."}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-3 pt-1">
-                          <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Brahmaputra compiled .docx
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              downloadBlob(
-                                task.resultDocxBlob!,
-                                task.resultDocxFilename || "converted_document.docx"
-                              )
-                            }
-                            className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-5 py-2.5 text-xs md:text-sm font-extrabold text-background shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                          >
-                            <Download className="h-4 w-4" />
-                            Download Word (.docx)
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* -------------------------------------------------------- */}
-                    {/* F. DONE: IMAGE TO PDF RESULT                             */}
-                    {/* -------------------------------------------------------- */}
-                    {task.status === "done" && (task.action === "image_to_pdf" || !!task.resultPdfBlob) && task.resultPdfBlob ? (
-                      <div className="mt-5 space-y-4">
-                        <div className="rounded-2xl border border-border bg-background/80 p-3">
-                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400">
-                              <FileText className="h-3.5 w-3.5" />
-                              PDF Document Ready
-                            </span>
-                            <span className="text-[10px] font-semibold text-muted-foreground">
-                              Standard PDF 1.4 Binary
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Your image has been transcoded into an authentic PDF document with standard page sizing and margin framing.
-                          </p>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-3 pt-1">
-                          <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> High-res PDF generated
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              downloadBlob(
-                                task.resultPdfBlob!,
-                                task.resultPdfFilename || "converted_document.pdf"
-                              )
-                            }
-                            className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-5 py-2.5 text-xs md:text-sm font-extrabold text-background shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                          >
-                            <Download className="h-4 w-4" />
-                            Download PDF
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* -------------------------------------------------------- */}
-                    {/* G0. DONE: RESIZE IMAGE RESULT                             */}
-                    {/* -------------------------------------------------------- */}
-                    {task.status === "done" && task.action === "resize_image" && task.resultImageSrc ? (
-                      <div className="mt-5 space-y-4">
-                        <div className="rounded-2xl border border-border bg-background/80 p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400">
-                              <Scaling className="h-3.5 w-3.5" />
-                              Image Resized to {task.targetWidth} × {task.targetHeight} px
-                            </span>
-                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">
-                              Brahmaputra Scaler
-                            </span>
-                          </div>
-
-                          {/* Dimensions Badge Comparison */}
-                          <div className="rounded-xl border border-border bg-card p-2.5 mb-2.5 flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">
-                              Original: {task.originalWidth || "—"} × {task.originalHeight || "—"} px
-                            </span>
-                            <span className="font-extrabold text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                              <span>➔</span> {task.targetWidth} × {task.targetHeight} px
-                            </span>
-                          </div>
-
-                          <div className="overflow-hidden rounded-xl border border-border bg-card flex justify-center p-2">
-                            <img
-                              src={task.resultImageSrc}
-                              alt="Resized Result"
-                              className="max-h-64 rounded-lg object-contain shadow-sm"
-                            />
-                          </div>
-
-                          {/* Quick Dimension Presets */}
-                          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                            <span className="text-[11px] font-semibold text-muted-foreground mr-1">Quick Presets:</span>
-                            {[
-                              { label: "1000×1000", w: 1000, h: 1000 },
-                              { label: "1920×1080", w: 1920, h: 1080 },
-                              { label: "1200×630", w: 1200, h: 630 },
-                              { label: "800×800", w: 800, h: 800 },
-                              { label: "500×500", w: 500, h: 500 },
-                            ].map((preset) => (
-                              <button
-                                key={preset.label}
-                                type="button"
-                                onClick={() => {
-                                  if (task.originalImageSrc) {
-                                    void executeTaskAction(task.id, "resize_image", task.originalImageSrc, task.originalFilename || "image.png", {
-                                      targetWidth: preset.w,
-                                      targetHeight: preset.h,
-                                    });
-                                  }
-                                }}
-                                className="rounded-lg border border-border bg-muted/50 px-2 py-1 text-[11px] font-bold text-foreground hover:bg-muted transition-colors cursor-pointer"
-                              >
-                                {preset.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-3 pt-1">
-                          <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> High-fidelity scale ready
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              downloadDataUrl(
-                                task.resultImageSrc!,
-                                `${task.originalFilename?.replace(/\.[^.]+$/, "") || "image"}_${task.targetWidth}x${task.targetHeight}.png`
-                              )
-                            }
-                            className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-5 py-2.5 text-xs md:text-sm font-extrabold text-background shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                          >
-                            <Download className="h-4 w-4" />
-                            Download Resized Image ({task.targetWidth}×{task.targetHeight})
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* -------------------------------------------------------- */}
-                    {/* G0b. DONE: COMPRESS IMAGE RESULT                          */}
-                    {/* -------------------------------------------------------- */}
-                    {task.status === "done" && task.action === "compress_image" && task.resultImageSrc ? (
-                      <div className="mt-5 space-y-4">
-                        <div className="rounded-2xl border border-border bg-background/80 p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                              <Archive className="h-3.5 w-3.5" />
-                              Image Compressed
-                            </span>
-                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">
-                              Brahmaputra Optimizer
-                            </span>
-                          </div>
-
-                          <div className="rounded-xl border border-border bg-card p-2.5 mb-2.5 flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">
-                              Original: {task.originalSize ? `${(task.originalSize / 1024).toFixed(1)} KB` : "—"}
-                            </span>
-                            <span className="font-extrabold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                              <span>➔</span> {task.compressedSize ? `${(task.compressedSize / 1024).toFixed(1)} KB` : "—"}
-                              {task.originalSize && task.compressedSize
-                                ? ` (${Math.round((1 - task.compressedSize / task.originalSize) * 100)}% saved)`
-                                : ""}
-                            </span>
-                          </div>
-
-                          <div className="overflow-hidden rounded-xl border border-border bg-card flex justify-center p-2">
-                            <img
-                              src={task.resultImageSrc}
-                              alt="Compressed Result"
-                              className="max-h-64 rounded-lg object-contain shadow-sm"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-3 pt-1">
-                          <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Compressed file ready
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              downloadDataUrl(
-                                task.resultImageSrc!,
-                                `${task.originalFilename?.replace(/\.[^.]+$/, "") || "image"}_compressed.jpg`
-                              )
-                            }
-                            className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-5 py-2.5 text-xs md:text-sm font-extrabold text-background shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                          >
-                            <Download className="h-4 w-4" />
-                            Download Compressed Image
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* -------------------------------------------------------- */}
-                    {/* G0c. DONE: ROTATE IMAGE RESULT                            */}
-                    {/* -------------------------------------------------------- */}
-                    {task.status === "done" && task.action === "rotate_image" && task.resultImageSrc ? (
-                      <div className="mt-5 space-y-4">
-                        <div className="rounded-2xl border border-border bg-background/80 p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
-                              <RotateCw className="h-3.5 w-3.5" />
-                              Image Rotated ({task.rotationDegrees || 90}°)
-                            </span>
-                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">
-                              Brahmaputra Engine
-                            </span>
-                          </div>
-
-                          <div className="overflow-hidden rounded-xl border border-border bg-card flex justify-center p-2">
-                            <img
-                              src={task.resultImageSrc}
-                              alt="Rotated Result"
-                              className="max-h-64 rounded-lg object-contain shadow-sm"
-                            />
-                          </div>
-
-                          <div className="mt-2.5 flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const nextDeg = ((task.rotationDegrees || 90) + 90) % 360 || 360;
-                                if (task.originalImageSrc) {
-                                  void executeTaskAction(task.id, "rotate_image", task.originalImageSrc, task.originalFilename || "image.png", {
-                                    rotationDegrees: nextDeg,
-                                  });
-                                }
-                              }}
-                              className="rounded-lg border border-border bg-muted/60 px-3 py-1.5 text-xs font-bold text-foreground hover:bg-muted transition-colors flex items-center gap-1.5 cursor-pointer"
-                            >
-                              <RotateCw className="h-3.5 w-3.5" /> Rotate +90° Again
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-3 pt-1">
-                          <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Rotated image ready
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              downloadDataUrl(
-                                task.resultImageSrc!,
-                                `${task.originalFilename?.replace(/\.[^.]+$/, "") || "image"}_rotated.png`
-                              )
-                            }
-                            className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-5 py-2.5 text-xs md:text-sm font-extrabold text-background shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                          >
-                            <Download className="h-4 w-4" />
-                            Download Rotated Image
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* -------------------------------------------------------- */}
-                    {/* G0d. DONE: SQUARE IMAGE RESULT                            */}
-                    {/* -------------------------------------------------------- */}
-                    {task.status === "done" && task.action === "square_image" && task.resultImageSrc ? (
-                      <div className="mt-5 space-y-4">
-                        <div className="rounded-2xl border border-border bg-background/80 p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="flex items-center gap-1.5 text-xs font-bold text-purple-600 dark:text-purple-400">
-                              <Square className="h-3.5 w-3.5" />
-                              Square (1:1) Formatted
-                            </span>
-                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">
-                              Brahmaputra + Ganga
-                            </span>
-                          </div>
-
-                          <div className="overflow-hidden rounded-xl border border-border bg-card flex justify-center p-2">
-                            <img
-                              src={task.resultImageSrc}
-                              alt="Square Result"
-                              className="max-h-64 rounded-lg object-contain shadow-sm"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-3 pt-1">
-                          <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> 1:1 image ready
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              downloadDataUrl(
-                                task.resultImageSrc!,
-                                `${task.originalFilename?.replace(/\.[^.]+$/, "") || "image"}_square.png`
-                              )
-                            }
-                            className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-5 py-2.5 text-xs md:text-sm font-extrabold text-background shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                          >
-                            <Download className="h-4 w-4" />
-                            Download 1:1 Square Image
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* -------------------------------------------------------- */}
-                    {/* G1. DONE: FORMAT CONVERSION RESULT (JPG / PNG / WebP)     */}
-                    {/* -------------------------------------------------------- */}
-                    {task.status === "done" && task.action === "convert_format" && task.resultImageSrc ? (
-                      <div className="mt-5 space-y-4">
-                        <div className="rounded-2xl border border-border bg-background/80 p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
-                              <RefreshCw className="h-3.5 w-3.5" />
-                              Image Converted to {(task.selectedFormat || "jpg").toUpperCase()}
-                            </span>
-                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">
-                              Brahmaputra Transcoder
-                            </span>
-                          </div>
-                          <div className="overflow-hidden rounded-xl border border-border bg-card flex justify-center p-2">
-                            <img
-                              src={task.resultImageSrc}
-                              alt="Converted Result"
-                              className="max-h-64 rounded-lg object-contain shadow-sm"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-3 pt-1">
-                          <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Transcoded to {(task.selectedFormat || "jpg").toUpperCase()}
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              downloadDataUrl(
-                                task.resultImageSrc!,
-                                `${task.originalFilename?.replace(/\.[^.]+$/, "") || "converted_image"}.${task.selectedFormat || "jpg"}`
-                              )
-                            }
-                            className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-5 py-2.5 text-xs md:text-sm font-extrabold text-background shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                          >
-                            <Download className="h-4 w-4" />
-                            Download {(task.selectedFormat || "jpg").toUpperCase()}
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* -------------------------------------------------------- */}
-                    {/* G2. DONE: PDF TO IMAGE RESULT                             */}
-                    {/* -------------------------------------------------------- */}
-                    {task.status === "done" && task.action === "pdf_to_image" && task.resultImageSrc ? (
-                      <div className="mt-5 space-y-4">
-                        <div className="rounded-2xl border border-border bg-background/80 p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
-                              <FileText className="h-3.5 w-3.5" />
-                              PDF Page Rendered
-                            </span>
-                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">
-                              High-Resolution {task.selectedFormat || "JPG"}
-                            </span>
-                          </div>
-                          <div className="overflow-hidden rounded-xl border border-border bg-card flex justify-center p-2">
-                            <img
-                              src={task.resultImageSrc}
-                              alt="PDF Page"
-                              className="max-h-64 rounded-lg object-contain shadow-sm"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-3 pt-1">
-                          <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> PDF converted to {(task.selectedFormat || "jpg").toUpperCase()}
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              downloadDataUrl(
-                                task.resultImageSrc!,
-                                `${task.originalFilename?.replace(/\.[^.]+$/, "") || "pdf_page"}.${task.selectedFormat || "jpg"}`
-                              )
-                            }
-                            className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-5 py-2.5 text-xs md:text-sm font-extrabold text-background shadow-md transition-all hover:scale-105 active:scale-95"
-                          >
-                            <Download className="h-4 w-4" />
-                            Download Image ({(task.selectedFormat || "jpg").toUpperCase()})
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* -------------------------------------------------------- */}
-                    {/* G3. DONE: IMAGE TO BINARY (.TXT FILE) RESULT              */}
-                    {/* -------------------------------------------------------- */}
-                    {task.status === "done" && task.action === "image_to_binary" && task.resultBinaryBlob ? (
-                      <div className="mt-5 space-y-4">
-                        <div className="rounded-2xl border border-border bg-background/80 p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="flex items-center gap-1.5 text-xs font-bold text-sky-600 dark:text-sky-400">
-                              <Binary className="h-3.5 w-3.5" />
-                              Image to Binary (.txt) Generated
-                            </span>
-                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">
-                              Brahmaputra Binary Engine
-                            </span>
-                          </div>
-
-                          <div className="rounded-xl border border-border bg-card p-2.5 mb-2.5 flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">
-                              {task.originalFilename || "image.png"}
-                            </span>
-                            <span className="font-semibold text-foreground">
-                              {task.totalBinaryBytes?.toLocaleString()} Bytes • {task.totalBinaryBits?.toLocaleString()} Bits (8-Bit)
-                            </span>
-                          </div>
-
-                          <div className="overflow-hidden rounded-xl border border-border bg-muted/40 p-3">
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">
-                                Binary Bitstream Preview (8-Bit Formatted)
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (task.resultBinaryText) {
-                                    navigator.clipboard.writeText(task.resultBinaryText);
-                                    toast.success("Binary text copied to clipboard!");
-                                  }
-                                }}
-                                className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-500 hover:text-sky-600 cursor-pointer"
-                              >
-                                <Copy className="h-3 w-3" /> Copy Text
-                              </button>
-                            </div>
-                            <pre className="text-[11px] font-mono leading-relaxed text-foreground/90 whitespace-pre-wrap max-h-40 overflow-y-auto p-2 bg-background/80 rounded-lg border border-border/50 select-all">
-                              {task.resultBinaryPreview || task.resultBinaryText}
-                            </pre>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-3 pt-1 flex-wrap">
-                          <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Binary .txt & raw .bin compiled
-                          </span>
-
-                          <div className="flex items-center gap-2">
-                            {task.resultRawBinBlob && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  downloadBlob(
-                                    task.resultRawBinBlob!,
-                                    task.resultRawBinFilename || "image.bin"
-                                  )
-                                }
-                                className="inline-flex items-center gap-1.5 rounded-2xl border border-border bg-background px-4 py-2 text-xs font-bold text-foreground shadow-xs hover:bg-muted/80 transition-all cursor-pointer"
-                              >
-                                <Download className="h-3.5 w-3.5" />
-                                Download .bin
-                              </button>
-                            )}
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                downloadBlob(
-                                  task.resultBinaryBlob!,
-                                  task.resultBinaryFilename || "image_binary.txt"
-                                )
-                              }
-                              className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-5 py-2.5 text-xs md:text-sm font-extrabold text-background shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                            >
-                              <Download className="h-4 w-4" />
-                              Download Binary (.txt)
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* -------------------------------------------------------- */}
-                    {/* H. DONE: SARASWATI ANALYZE IMAGE PALETTE & METADATA      */}
-                    {/* -------------------------------------------------------- */}
-                    {task.status === "done" && task.action === "analyze_image" && task.analysisPalette ? (
-                      <div className="mt-5 space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-                          {task.originalImageSrc ? (
-                            <div className="rounded-2xl border border-border bg-card p-2 text-center">
-                              <p className="text-[11px] font-bold text-muted-foreground mb-1">Inspected Image</p>
-                              <div className="h-44 w-full flex items-center justify-center overflow-hidden rounded-xl bg-muted/40">
-                                <img
-                                  src={task.originalImageSrc}
-                                  alt="Inspected"
-                                  className="max-h-full max-w-full object-contain"
-                                />
-                              </div>
-                            </div>
-                          ) : null}
-
-                          <div className="rounded-2xl border border-border bg-card p-3 space-y-3">
-                            <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                              <Palette className="h-3.5 w-3.5 text-rose-500" /> Dominant Color Palette
-                            </p>
-                            <div className="grid grid-cols-3 gap-2">
-                              {task.analysisPalette.map((color, idx) => (
-                                <button
-                                  key={idx}
-                                  type="button"
-                                  onClick={() => {
-                                    void navigator.clipboard.writeText(color);
-                                    toast.success(`Copied ${color} to clipboard!`);
-                                  }}
-                                  className="flex flex-col items-center p-2 rounded-xl border border-border/80 bg-background hover:scale-105 transition-transform shadow-xs cursor-pointer"
-                                  title={`Click to copy ${color}`}
-                                >
-                                  <div
-                                    className="h-7 w-full rounded-lg border border-border/60 shadow-xs mb-1"
-                                    style={{ backgroundColor: color }}
-                                  />
-                                  <span className="font-mono text-[10px] font-bold text-foreground">{color}</span>
-                                </button>
-                              ))}
-                            </div>
-
-                            <div className="pt-2 border-t border-border/60 text-[11px] space-y-1 font-medium text-muted-foreground">
-                              <div className="flex justify-between">
-                                <span>Dimensions:</span>
-                                <span className="font-bold text-foreground">{task.analysisDimensions || "Auto"}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Aspect Ratio:</span>
-                                <span className="font-bold text-foreground">{task.analysisAspectRatio || "Standard"}</span>
-                              </div>
-                              {task.analysisBytes ? (
-                                <div className="flex justify-between">
-                                  <span>Approx Size:</span>
-                                  <span className="font-bold text-foreground">{(task.analysisBytes / 1024).toFixed(1)} KB</span>
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-3 pt-1">
-                          <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> High-precision chromatic analysis complete
-                          </span>
                         </div>
                       </div>
                     ) : null}
@@ -2559,36 +2440,27 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
       </div>
 
       {/* ---------------------------------------------------------------------- */}
-      {/* FLOATING CHATGPT PILL INPUT BAR (Matching user screenshot 2 & 3)       */}
+      {/* MODERN GEMINI / CHATGPT STYLE INPUT BAR (Redesigned per Image 2)       */}
       {/* ---------------------------------------------------------------------- */}
       <div className="w-full shrink-0 p-3 md:p-4 bg-gradient-to-t from-background via-background/95 to-transparent">
         <div className="mx-auto w-full max-w-3xl">
-          {/* File Attachment Badges */}
-          {attachedFiles.length > 0 ? (
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              {attachedFiles.map((file, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold text-foreground shadow-xs"
-                >
-                  <Paperclip className="h-3 w-3 text-muted-foreground" />
-                  <span className="max-w-[150px] truncate">{file.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => setAttachedFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                    className="ml-1 text-muted-foreground hover:text-destructive text-xs"
-                  >
-                    ✕
-                  </button>
-                </span>
-              ))}
-            </div>
-          ) : null}
+          {/* Main Card Container */}
+          <div className="relative flex flex-col rounded-3xl border border-border/80 bg-card/90 shadow-xl backdrop-blur-xl transition-all focus-within:border-foreground/50 p-2 md:p-3">
+            {/* 1. Top inside: Inline Attached Thumbnails */}
+            {attachedFiles.length > 0 && (
+              <div className="mb-2 flex flex-wrap items-center gap-2.5 px-2 pt-1">
+                {attachedFiles.map((file, i) => (
+                  <InlineAttachmentThumbnail
+                    key={`${file.name}-${i}`}
+                    file={file}
+                    onRemove={() => setAttachedFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                  />
+                ))}
+              </div>
+            )}
 
-          {/* Pill Container */}
-          <div className="relative flex flex-col rounded-3xl border border-border/80 bg-card/90 shadow-xl backdrop-blur-xl transition-all focus-within:border-foreground/60">
-            {/* Top row of pill: input textarea */}
-            <div className="flex items-center px-4 pt-3 pb-1">
+            {/* 2. Middle inside: Textarea prompt input */}
+            <div className="flex items-center px-2 py-1">
               <textarea
                 ref={taRef}
                 value={inputText}
@@ -2601,14 +2473,15 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                 }}
                 placeholder="Ask anything… (e.g. 'remove background', 'convt file', 'convert to word')"
                 rows={1}
-                className="w-full resize-none bg-transparent text-sm md:text-base font-medium placeholder:text-muted-foreground focus:outline-none min-h-[40px] max-h-32"
+                className="w-full resize-none bg-transparent text-sm md:text-base font-normal placeholder:text-muted-foreground/70 focus:outline-none min-h-[38px] max-h-32 text-foreground"
               />
             </div>
 
-            {/* Bottom row of pill: Action buttons */}
-            <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
-              {/* Left action: File attach button (+) */}
-              <div className="flex items-center gap-1">
+            {/* 3. Bottom inside: Controls Toolbar */}
+            <div className="flex items-center justify-between px-1.5 pt-1">
+              {/* Left Action Buttons: Plus (+) & Model Selector */}
+              <div className="flex items-center gap-1.5 md:gap-2">
+                {/* Hidden File Input & Plus (+) Button */}
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -2624,57 +2497,113 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-                  title="Attach images or files"
+                  title="Attach files or images"
                 >
-                  <Paperclip className="h-4 w-4" />
+                  <Plus className="h-5 w-5" />
                 </button>
+
+                {/* Model Selector Pill */}
+                <div className="relative" ref={modelPickerRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsModelPickerOpen((prev) => !prev)}
+                    className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs md:text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="h-4 w-4 rounded-full overflow-hidden bg-black shrink-0 border border-border/80 flex items-center justify-center">
+                      <img src={karudiKLogo} alt="Karudi" className="h-full w-full object-cover" />
+                    </div>
+                    <span className="text-foreground/90 font-medium">{selectedModelName}</span>
+                    <ChevronUp
+                      className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${
+                        isModelPickerOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {isModelPickerOpen && (
+                    <div className="absolute bottom-full left-0 mb-2 w-72 md:w-80 rounded-2xl border border-border/80 bg-popover/95 p-2 shadow-2xl backdrop-blur-xl z-50 animate-in fade-in zoom-in-95">
+                      <div className="px-2 py-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                        <span>Select Model</span>
+                        <span className="text-[10px] text-muted-foreground/75 font-normal">Auto-Orchestrated</span>
+                      </div>
+                      <div className="mt-1 space-y-1">
+                        {AVAILABLE_MODELS.map((m) => {
+                          const Icon = m.icon;
+                          const isSelected = m.name === selectedModelName;
+                          const isSelectable = m.selectable !== false;
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => {
+                                if (!isSelectable) {
+                                  toast.info(`${m.name} is automatically managed by Karudi 1.0 Prime.`);
+                                  return;
+                                }
+                                setSelectedModelName(m.name);
+                                setCurrentTier(m.tier);
+                                setStoredTier(m.tier);
+                                setIsModelPickerOpen(false);
+                              }}
+                              className={`w-full flex items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-all ${
+                                isSelected
+                                  ? "bg-primary/10 border border-primary/20 text-foreground cursor-pointer"
+                                  : isSelectable
+                                  ? "hover:bg-muted/60 text-muted-foreground hover:text-foreground cursor-pointer"
+                                  : "opacity-60 cursor-not-allowed hover:bg-muted/30"
+                              }`}
+                            >
+                              <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 shadow-2xs ${m.bgClass}`}>
+                                {m.useLogo ? (
+                                  <div className="h-4.5 w-4.5 rounded-full overflow-hidden bg-black shrink-0 flex items-center justify-center">
+                                    <img src={karudiKLogo} alt="Karudi" className="h-full w-full object-cover" />
+                                  </div>
+                                ) : (
+                                  <Icon className="h-4 w-4" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between">
+                                  <span className={`text-xs font-semibold ${isSelected ? "text-foreground" : "text-foreground/85"}`}>{m.name}</span>
+                                  {isSelected && <Check className="h-3.5 w-3.5 text-primary" />}
+                                  {!isSelectable && (
+                                    <span className="text-[10px] font-medium text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-md">
+                                      {m.badge || "Auto-Managed"}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-muted-foreground line-clamp-1">{m.desc}</p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Right actions: Think pill, Mic, Send Button */}
+              {/* Right Action: Vibrant Blue Circular Send Button */}
               <div className="flex items-center gap-2">
-                {/* Think reasoning toggle (As in user screenshot 2) */}
-                <button
-                  type="button"
-                  onClick={() => setIsThinkingEnabled((prev) => !prev)}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition-all ${
-                    isThinkingEnabled
-                      ? "bg-foreground text-background shadow-xs"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                  }`}
-                >
-                  <Brain className="h-3.5 w-3.5" />
-                  <span>Think</span>
-                </button>
-
-                {/* Voice / Mic Icon */}
-                <button
-                  type="button"
-                  onClick={() => toast.info("Voice input ready.")}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-                  title="Voice input"
-                >
-                  <Mic className="h-4 w-4" />
-                </button>
-
-                {/* Send Button */}
                 <button
                   type="button"
                   disabled={isBusy || (!inputText.trim() && attachedFiles.length === 0)}
                   onClick={() => void handleSendMessage()}
-                  className={`flex h-8 w-8 items-center justify-center rounded-full transition-all ${
+                  className={`flex h-9 w-9 items-center justify-center rounded-full transition-all ${
                     inputText.trim() || attachedFiles.length > 0
-                      ? "bg-foreground text-background shadow-md hover:scale-105 active:scale-95"
-                      : "bg-muted text-muted-foreground cursor-not-allowed opacity-50"
+                      ? "bg-[#0084ff] hover:bg-[#0074e8] text-white shadow-md shadow-blue-500/25 active:scale-95"
+                      : "bg-[#0084ff]/30 text-white/40 cursor-not-allowed"
                   }`}
                   title="Send message"
                 >
-                  <ArrowUp className="h-4 w-4 stroke-[2.5]" />
+                  <ArrowRight className="h-5 w-5 stroke-[2.5]" />
                 </button>
               </div>
             </div>
           </div>
 
-          <p className="mt-2 text-center text-[11px] font-medium text-muted-foreground">
+          <p className="mt-2 text-center text-[11px] font-medium text-muted-foreground/75">
             Karudi 1.0 Prime can make mistakes. Verify important information.
           </p>
         </div>

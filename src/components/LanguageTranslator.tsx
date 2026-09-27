@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Globe, Check, Search, RotateCcw, Sparkles, ChevronDown } from "lucide-react";
+import { Globe, Check, Search, RotateCcw, Wand2, ChevronDown } from "lucide-react";
 import {
   SUPPORTED_WEBSITE_LANGUAGES,
   getCurrentWebsiteLanguage,

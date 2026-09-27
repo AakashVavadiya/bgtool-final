@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Clock, ShieldAlert, Zap, ArrowRight, X } from "lucide-react";
+import { TokenCoin } from "@/components/TokenCoins";
 
 interface ToolLimitReachedDialogProps {
   isOpen: boolean;
@@ -43,41 +44,51 @@ export function ToolLimitReachedDialog({
 
         <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
           <ShieldAlert className="h-3.5 w-3.5" />
-          <span>Daily Limit Reached</span>
+          <span>Free Daily Limit Reached</span>
         </div>
 
         <div className="space-y-2">
           <h2 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
-            Daily Quota Exceeded
+            Free Daily Quota Exceeded
           </h2>
           <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-md mx-auto">
-            You have executed <strong className="text-foreground">{toolName}</strong> {usedToday} times today, reaching the daily limit of <strong className="text-foreground">{limit} runs</strong> per IP address. Your daily quota will reset tonight at midnight.
+            You have executed <strong className="text-foreground">{toolName}</strong> {usedToday} times today, reaching the daily free limit of <strong className="text-foreground">{limit || 20} files per day</strong>. You can get Gold Tokens to continue immediately or wait for the midnight reset of your 10 Free Silver Tokens.
           </p>
         </div>
 
         <div className="rounded-2xl border border-border bg-muted/40 p-4 text-xs space-y-2 text-left">
           <div className="flex items-center justify-between font-semibold">
-            <span className="text-muted-foreground">Daily Limit:</span>
-            <span className="font-bold text-foreground">{limit} uses / day</span>
+            <span className="text-muted-foreground">Free Daily Limit:</span>
+            <span className="font-bold text-foreground">{limit || 20} files / day</span>
           </div>
           <div className="flex items-center justify-between font-semibold">
             <span className="text-muted-foreground">Used Today:</span>
-            <span className="font-bold text-amber-600 dark:text-amber-400">{usedToday} / {limit} uses</span>
+            <span className="font-bold text-amber-600 dark:text-amber-400">{usedToday} / {limit || 20} files</span>
           </div>
           <div className="flex items-center justify-between font-semibold">
-            <span className="text-muted-foreground">Reset Time:</span>
+            <span className="text-muted-foreground">Daily Reset Time:</span>
             <span className="font-bold text-foreground">Midnight (12:00 AM)</span>
           </div>
         </div>
 
         <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
-          <Link
-            to="/pricing"
+          <button
+            type="button"
+            onClick={() => {
+              if (onClose) onClose();
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(
+                  new CustomEvent("bg:show_add_credits_dialog", {
+                    detail: { toolName, creditCost: 1, currentCredits: 0 },
+                  })
+                );
+              }
+            }}
             className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-foreground px-6 py-3.5 text-sm font-bold text-background shadow-md hover:scale-[1.02] hover:opacity-90 transition-all cursor-pointer"
           >
-            <Zap className="h-4 w-4" />
-            <span>Upgrade for Higher Limits</span>
-          </Link>
+            <TokenCoin type="gold" size="xs" showGlow />
+            <span>Get Gold Tokens to Continue →</span>
+          </button>
 
           <Link
             to="/"

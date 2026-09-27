@@ -11,7 +11,6 @@ import {
   Check,
   X,
   RotateCcw,
-  Sparkles,
   Sliders,
   Eye,
 } from "lucide-react";
@@ -741,7 +740,7 @@ export function CutoutBrushEditorModal({
         {/* ─── 3. BOTTOM FOOTER BAR WITH HELPFUL TIP ────────────────── */}
         <footer className="border-t border-border/70 bg-card px-6 py-2.5 flex items-center justify-between text-xs text-muted-foreground shrink-0">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+            <Wand2 className="h-3.5 w-3.5 text-amber-500" />
             <span>
               {activeTool === "erase"
                 ? "Remove Brush active: Drag to erase unwanted leftover background."

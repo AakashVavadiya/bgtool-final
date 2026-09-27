@@ -5,9 +5,12 @@ export interface LoggedUser {
   id: string;
   name: string;
   email: string;
-  avatar?: string;
+  avatar?: string | undefined;
   plan: "free" | "lite" | "pro" | "enterprise";
   credits: number;
+  freeCredits?: number | undefined;
+  paidCredits?: number | undefined;
+  lastCreditReset?: string | undefined;
   totalProcessed: number;
   status: "active" | "restricted" | "banned";
   location: string;
@@ -83,6 +86,191 @@ export interface ErrorLogItem {
   status: "investigating" | "resolved" | "ignored";
 }
 
+export interface ErrorVerificationLog {
+  timestamp: string;
+  level: "info" | "success" | "warn" | "error";
+  message: string;
+}
+
+export interface ErrorVerificationRecord {
+  id: string;
+  errorKey: string;
+  url: string;
+  targetError: string;
+  status: "passed" | "failed";
+  durationMs: number;
+  httpStatus: number;
+  logs: ErrorVerificationLog[];
+  errorsEncountered: Array<{ message: string; stack?: string }>;
+  testedAt: string;
+  summary: string;
+}
+
+export interface SiteHealthRouteItem {
+  id: string;
+  name: string;
+  url: string;
+  category: "core" | "chat" | "image-tool" | "pdf-tool" | "account" | "api";
+  categoryLabel: string;
+  status: "idle" | "testing" | "healthy" | "warning" | "error";
+  httpStatus?: number;
+  latencyMs?: number;
+  pageTitle?: string;
+  hasRootElements?: boolean;
+  errorsCaptured: Array<{
+    name: string;
+    message: string;
+    stack?: string;
+    capturedAt: string;
+  }>;
+  logs: Array<{
+    timestamp: string;
+    level: "info" | "success" | "warn" | "error";
+    message: string;
+  }>;
+  testedAt?: string;
+  summary?: string;
+}
+
+export interface SiteHealthAuditReport {
+  id: string;
+  startedAt: string;
+  completedAt: string;
+  totalRoutes: number;
+  healthyCount: number;
+  warningCount: number;
+  errorCount: number;
+  healthScorePercent: number;
+  avgLatencyMs: number;
+  routes: SiteHealthRouteItem[];
+}
+
+export interface HealthScheduleConfig {
+  enabled: boolean;
+  intervalMinutes: number;
+  lastRunAt?: string | undefined;
+  nextRunAt?: string | undefined;
+  notifyOnlyOnError: boolean;
+}
+
+export const DEFAULT_HEALTH_SCHEDULE: HealthScheduleConfig = {
+  enabled: false,
+  intervalMinutes: 60,
+  notifyOnlyOnError: false,
+};
+
+// ─── Tools Engine Health & Processing Test Types ────────────────────────────
+export interface ToolEngineTestStep {
+  step: string;
+  status: "pending" | "running" | "passed" | "failed";
+  durationMs?: number | undefined;
+  details?: string | undefined;
+}
+
+export interface ToolEngineTestResult {
+  toolSlug: string;
+  toolName: string;
+  category: string;
+  status: "idle" | "running" | "passed" | "warning" | "failed";
+  executionDurationMs: number;
+  inputFormat: string;
+  inputSizeBytes: number;
+  inputPreview?: string | undefined; // base64 or data URL preview of uploaded/input test file
+  inputDimensions?: { width: number; height: number } | undefined;
+  outputFormat?: string | undefined;
+  outputSizeBytes?: number | undefined;
+  outputPreview?: string | undefined; // base64 or data URL preview of processed output
+  outputDimensions?: { width: number; height: number } | undefined;
+  transformationSummary?: string | undefined;
+  testedAt?: string | undefined;
+  steps: ToolEngineTestStep[];
+  error?: {
+    message: string;
+    stack?: string | undefined;
+    stage?: string | undefined;
+  } | undefined;
+  notes?: string | undefined;
+}
+
+export interface ToolEngineAuditReport {
+  id: string;
+  startedAt: string;
+  completedAt: string;
+  totalTools: number;
+  passedCount: number;
+  warningCount: number;
+  failedCount: number;
+  avgDurationMs: number;
+  results: ToolEngineTestResult[];
+}
+
+// ─── SEO Optimisation & Google Ranking Engine Types ─────────────────────────
+export interface SeoPageAudit {
+  id: string;
+  url: string;
+  title: string;
+  category: string;
+  score: number; // 0 - 100
+  grade: "A+" | "A" | "B" | "C" | "D" | "F";
+  metrics: {
+    metaScore: number;
+    keywordScore: number;
+    speedScore: number;
+    technicalScore: number;
+  };
+  details: {
+    titleLength: number;
+    titleOptimal: boolean;
+    descriptionLength: number;
+    descriptionOptimal: boolean;
+    h1Count: number;
+    h1Text: string;
+    targetKeywords: string[];
+    primaryKeyword: string;
+    keywordDensity: string;
+    searchIntent: "Transactional" | "Commercial" | "Informational";
+    estimatedSearchVolume: "High (100k+)" | "Very High (500k+)" | "Ultra High (1M+)";
+    rankDifficulty: "Low" | "Medium" | "High";
+    estLcpMs: number;
+    estFcpMs: number;
+    hasSchemaJsonLd: boolean;
+    hasOpenGraph: boolean;
+    hasTwitterCard: boolean;
+    canonicalUrl: string;
+    missingAltImagesCount?: number | undefined;
+    totalImagesCount?: number | undefined;
+    httpStatus?: number | undefined;
+    latencyMs?: number | undefined;
+  };
+  recommendations: Array<{
+    id: string;
+    priority: "critical" | "medium" | "low";
+    title: string;
+    impact: string;
+    action: string;
+    codeSnippet?: string | undefined;
+  }>;
+}
+
+export interface SeoSiteAuditReport {
+  id: string;
+  auditedAt: string;
+  overallScore: number;
+  grade: "A+" | "A" | "B" | "C" | "D" | "F";
+  totalPages: number;
+  excellentCount: number;
+  goodCount: number;
+  needsWorkCount: number;
+  criticalIssuesCount: number;
+  topRankOpportunities: Array<{
+    toolName: string;
+    keyword: string;
+    potential: string;
+    searchIntent: string;
+  }>;
+  pages: SeoPageAudit[];
+}
+
 export interface SupportTicket {
   id: string;
   name: string;
@@ -115,13 +303,22 @@ export interface MarketingCampaign {
   clickRatePercent: number;
 }
 
+export interface DailyTrafficPoint {
+  date: string;
+  day?: string;
+  fullDate?: string;
+  views: number;
+  visitors: number;
+  processingJobs: number;
+}
+
 export interface TrafficAnalytics {
   totalPageViews: number;
   uniqueVisitors: number;
   liveVisitors: number;
   avgSessionDuration: string;
   bounceRate: string;
-  dailyTraffic: { date: string; views: number; visitors: number; processingJobs: number }[];
+  dailyTraffic: DailyTrafficPoint[];
   countryBreakdown: { country: string; flag: string; percentage: number; count: number }[];
   deviceBreakdown: { device: string; percentage: number }[];
   topReferrers: { source: string; visitors: number; conversionRate: string }[];
@@ -234,6 +431,14 @@ const STORAGE_KEYS = {
   ERRORS: "bg.admin.errors.v2",
   TICKETS: "bg.admin.tickets.v2",
   CAMPAIGNS: "bg.admin.campaigns.v2",
+  VERIFICATIONS: "bg.admin.verifications.v2",
+  HEALTH_AUDIT: "bg.admin.health_audit.v2",
+  HEALTH_AUDIT_HISTORY: "bg.admin.health_audit_history.v2",
+  HEALTH_SCHEDULE: "bg.admin.health_schedule.v2",
+  TOOL_ENGINE_AUDIT: "bg.admin.tool_engine_audit.v2",
+  TOOL_ENGINE_AUDIT_HISTORY: "bg.admin.tool_engine_audit_history.v2",
+  SEO_AUDIT: "bg.admin.seo_audit.v2",
+  SEO_AUDIT_HISTORY: "bg.admin.seo_audit_history.v2",
 };
 
 // Safe LocalStorage Wrappers
@@ -258,12 +463,54 @@ function saveToStorage<T>(key: string, data: T): void {
 
 // ─── ADMIN STORE GETTERS & ACTIONS ──────────────────────────────────────────
 
+export function getTodayDateString(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function ensureUserDailyCredits(u: LoggedUser): boolean {
+  const today = getTodayDateString();
+  let changed = false;
+
+  // Rule 1 & Rule 4: Daily 10 free credits reset every day; do not add 10 to remainder
+  if (u.lastCreditReset !== today) {
+    u.freeCredits = 10;
+    if (typeof u.paidCredits !== "number") {
+      u.paidCredits = Math.max(0, (u.credits || 0) > 10 ? Math.round(((u.credits || 0) - 10) * 100) / 100 : 0);
+    }
+    u.credits = Math.round((u.freeCredits + u.paidCredits) * 100) / 100;
+    u.lastCreditReset = today;
+    changed = true;
+  } else {
+    if (typeof u.freeCredits !== "number") {
+      u.freeCredits = Math.min(10, u.credits ?? 10);
+      u.paidCredits = Math.max(0, Math.round(((u.credits ?? 10) - u.freeCredits) * 100) / 100);
+      u.credits = Math.round((u.freeCredits + u.paidCredits) * 100) / 100;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 export const AdminStore = {
   // Users (Real registered accounts only)
   getUsers(): LoggedUser[] {
     const stored = loadFromStorage<LoggedUser[]>(STORAGE_KEYS.USERS, []);
     // Filter out any legacy mock data with fake ids
-    return stored.filter((u) => !u.id.startsWith("usr_99"));
+    const valid = stored.filter((u) => !u.id.startsWith("usr_99"));
+    let anyChanged = false;
+    for (const u of valid) {
+      if (ensureUserDailyCredits(u)) {
+        anyChanged = true;
+      }
+    }
+    if (anyChanged) {
+      saveToStorage(STORAGE_KEYS.USERS, valid);
+    }
+    return valid;
   },
   saveUsers(users: LoggedUser[]) {
     saveToStorage(STORAGE_KEYS.USERS, users);
@@ -284,6 +531,9 @@ export const AdminStore = {
         const data = await res.json();
         const usersList = Array.isArray(data) ? data : data.users;
         if (Array.isArray(usersList) && usersList.length > 0) {
+          for (const u of usersList) {
+            ensureUserDailyCredits(u);
+          }
           saveToStorage(STORAGE_KEYS.USERS, usersList);
           return usersList;
         }
@@ -297,7 +547,23 @@ export const AdminStore = {
     const users = this.getUsers();
     const target = users.find((u) => u.id === userId);
     if (target) {
-      target.credits = Math.max(0, target.credits + delta);
+      ensureUserDailyCredits(target);
+      if (delta > 0) {
+        target.paidCredits = Math.round(((target.paidCredits || 0) + delta) * 100) / 100;
+      } else {
+        const toDeduct = Math.abs(delta);
+        let rem = toDeduct;
+        // Deduct from paid credits first if admin reduces, then free credits
+        if ((target.paidCredits || 0) >= rem) {
+          target.paidCredits = Math.round(((target.paidCredits || 0) - rem) * 100) / 100;
+          rem = 0;
+        } else {
+          rem = Math.round((rem - (target.paidCredits || 0)) * 100) / 100;
+          target.paidCredits = 0;
+          target.freeCredits = Math.max(0, Math.round(((target.freeCredits || 0) - rem) * 100) / 100);
+        }
+      }
+      target.credits = Math.max(0, Math.round(((target.freeCredits || 0) + (target.paidCredits || 0)) * 100) / 100);
       this.saveUsers(users);
     }
     return users;
@@ -386,13 +652,23 @@ export const AdminStore = {
 
     return tools.map((t) => {
       const existing = rawStored.find((c) => c.slug === t.slug);
+      const creditCost = existing && existing.creditCost !== undefined ? existing.creditCost : 1;
+      let dailyLimit = existing && existing.dailyLimitPerIp !== undefined ? existing.dailyLimitPerIp : 0;
+      // Free tools (creditCost === 0) default to 20 files per day
+      if (creditCost === 0 && (!dailyLimit || dailyLimit <= 0)) {
+        dailyLimit = 20;
+      }
+      // Credit-based tools work with credits, remove legacy daily limit blocks
+      if (creditCost > 0 && dailyLimit === 5) {
+        dailyLimit = 0;
+      }
       return {
         slug: t.slug,
         name: t.name,
         category: t.category,
         isEnabled: existing ? existing.isEnabled : true,
-        creditCost: existing && existing.creditCost !== undefined ? existing.creditCost : 1,
-        dailyLimitPerIp: existing && existing.dailyLimitPerIp !== undefined ? existing.dailyLimitPerIp : 0,
+        creditCost,
+        dailyLimitPerIp: dailyLimit,
         maxResolution: existing ? existing.maxResolution : "4K (4096px)",
         isMaintenance: existing ? existing.isMaintenance : false,
         totalUsageCount: eventCounts[t.slug] || 0,
@@ -442,7 +718,16 @@ export const AdminStore = {
   },
   getToolDailyLimit(slug: string): number {
     const config = this.getToolConfig(slug);
-    return config && config.dailyLimitPerIp !== undefined ? config.dailyLimitPerIp : 0;
+    const creditCost = this.getToolCreditCost(slug);
+    // When tool is free (creditCost === 0), limit is 20 files per day per IP/user
+    if (creditCost === 0) {
+      if (config && typeof config.dailyLimitPerIp === "number" && config.dailyLimitPerIp > 0) {
+        return config.dailyLimitPerIp;
+      }
+      return 20; // 20 files per day for free tools
+    }
+    // When tool is not free, it works with credits, so daily quota does not apply
+    return 0;
   },
   getToolDailyUsage(slug: string): number {
     if (typeof window === "undefined") return 0;
@@ -470,11 +755,15 @@ export const AdminStore = {
     }
   },
   checkDailyToolLimit(slug: string): { reached: boolean; limit: number; usedToday: number; remaining: number } {
-    const limit = this.getToolDailyLimit(slug);
-    const usedToday = this.getToolDailyUsage(slug);
-    if (limit <= 0) {
-      return { reached: false, limit: 0, usedToday, remaining: Infinity };
+    const creditCost = this.getToolCreditCost(slug);
+    // Non-free tools work with the credit system, not the free daily limit!
+    if (creditCost > 0) {
+      return { reached: false, limit: 0, usedToday: this.getToolDailyUsage(slug), remaining: Infinity };
     }
+
+    // Free tools: 20 files per day per IP / user
+    const limit = this.getToolDailyLimit(slug) || 20;
+    const usedToday = this.getToolDailyUsage(slug);
     const reached = usedToday >= limit;
     const remaining = Math.max(0, limit - usedToday);
     return { reached, limit, usedToday, remaining };
@@ -531,6 +820,267 @@ export const AdminStore = {
       this.saveErrorLogs(logs);
     }
     return logs;
+  },
+  updateErrorStatusMany(ids: string[], status: ErrorLogItem["status"]) {
+    const logs = this.getErrorLogs();
+    const idSet = new Set(ids);
+    let changed = false;
+    logs.forEach((item) => {
+      if (idSet.has(item.id)) {
+        item.status = status;
+        changed = true;
+      }
+    });
+    if (changed) {
+      this.saveErrorLogs(logs);
+    }
+    return logs;
+  },
+  deleteErrorLogs(ids: string[]) {
+    const idSet = new Set(ids);
+    const logs = this.getErrorLogs().filter((l) => !idSet.has(l.id));
+    this.saveErrorLogs(logs);
+    return logs;
+  },
+  clearResolvedErrorLogs() {
+    const logs = this.getErrorLogs().filter((l) => l.status !== "resolved");
+    this.saveErrorLogs(logs);
+    return logs;
+  },
+  clearAllErrorLogs() {
+    this.saveErrorLogs([]);
+    return [];
+  },
+
+  // Error Fix Verification Records (Background Headless Test Results)
+  getVerifications(): Record<string, ErrorVerificationRecord> {
+    return loadFromStorage<Record<string, ErrorVerificationRecord>>(STORAGE_KEYS.VERIFICATIONS, {});
+  },
+  saveVerification(record: ErrorVerificationRecord) {
+    const map = this.getVerifications();
+    map[record.errorKey] = record;
+    saveToStorage(STORAGE_KEYS.VERIFICATIONS, map);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_verification_saved", errorKey: record.errorKey },
+        })
+      );
+    }
+    return map;
+  },
+  clearVerifications() {
+    saveToStorage(STORAGE_KEYS.VERIFICATIONS, {});
+  },
+
+  // Website Full Health Checkup & Automated Audit
+  getHealthAudit(): SiteHealthAuditReport | null {
+    return loadFromStorage<SiteHealthAuditReport | null>(STORAGE_KEYS.HEALTH_AUDIT, null);
+  },
+  saveHealthAudit(report: SiteHealthAuditReport) {
+    saveToStorage(STORAGE_KEYS.HEALTH_AUDIT, report);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_health_audit_saved" },
+        })
+      );
+    }
+  },
+  clearHealthAudit() {
+    saveToStorage(STORAGE_KEYS.HEALTH_AUDIT, null);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_health_audit_saved" },
+        })
+      );
+    }
+  },
+  getHealthAuditHistory(): SiteHealthAuditReport[] {
+    return loadFromStorage<SiteHealthAuditReport[]>(STORAGE_KEYS.HEALTH_AUDIT_HISTORY, []);
+  },
+  archiveHealthAudit(report: SiteHealthAuditReport) {
+    if (!report || !report.id) return;
+    const history = this.getHealthAuditHistory();
+    const filtered = history.filter((h) => h.id !== report.id);
+    filtered.unshift(report);
+    const capped = filtered.slice(0, 30);
+    saveToStorage(STORAGE_KEYS.HEALTH_AUDIT_HISTORY, capped);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_health_audit_history_updated" },
+        })
+      );
+    }
+  },
+  deleteHealthAuditFromHistory(id: string) {
+    const history = this.getHealthAuditHistory().filter((h) => h.id !== id);
+    saveToStorage(STORAGE_KEYS.HEALTH_AUDIT_HISTORY, history);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_health_audit_history_updated" },
+        })
+      );
+    }
+  },
+  clearHealthAuditHistory() {
+    saveToStorage(STORAGE_KEYS.HEALTH_AUDIT_HISTORY, []);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_health_audit_history_updated" },
+        })
+      );
+    }
+  },
+
+  // Health Audit Scheduling Configuration
+  getHealthSchedule(): HealthScheduleConfig {
+    return loadFromStorage<HealthScheduleConfig>(
+      STORAGE_KEYS.HEALTH_SCHEDULE,
+      DEFAULT_HEALTH_SCHEDULE
+    );
+  },
+  saveHealthSchedule(config: HealthScheduleConfig) {
+    saveToStorage(STORAGE_KEYS.HEALTH_SCHEDULE, config);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_health_schedule_saved" },
+        })
+      );
+    }
+  },
+
+  // Tools Engine Health Audit Reports
+  getToolEngineAudit(): ToolEngineAuditReport | null {
+    return loadFromStorage<ToolEngineAuditReport | null>(STORAGE_KEYS.TOOL_ENGINE_AUDIT, null);
+  },
+  saveToolEngineAudit(report: ToolEngineAuditReport) {
+    saveToStorage(STORAGE_KEYS.TOOL_ENGINE_AUDIT, report);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_tool_engine_audit_saved" },
+        })
+      );
+    }
+  },
+  clearToolEngineAudit() {
+    saveToStorage(STORAGE_KEYS.TOOL_ENGINE_AUDIT, null);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_tool_engine_audit_saved" },
+        })
+      );
+    }
+  },
+  getToolEngineAuditHistory(): ToolEngineAuditReport[] {
+    return loadFromStorage<ToolEngineAuditReport[]>(STORAGE_KEYS.TOOL_ENGINE_AUDIT_HISTORY, []);
+  },
+  archiveToolEngineAudit(report: ToolEngineAuditReport) {
+    if (!report || !report.id) return;
+    const history = this.getToolEngineAuditHistory();
+    const filtered = history.filter((h) => h.id !== report.id);
+    filtered.unshift(report);
+    const capped = filtered.slice(0, 30);
+    saveToStorage(STORAGE_KEYS.TOOL_ENGINE_AUDIT_HISTORY, capped);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_tool_engine_history_updated" },
+        })
+      );
+    }
+  },
+  deleteToolEngineAuditFromHistory(id: string) {
+    const history = this.getToolEngineAuditHistory().filter((h) => h.id !== id);
+    saveToStorage(STORAGE_KEYS.TOOL_ENGINE_AUDIT_HISTORY, history);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_tool_engine_history_updated" },
+        })
+      );
+    }
+  },
+  clearToolEngineAuditHistory() {
+    saveToStorage(STORAGE_KEYS.TOOL_ENGINE_AUDIT_HISTORY, []);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_tool_engine_history_updated" },
+        })
+      );
+    }
+  },
+
+  // SEO Optimization & Google Ranking Reports
+  getSeoAudit(): SeoSiteAuditReport | null {
+    return loadFromStorage<SeoSiteAuditReport | null>(STORAGE_KEYS.SEO_AUDIT, null);
+  },
+  saveSeoAudit(report: SeoSiteAuditReport) {
+    saveToStorage(STORAGE_KEYS.SEO_AUDIT, report);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_seo_audit_saved" },
+        })
+      );
+    }
+  },
+  clearSeoAudit() {
+    saveToStorage(STORAGE_KEYS.SEO_AUDIT, null);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_seo_audit_saved" },
+        })
+      );
+    }
+  },
+  getSeoAuditHistory(): SeoSiteAuditReport[] {
+    return loadFromStorage<SeoSiteAuditReport[]>(STORAGE_KEYS.SEO_AUDIT_HISTORY, []);
+  },
+  archiveSeoAudit(report: SeoSiteAuditReport) {
+    if (!report || !report.id || report.id === "INIT") return;
+    const history = this.getSeoAuditHistory();
+    const filtered = history.filter((h) => h.id !== report.id);
+    filtered.unshift(report);
+    const capped = filtered.slice(0, 30);
+    saveToStorage(STORAGE_KEYS.SEO_AUDIT_HISTORY, capped);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_seo_audit_history_updated" },
+        })
+      );
+    }
+  },
+  deleteSeoAuditFromHistory(id: string) {
+    const history = this.getSeoAuditHistory().filter((h) => h.id !== id);
+    saveToStorage(STORAGE_KEYS.SEO_AUDIT_HISTORY, history);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_seo_audit_history_updated" },
+        })
+      );
+    }
+  },
+  clearSeoAuditHistory() {
+    saveToStorage(STORAGE_KEYS.SEO_AUDIT_HISTORY, []);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_seo_audit_history_updated" },
+        })
+      );
+    }
   },
 
   // Support Tickets (Contact inquiries)
@@ -643,7 +1193,7 @@ export const AdminStore = {
   },
 
   // Dynamic Real-Time Traffic Analytics calculated from actual events
-  getTraffic(): TrafficAnalytics {
+  getTraffic(daysCount: number = 7): TrafficAnalytics {
     if (typeof window === "undefined") {
       return {
         totalPageViews: 1,
@@ -651,7 +1201,7 @@ export const AdminStore = {
         liveVisitors: 1,
         avgSessionDuration: "1m 30s",
         bounceRate: "24%",
-        dailyTraffic: [{ date: "Today", views: 1, visitors: 1, processingJobs: 0 }],
+        dailyTraffic: [{ date: "Today", day: "Today", fullDate: "Today", views: 1, visitors: 1, processingJobs: 0 }],
         countryBreakdown: [{ country: "Local Client", flag: "🌐", percentage: 100, count: 1 }],
         deviceBreakdown: [{ device: "Desktop", percentage: 100 }],
         topReferrers: [{ source: "Direct", visitors: 1, conversionRate: "100%" }],
@@ -740,33 +1290,62 @@ export const AdminStore = {
         };
       });
 
-      // Daily Traffic (Group last 7 days)
-      const daysMap: Record<string, { views: number; jobs: number }> = {};
+      // Daily Traffic (Group requested timeframe days)
+      const daySlots: {
+        key: string;
+        date: string;
+        day: string;
+        fullDate: string;
+        views: number;
+        visitorsSet: Set<string>;
+        jobs: number;
+      }[] = [];
+
       const nowDate = new Date();
-      for (let i = 6; i >= 0; i--) {
+      for (let i = daysCount - 1; i >= 0; i--) {
         const d = new Date(nowDate);
         d.setDate(d.getDate() - i);
-        const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        daysMap[label] = { views: 0, jobs: 0 };
+        const key = d.toISOString().slice(0, 10);
+        const date = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        const day = i === 0 ? "Today" : d.toLocaleDateString("en-US", { weekday: "short" });
+        const fullDate = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+        daySlots.push({
+          key,
+          date,
+          day,
+          fullDate,
+          views: 0,
+          visitorsSet: new Set<string>(),
+          jobs: 0,
+        });
       }
 
       rawViews.forEach((v) => {
-        const d = new Date(v.timestamp);
-        const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        if (daysMap[label]) daysMap[label].views++;
+        if (!v || !v.timestamp) return;
+        const key = new Date(v.timestamp).toISOString().slice(0, 10);
+        const slot = daySlots.find((s) => s.key === key);
+        if (slot) {
+          slot.views++;
+          if (v.sessionId) slot.visitorsSet.add(v.sessionId);
+        }
       });
 
       rawToolEvents.forEach((t) => {
-        const d = new Date(t.timestamp);
-        const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        if (daysMap[label]) daysMap[label].jobs++;
+        if (!t || !t.timestamp) return;
+        const key = new Date(t.timestamp).toISOString().slice(0, 10);
+        const slot = daySlots.find((s) => s.key === key);
+        if (slot) {
+          slot.jobs++;
+        }
       });
 
-      const dailyTraffic = Object.entries(daysMap).map(([date, data]) => ({
-        date,
-        views: data.views,
-        visitors: Math.max(Math.round(data.views * 0.7), data.views > 0 ? 1 : 0),
-        processingJobs: data.jobs,
+      const dailyTraffic: DailyTrafficPoint[] = daySlots.map((s) => ({
+        date: s.date,
+        day: s.day,
+        fullDate: s.fullDate,
+        views: s.views,
+        visitors: s.visitorsSet.size || (s.views > 0 ? 1 : 0),
+        processingJobs: s.jobs,
       }));
 
       return {
@@ -787,7 +1366,7 @@ export const AdminStore = {
         liveVisitors: 1,
         avgSessionDuration: "1m 30s",
         bounceRate: "20%",
-        dailyTraffic: [{ date: "Today", views: 1, visitors: 1, processingJobs: 0 }],
+        dailyTraffic: [{ date: "Today", day: "Today", fullDate: "Today", views: 1, visitors: 1, processingJobs: 0 }],
         countryBreakdown: [{ country: "Local Client", flag: "🌐", percentage: 100, count: 1 }],
         deviceBreakdown: [{ device: "Desktop", percentage: 100 }],
         topReferrers: [{ source: "Direct", visitors: 1, conversionRate: "100%" }],

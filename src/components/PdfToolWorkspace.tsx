@@ -15,7 +15,7 @@ import {
   Sliders,
   Scissors,
   Layers,
-  Sparkles,
+  Wand2,
   Shield,
   Trash2,
   Plus,
@@ -1216,7 +1216,7 @@ export function PdfToolWorkspace({ tool }: { tool: Tool }) {
                   </>
                 ) : (
                   <>
-                    <Sparkles className="h-5 w-5 text-accent" />
+                    <Wand2 className="h-5 w-5 text-accent" />
                     <span>{isInvoiceTool ? "Generate PDF Invoice" : `Process with ${tool.name}`}</span>
                     <ArrowRight className="h-5 w-5" />
                   </>

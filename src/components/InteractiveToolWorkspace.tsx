@@ -11,7 +11,7 @@ import {
   FlipVertical,
   Sliders,
   Crop as CropIcon,
-  Sparkles,
+  Wand2,
   RefreshCw,
   Image as ImageIcon,
   FileType,
@@ -71,11 +71,13 @@ import {
   Smile,
   Plus,
   Circle,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AdminStore } from "@/admin/lib/admin-store";
 import { AuthUser } from "@/lib/auth-user";
 import { Telemetry } from "@/lib/telemetry";
+import { TokenCoin } from "@/components/TokenCoins";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { type Tool } from "@/lib/tools";
 import { PdfToolWorkspace } from "@/components/PdfToolWorkspace";
@@ -1101,7 +1103,7 @@ export const buildDocxFromImage = (dataUrl: string, imgW: number, imgH: number, 
 };
 
 // ── 4. Image → XLSX (Fully Editable Microsoft Excel SpreadsheetML Builder) ────
-const buildEditableXlsxFromOcr = (
+export const buildEditableXlsxFromOcr = (
   textLines: string[],
   options: {
     parserMode?: "grid" | "csv" | "whitespace" | "lines" | undefined;
@@ -5022,7 +5024,12 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       if (imgRef.current) {
         const rect = imgRef.current.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
-          setRenderedImgSize({ width: Math.round(rect.width), height: Math.round(rect.height) });
+          const nextW = Math.round(rect.width);
+          const nextH = Math.round(rect.height);
+          setRenderedImgSize((prev) => {
+            if (prev && prev.width === nextW && prev.height === nextH) return prev;
+            return { width: nextW, height: nextH };
+          });
         }
       }
     };
@@ -5627,7 +5634,10 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       return;
     }
 
-    if (!selected.type.startsWith("image/")) {
+    const isImageFile =
+      selected.type.startsWith("image/") ||
+      /\.(jpe?g|png|webp|avif|gif|bmp|tiff?|heic|heif|svg|ico|jfif)$/i.test(selected.name);
+    if (!isImageFile) {
       toast.error("Please select a valid image file.");
       return;
     }
@@ -6774,23 +6784,52 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
   const recordToolExecution = () => {
     Telemetry.trackToolUsage(tool.slug, tool.name);
     const cost = AdminStore.getToolCreditCost(tool.slug);
-    AuthUser.deductCredit(cost);
+    if (cost > 0) {
+      AuthUser.deductCredit(cost);
+    }
     AdminStore.recordToolDailyUsage(tool.slug);
   };
 
   const processImage = () => {
-    // Check daily usage quota per IP/device
-    const limitCheck = AdminStore.checkDailyToolLimit(tool.slug);
-    if (limitCheck.reached) {
-      toast.error(`Daily limit reached (${limitCheck.usedToday}/${limitCheck.limit} runs). Limit resets tomorrow.`);
-      return;
-    }
-
-    // Check credits balance
     const cost = AdminStore.getToolCreditCost(tool.slug);
-    if (cost > 0 && !AuthUser.hasCredits(cost)) {
-      toast.error(`Insufficient credits. This tool requires ${cost} credit${cost === 1 ? "" : "s"}.`);
-      return;
+    const isFree = cost === 0;
+
+    // Free tools: daily limit of 20 files per day per IP / user
+    if (isFree) {
+      const limitCheck = AdminStore.checkDailyToolLimit(tool.slug);
+      if (limitCheck.reached) {
+        toast.error(`Free daily limit reached (${limitCheck.usedToday}/${limitCheck.limit || 20} files today). Add Gold Tokens to continue or wait for midnight reset.`);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("bg:show_add_credits_dialog", {
+              detail: {
+                toolName: tool.name,
+                toolSlug: tool.slug,
+                creditCost: 1,
+                currentCredits: AuthUser.getTotalTokens(),
+              },
+            })
+          );
+        }
+        return;
+      }
+    } else {
+      // Non-free tools: work with credits! When credits are over, show Add Credits option
+      if (!AuthUser.hasCredits(cost)) {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("bg:show_add_credits_dialog", {
+              detail: {
+                toolName: tool.name,
+                toolSlug: tool.slug,
+                creditCost: cost,
+                currentCredits: AuthUser.getCredits(),
+              },
+            })
+          );
+        }
+        return;
+      }
     }
 
     // 0. Handle Base64 to Image tool
@@ -6969,6 +7008,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
           setHasProcessed(true);
           setIsEditingSettings(false);
           setProcessing(false);
+          recordToolExecution();
           toast.success(`Successfully converted ${file.name} to image!`);
         } catch (e) {
           setProcessing(false);
@@ -7009,6 +7049,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       setHasProcessed(true);
       setIsEditingSettings(false);
       setProcessing(false);
+      recordToolExecution();
       toast.success("Converted Binary to Image successfully!");
       return;
     }
@@ -7034,7 +7075,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         setProcessedSrc(url);
         setImageSrc(url);
         setHasProcessed(true);
+        setIsEditingSettings(false);
         setProcessing(false);
+        recordToolExecution();
         if (decodedUrl) {
           toast.success("Decoded original image successfully!");
         } else {
@@ -7066,7 +7109,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
           setProcessedSrc(url);
           setImageSrc(url);
           setHasProcessed(true);
+          setIsEditingSettings(false);
           setProcessing(false);
+          recordToolExecution();
           toast.success("Decoded Octal bytes to image!");
           return;
         }
@@ -7079,7 +7124,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
           setProcessedSrc(url);
           setImageSrc(url);
           setHasProcessed(true);
+          setIsEditingSettings(false);
           setProcessing(false);
+          recordToolExecution();
           toast.success("Decoded Hex bytes to image!");
           return;
         }
@@ -7091,14 +7138,21 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
           setProcessedSrc(url);
           setImageSrc(url);
           setHasProcessed(true);
+          setIsEditingSettings(false);
           setProcessing(false);
+          recordToolExecution();
           toast.success("Decoded Decimal bytes to image!");
           return;
         }
         if (tool.slug === "binary-to-image") {
           const url = decodeBinaryStringToImageUrl(inputConvertText);
           if (!url) { toast.error("Invalid binary data — make sure it's a valid image encoded in binary."); setProcessing(false); return; }
-          setProcessedSrc(url); setImageSrc(url); setHasProcessed(true); setProcessing(false);
+          setProcessedSrc(url);
+          setImageSrc(url);
+          setHasProcessed(true);
+          setIsEditingSettings(false);
+          setProcessing(false);
+          recordToolExecution();
           toast.success("Decoded binary to image!");
           return;
         }
@@ -8191,6 +8245,38 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
   };
 
   const handleDownload = () => {
+    const triggerFileDownload = (targetUrl: string, downloadName: string) => {
+      if (targetUrl.startsWith("data:")) {
+        try {
+          const parts = targetUrl.split(",");
+          const mime = parts[0]?.match(/:(.*?);/)?.[1] || "image/png";
+          const binary = atob(parts[1] || "");
+          const array = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) {
+            array[i] = binary.charCodeAt(i);
+          }
+          const blob = new Blob([array], { type: mime });
+          const objectUrl = URL.createObjectURL(blob);
+          const el = document.createElement("a");
+          el.href = objectUrl;
+          el.download = downloadName;
+          document.body.appendChild(el);
+          el.click();
+          document.body.removeChild(el);
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+          return;
+        } catch (e) {
+          console.warn("data URL conversion failed, fallback:", e);
+        }
+      }
+      const el = document.createElement("a");
+      el.href = targetUrl;
+      el.download = downloadName;
+      document.body.appendChild(el);
+      el.click();
+      document.body.removeChild(el);
+    };
+
     // OCR & Extracted text tools: serve the extracted text file (.txt)
     if (tool.slug === "image-to-text-ocr" || tool.slug === "image-to-text") {
       const textToSave = ocrText || binaryOutputText;
@@ -8200,7 +8286,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       a.href = textUrl;
       const baseName = file?.name ? file.name.replace(/\.[^.]+$/, "") : "extracted_text";
       a.download = `${baseName}_ocr_text.txt`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(textUrl), 5000);
       toast.success("Downloaded extracted text file (.txt)!");
       return;
@@ -8232,7 +8320,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       a.href = textUrl;
       const baseName = file?.name ? file.name.replace(/\.[^.]+$/, "") : "image_binary";
       a.download = `${baseName}_${binaryOutputMode.toLowerCase()}.${ext}`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(textUrl), 5000);
       toast.success(`Downloaded complete ${binaryOutputMode} data file!`);
       return;
@@ -8257,11 +8347,8 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         }
         ctx.drawImage(img, 0, 0);
         const outUrl = c.toDataURL(mime, base64ExportQuality);
-        const a = document.createElement("a");
-        a.href = outUrl;
         const baseName = file?.name ? file.name.replace(/\.[^.]+$/, "") : "decoded_image";
-        a.download = `${baseName}.${ext}`;
-        a.click();
+        triggerFileDownload(outUrl, `${baseName}.${ext}`);
         toast.success(`Downloaded decoded ${base64ExportFormat} image!`);
       };
       img.src = srcToUse;
@@ -8275,7 +8362,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       a.href = docUrl;
       const baseName = file?.name ? file.name.replace(/\.[^.]+$/, "") : "pdf_pages";
       a.download = `${baseName}_all_pages_${pdfDocOutputFormat.toLowerCase()}.zip`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(docUrl), 5000);
       toast.success(`Downloaded all ${pdfTotalPages} PDF pages in ZIP archive (${formatBytes(documentBlob.size)})!`);
       return;
@@ -8288,7 +8377,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       a.href = docUrl;
       const baseName = file?.name ? file.name.replace(/\.[^.]+$/, "") : "presentation_slides";
       a.download = `${baseName}_all_slides_${pptDocOutputFormat.toLowerCase()}.zip`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(docUrl), 5000);
       toast.success(`Downloaded all ${pptTotalSlides} presentation slides in ZIP archive (${formatBytes(documentBlob.size)})!`);
       return;
@@ -8336,7 +8427,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         a.href = docUrl;
         const baseName = file?.name ? file.name.replace(/\.[^.]+$/, "") : `converted_${ext}`;
         a.download = `${baseName}.${ext}`;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(docUrl), 5000);
         toast.success(`Downloaded ${ext.toUpperCase()} file (${formatBytes(docBlob.size)})!`);
         return;
@@ -8366,17 +8459,34 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
     }
 
     const baseName = file?.name ? file.name.replace(/\.[^.]+$/, "") : `${tool.slug}_output`;
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = tool.slug === "compress-image"
-      ? `${baseName}_compressed.${ext}`
-      : tool.slug === "square-your-image"
-      ? `${baseName}_square.${ext}`
-      : `${baseName}_${tool.slug}.${ext}`;
-    a.click();
+    const downloadFilename =
+      tool.slug === "compress-image"
+        ? `${baseName}_compressed.${ext}`
+        : tool.slug === "resize-image"
+        ? `${baseName}_resized.${ext}`
+        : tool.slug === "crop-image"
+        ? `${baseName}_cropped.${ext}`
+        : tool.slug === "square-your-image"
+        ? `${baseName}_square.${ext}`
+        : tool.slug === "rotate-image"
+        ? `${baseName}_rotated.${ext}`
+        : tool.slug === "watermark-image"
+        ? `${baseName}_watermarked.${ext}`
+        : tool.slug === "blur-face"
+        ? `${baseName}_anonymized.${ext}`
+        : tool.slug === "meme-generator"
+        ? `${baseName}_meme.${ext}`
+        : `${baseName}_${tool.slug}.${ext}`;
+
+    triggerFileDownload(url, downloadFilename);
+
     toast.success(
       tool.slug === "compress-image"
         ? `Downloaded compressed image (${formatBytes(newSize || origSize)})!`
+        : tool.slug === "resize-image"
+        ? `Downloaded resized image (${ext.toUpperCase()})!`
+        : tool.slug === "crop-image"
+        ? `Downloaded cropped image (${ext.toUpperCase()})!`
         : tool.slug === "square-your-image"
         ? `Downloaded 1:1 square image (${ext.toUpperCase()})!`
         : "Processed image downloaded!"
@@ -8674,7 +8784,530 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       />
       <canvas ref={canvasRef} className="hidden" />
 
-      {!imageSrc && !file ? (
+      {hasProcessed && !isEditingSettings ? (
+        /* Dedicated Processed View for All Tools */
+        <div className="flex flex-col gap-6 w-full max-w-5xl mx-auto animate-in fade-in zoom-in-95 duration-300">
+          {/* Top Result Banner with Statistics */}
+          <div className="rounded-3xl border border-border bg-card p-5 md:p-6 shadow-xl transition-all">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+              {/* Left Column: Icon & Headings */}
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shadow-xs">
+                  <Check className="h-6 w-6 stroke-[2.5]" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                      {tool.slug === "compress-image"
+                        ? "Compression Complete"
+                        : tool.slug.startsWith("convert-") || tool.slug.includes("-to-")
+                        ? "Conversion Complete"
+                        : tool.slug === "resize-image"
+                        ? "Resize Complete"
+                        : tool.slug === "crop-image"
+                        ? "Crop Complete"
+                        : `${tool.name} Complete`}
+                    </span>
+                    <span className="text-xs text-muted-foreground font-semibold">
+                      {dimensions.width} × {dimensions.height} px
+                    </span>
+                  </div>
+                  <h3 className="font-display text-xl md:text-2xl font-bold tracking-tight text-foreground mt-1">
+                    {tool.slug === "compress-image"
+                      ? "Image Successfully Compressed"
+                      : tool.slug.startsWith("convert-") || tool.slug.includes("-to-")
+                      ? "Image Successfully Converted"
+                      : tool.slug === "resize-image"
+                      ? "Image Successfully Resized"
+                      : tool.slug === "crop-image"
+                      ? "Image Successfully Cropped"
+                      : tool.slug === "blur-image" || tool.slug === "anonymise-image"
+                      ? "Image Successfully Blurred"
+                      : tool.slug === "watermark-image"
+                      ? "Watermark Successfully Applied"
+                      : tool.slug.includes("ocr") || tool.slug === "image-to-text"
+                      ? "Text Successfully Extracted"
+                      : `${tool.name} Completed Successfully`}
+                  </h3>
+                </div>
+              </div>
+
+              {/* Right Column: Comparative Stats Box OR Conversion Flow */}
+              {isConversionTool ? (
+                <div className="w-full md:w-auto flex items-center gap-3 bg-secondary/50 px-4 py-2.5 rounded-2xl border border-border/80 shadow-xs">
+                  <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                    <span className="text-[10px] uppercase font-extrabold text-muted-foreground tracking-wider block">Conversion:</span>
+                    <span className="rounded-lg bg-background border border-border px-2.5 py-1 text-xs font-mono font-black text-foreground shadow-2xs">
+                      {sourceFormatLabel}
+                    </span>
+                    <ArrowRight className="h-4 w-4 text-emerald-500 font-bold shrink-0 stroke-[2.5]" />
+                    <span className="rounded-lg bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-xs font-mono font-black text-emerald-600 dark:text-emerald-400 shadow-2xs">
+                      {targetFormatLabel}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full md:w-auto flex items-center justify-between md:justify-end gap-3.5 sm:gap-5 bg-secondary/50 px-4 py-2.5 rounded-2xl border border-border/80 shadow-xs">
+                  <div className="text-left md:text-right">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block leading-tight">Original</span>
+                    <span className="font-mono text-xs sm:text-sm font-semibold text-muted-foreground">
+                      {formatBytes(origSize)}
+                    </span>
+                  </div>
+
+                  <ArrowRight className="h-4 w-4 text-muted-foreground/60 shrink-0" />
+
+                  <div className="text-left md:text-right">
+                    <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider block leading-tight">
+                      {tool.slug === "compress-image" ? "Compressed" : "Processed"}
+                    </span>
+                    <span className="font-mono text-sm sm:text-base font-bold text-foreground">
+                      {formatBytes(newSize || origSize)}
+                    </span>
+                  </div>
+
+                  {origSize > 0 && newSize > 0 && origSize > newSize && (
+                    <div className="pl-2 border-l border-border/70 flex items-center">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 px-3 py-1 text-xs font-extrabold shadow-xs">
+                        <AnimatedCounter
+                          value={Math.max(0, Math.round(((origSize - newSize) / origSize) * 100))}
+                          suffix="%"
+                        />
+                        <span>Smaller</span>
+                      </span>
+                    </div>
+                  )}
+                  {origSize > 0 && newSize > 0 && newSize >= origSize && tool.slug === "resize-image" && resizeQualityMode === "improved" && (
+                    <div className="pl-2 border-l border-border/70 flex items-center">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 px-3 py-1 text-xs font-extrabold shadow-xs">
+                        <Wand2 className="h-3.5 w-3.5 text-amber-500 animate-pulse" />
+                        <span>HD Enhanced (+{Math.round(((newSize - origSize) / origSize) * 100)}% Size)</span>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Processed Output Preview Stage */}
+          <div className="relative rounded-3xl border-2 border-border bg-card/70 overflow-hidden shadow-xl flex flex-col items-center justify-center p-4 md:p-8 min-h-[460px] max-h-[640px]">
+            {/* Top Preview Controls Bar */}
+            <div className="absolute top-4 inset-x-4 flex items-center justify-between z-10 pointer-events-none">
+              <span className="pointer-events-auto rounded-full bg-background/90 border border-border px-3.5 py-1 text-xs font-bold text-foreground shadow-sm backdrop-blur">
+                {file?.name || `${tool.slug}_output`}
+              </span>
+              <div className="flex items-center gap-2 pointer-events-auto">
+                {imageSrc && processedSrc && imageSrc !== processedSrc && (
+                  <button
+                    type="button"
+                    onMouseDown={() => setShowOriginalComparison(true)}
+                    onMouseUp={() => setShowOriginalComparison(false)}
+                    onTouchStart={() => setShowOriginalComparison(true)}
+                    onTouchEnd={() => setShowOriginalComparison(false)}
+                    className="rounded-full border border-border bg-background/90 px-3.5 py-1 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-sm flex items-center gap-1.5 backdrop-blur cursor-pointer"
+                    title="Press and hold to compare with original image"
+                  >
+                    <Eye className="h-3.5 w-3.5 text-accent" />
+                    <span>{showOriginalComparison ? "Showing Original" : "Hold for Original"}</span>
+                  </button>
+                )}
+                {["image-to-binary", "image-to-base64", "image-to-hex", "image-to-octal", "image-to-decimal", "image-to-ascii"].includes(tool.slug) ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsCodeEditorOpen(true)}
+                    className="rounded-full border border-border bg-background/90 px-3.5 py-1 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-sm flex items-center gap-1.5 backdrop-blur cursor-pointer"
+                    title="Open in Code Editor"
+                  >
+                    <Code2 className="h-3.5 w-3.5 text-accent" />
+                    <span>Open in Code Editor</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsFullscreenPreview(true)}
+                    className="rounded-full border border-border bg-background/90 px-3 py-1 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-sm flex items-center gap-1.5 backdrop-blur cursor-pointer"
+                    title="Enlarge preview"
+                  >
+                    <Maximize2 className="h-3.5 w-3.5 text-accent" />
+                    <span>Enlarge</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Dedicated Previews for Document & OCR Tools */}
+            {hasProcessed && tool.slug === "image-to-excel" ? (
+              /* Excel 2D Spreadsheet Matrix Live Preview */
+              <div className="w-full max-w-4xl flex flex-col gap-3 z-0 mt-8">
+                {(() => {
+                  const lines = rawOcrDocumentLines.length > 0 ? rawOcrDocumentLines : (ocrText ? ocrText.split("\n") : []);
+                  const grid = parseOcrTextToGrid(lines, excelParserMode);
+                  const maxCols = Math.max(...grid.map((r) => r.length), 1);
+                  const totalCells = grid.reduce((s, r) => s + r.length, 0);
+
+                  const copyAsCsv = () => {
+                    const csvContent = grid
+                      .map((row) =>
+                        row
+                          .map((cell) => {
+                            const escaped = cell.replace(/"/g, '""');
+                            return escaped.includes(",") || escaped.includes('"') || escaped.includes("\n")
+                              ? `"${escaped}"`
+                              : escaped;
+                          })
+                          .join(",")
+                      )
+                      .join("\n");
+                    copyToClipboard(csvContent, "CSV Data");
+                  };
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-500">
+                            <FileSpreadsheet className="h-4 w-4" />
+                          </span>
+                          <span className="text-xs font-black text-foreground">
+                            Extracted Spreadsheet Table ({excelSheetName})
+                          </span>
+                          <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
+                            {grid.length} Rows × {maxCols} Cols · {totalCells} Cells
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={copyAsCsv}
+                            className="flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all shadow-xs cursor-pointer"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                            <span>Copy as CSV</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(ocrText, "Extracted Text")}
+                            className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-xs cursor-pointer"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                            <span>Copy Text</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Interactive Spreadsheet Grid View */}
+                      <div className="rounded-2xl border-2 border-border bg-card overflow-hidden shadow-inner max-h-[380px] overflow-x-auto overflow-y-auto">
+                        <table className="w-full border-collapse text-left text-xs font-mono">
+                          {/* Column Letters Row (A, B, C...) */}
+                          <thead>
+                            <tr className="bg-muted/70 border-b border-border sticky top-0 z-10">
+                              <th className="w-12 px-3 py-2 text-center text-[10px] font-bold text-muted-foreground border-r border-border bg-muted/80">
+                                #
+                              </th>
+                              {Array.from({ length: maxCols }).map((_, cIdx) => (
+                                <th
+                                  key={cIdx}
+                                  className="px-4 py-2 font-bold text-[11px] text-muted-foreground border-r border-border min-w-[120px] bg-muted/80"
+                                >
+                                  {getExcelColumnLetter(cIdx + 1)}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {grid.map((row, rIdx) => {
+                              const isHeader = rIdx === 0 && excelHighlightHeader;
+                              return (
+                                <tr
+                                  key={rIdx}
+                                  className={`border-b border-border/70 transition-colors ${
+                                    isHeader
+                                      ? "bg-emerald-500/10 font-bold text-foreground hover:bg-emerald-500/15"
+                                      : rIdx % 2 === 0
+                                      ? "bg-background hover:bg-muted/40"
+                                      : "bg-muted/20 hover:bg-muted/50"
+                                  }`}
+                                >
+                                  {/* Row Number (1, 2, 3...) */}
+                                  <td className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground border-r border-border select-none bg-muted/30">
+                                    {rIdx + 1}
+                                  </td>
+                                  {Array.from({ length: maxCols }).map((_, cIdx) => {
+                                    const cellVal = row[cIdx] ?? "";
+                                    const isNumeric = /^-?\d+(\.\d+)?$/.test(cellVal.trim()) && cellVal.trim().length <= 15;
+                                    return (
+                                      <td
+                                        key={cIdx}
+                                        className={`px-3 py-2 border-r border-border/70 truncate max-w-[240px] ${
+                                          isHeader
+                                            ? "text-emerald-700 dark:text-emerald-300 font-extrabold"
+                                            : isNumeric
+                                            ? "text-right text-blue-600 dark:text-blue-400 font-semibold"
+                                            : "text-foreground"
+                                        }`}
+                                        title={cellVal}
+                                      >
+                                        {cellVal || <span className="opacity-20 italic">—</span>}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : hasProcessed && tool.slug === "image-to-word" ? (
+              /* Word Document Editable Live Preview */
+              <div className="w-full max-w-3xl flex flex-col gap-3 z-0 mt-8">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-500/20 text-blue-500">
+                      <FileType className="h-4 w-4" />
+                    </span>
+                    <span className="text-xs font-black text-foreground">
+                      Microsoft Word (.docx) Document Content
+                    </span>
+                    <span className="rounded-full bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 text-[10px] font-mono font-extrabold text-blue-600 dark:text-blue-400">
+                      {wordFontFamily} · {wordFontSize}pt
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(ocrText, "Document Text")}
+                      className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-xs cursor-pointer"
+                    >
+                      <Copy className="h-3.5 w-3.5 text-accent" />
+                      <span>Copy Text</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Styled Document Paper Preview */}
+                <div className="rounded-2xl border-2 border-border bg-background p-5 shadow-inner max-h-[380px] overflow-y-auto space-y-3">
+                  <textarea
+                    rows={12}
+                    value={ocrText}
+                    onChange={(e) => {
+                      setOcrText(e.target.value);
+                      const updatedLines = e.target.value.split("\n");
+                      setRawOcrDocumentLines(updatedLines);
+                      const fname = file?.name?.replace(/\.[^.]+$/, "") || "image";
+                      const updatedBlob = buildEditableDocxFromOcr(updatedLines, {
+                        fontFamily: wordFontFamily,
+                        fontSize: wordFontSize,
+                        mode: wordDocMode,
+                        imageDataUrl: processedSrc || imageSrc || undefined,
+                        imgW: dimensions.width,
+                        imgH: dimensions.height,
+                        filename: fname,
+                      });
+                      setDocumentBlob(updatedBlob);
+                      setNewSize(updatedBlob.size);
+                    }}
+                    placeholder="Extracted text will appear here. You can edit this text directly before downloading your Word document!"
+                    style={{ fontFamily: wordFontFamily, fontSize: `${wordFontSize + 2}px` }}
+                    className="w-full rounded-xl border border-border/80 bg-card p-4 text-foreground focus:border-accent focus:outline-none resize-none leading-relaxed shadow-inner"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
+                    <span>
+                      ✏️ <strong>Live Editable</strong>: Any changes typed above will be immediately included in your downloaded <strong className="text-foreground">.docx</strong> file.
+                    </span>
+                    <span className="font-mono font-bold">
+                      {ocrText ? `${ocrText.split(/\s+/).filter(Boolean).length} words · ${ocrText.length} chars` : "0 words"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : hasProcessed &&
+            (ocrText || binaryOutputText) &&
+            (tool.slug.includes("ocr") ||
+              tool.slug.includes("to-text") ||
+              tool.slug.includes("to-binary") ||
+              tool.slug.includes("to-ascii") ||
+              tool.slug.includes("to-base64") ||
+              tool.slug.includes("to-hex") ||
+              tool.slug.includes("to-octal") ||
+              tool.slug.includes("to-decimal")) ? (
+              <div className="w-full max-w-3xl flex flex-col gap-3 z-0 mt-8">
+                {/* Barcode / QR Code Quick Control Bar if detected */}
+                {detectedBarcodes.length > 0 && (
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 shadow-2xs">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white font-black text-[10px]">
+                        ✓
+                      </span>
+                      <span className="text-xs font-black text-foreground">
+                        {detectedBarcodes.length} {detectedBarcodes.some(b => b.type === "QR Code") && detectedBarcodes.some(b => b.type === "Barcode") ? "QR & Barcode" : detectedBarcodes[0]!.type} Detected
+                      </span>
+                      <div className="flex gap-1">
+                        {detectedBarcodes.map((b, bi) => (
+                          <span key={bi} className="rounded-md bg-background/80 border border-border px-2 py-0.5 text-[10px] font-mono font-bold text-foreground">
+                            {b.format}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-foreground bg-background/70 border border-border px-3 py-1 rounded-xl hover:border-foreground transition-all">
+                      <input
+                        type="checkbox"
+                        checked={skipBarcodeAndQr}
+                        onChange={(e) => {
+                          setSkipBarcodeAndQr(e.target.checked);
+                          recomputeOcrOutput(e.target.checked, ocrContrastMode, ocrOutputStructure);
+                        }}
+                        className="h-3.5 w-3.5 rounded accent-foreground cursor-pointer"
+                      />
+                      <span>Skip Barcode &amp; QR Code</span>
+                    </label>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                    <span>Extracted Content</span>
+                    <span className="rounded-full bg-secondary border border-border px-2 py-0.5 text-[10px] font-mono font-extrabold text-foreground">
+                      {ocrText ? `${ocrText.split(/\s+/).filter(Boolean).length} words · ${ocrText.length} chars` : `${binaryOutputText.length} chars`}
+                    </span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {["image-to-binary", "image-to-base64", "image-to-hex", "image-to-octal", "image-to-decimal", "image-to-ascii"].includes(tool.slug) && (
+                      <button
+                        type="button"
+                        onClick={() => setIsCodeEditorOpen(true)}
+                        className="flex items-center gap-1.5 rounded-xl border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-bold text-accent hover:bg-accent hover:text-accent-foreground transition-all shadow-xs cursor-pointer"
+                        title="Open output in Custom Code & Binary Editor"
+                      >
+                        <Code2 className="h-3.5 w-3.5" />
+                        <span>Open in Code Editor</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(ocrText || binaryOutputText, "Extracted Text")}
+                      className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-xs cursor-pointer"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      <span>Copy Text</span>
+                    </button>
+                  </div>
+                </div>
+
+                <textarea
+                  readOnly
+                  value={ocrText || binaryOutputText}
+                  className="w-full h-80 rounded-2xl border-2 border-border bg-background p-4 font-mono text-xs text-foreground focus:outline-none resize-none shadow-inner leading-relaxed"
+                />
+              </div>
+            ) : (
+              /* Image Preview */
+              <img
+                src={showOriginalComparison ? imageSrc || undefined : processedSrc || imageSrc || undefined}
+                alt="Processed Output Preview"
+                className="max-h-[480px] max-w-full object-contain rounded-xl shadow-lg border border-border/50 transition-all duration-200"
+              />
+            )}
+          </div>
+
+          {/* Action Buttons Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3.5 w-full items-stretch">
+            {/* 1. Primary Download Button */}
+            <button
+              type="button"
+              onClick={handleDownload}
+              className="sm:col-span-2 lg:col-span-6 w-full min-h-[58px] flex items-center justify-center gap-3 rounded-2xl bg-foreground px-6 py-4 text-base font-black text-background shadow-xl hover:shadow-2xl hover:scale-[1.01] active:scale-98 transition-all cursor-pointer whitespace-nowrap"
+            >
+              <Download className="h-5 w-5 text-accent shrink-0" />
+              <span>
+                {tool.slug === "compress-image"
+                  ? "Download Compressed Image"
+                  : tool.slug === "pdf-to-image"
+                  ? documentBlob
+                    ? `Download All ${pdfTotalPages} Pages (ZIP)`
+                    : pdfTotalPages > 1
+                    ? `Download Page ${pdfDocPage} (${pdfDocOutputFormat})`
+                    : `Download Image (${pdfDocOutputFormat})`
+                  : tool.slug === "powerpoint-to-image"
+                  ? documentBlob
+                    ? `Download All ${pptTotalSlides} Slides (ZIP)`
+                    : pptTotalSlides > 1
+                    ? `Download Slide ${pptDocSlide} (${pptDocOutputFormat})`
+                    : `Download Slide (${pptDocOutputFormat})`
+                  : tool.slug === "convert-to-jpg"
+                  ? "Download JPG File"
+                  : tool.slug === "convert-from-jpg"
+                  ? `Download ${targetFormatLabel} File`
+                  : tool.slug === "convert-to-png"
+                  ? "Download PNG File"
+                  : tool.slug === "convert-to-webp"
+                  ? "Download WebP File"
+                  : tool.slug === "image-to-pdf"
+                  ? "Download PDF Document"
+                  : tool.slug === "image-to-word"
+                  ? "Download Word Document"
+                  : tool.slug === "image-to-excel"
+                  ? "Download Excel Sheet"
+                  : tool.slug === "image-to-powerpoint"
+                  ? "Download Presentation"
+                  : isConversionTool
+                  ? `Download ${targetFormatLabel} File`
+                  : tool.slug === "resize-image"
+                  ? "Download Resized Image"
+                  : tool.slug === "crop-image"
+                  ? "Download Cropped Image"
+                  : tool.slug.includes("ocr") || tool.slug === "image-to-text"
+                  ? "Download Extracted Text"
+                  : `Download ${tool.outputs || "Processed"} File`}
+              </span>
+              {!isConversionTool && (
+                <span className="shrink-0 rounded-full bg-background/20 px-2.5 py-0.5 text-xs font-bold font-mono">
+                  {formatBytes(newSize || origSize)}
+                </span>
+              )}
+            </button>
+
+            {/* 2. Change Settings Button */}
+            <button
+              type="button"
+              onClick={() => setIsEditingSettings(true)}
+              className="sm:col-span-1 lg:col-span-3 w-full min-h-[58px] flex items-center justify-center gap-2 rounded-2xl border-2 border-border bg-card px-4 py-4 text-xs sm:text-sm font-extrabold text-foreground shadow-md hover:border-foreground hover:bg-secondary active:scale-98 transition-all cursor-pointer whitespace-nowrap"
+            >
+              <Sliders className="h-4 w-4 text-accent shrink-0" />
+              <span>Change Settings</span>
+            </button>
+
+            {/* 3. Process another File Button */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="sm:col-span-1 lg:col-span-3 w-full min-h-[58px] flex items-center justify-center gap-2 rounded-2xl border border-border bg-background px-4 py-4 text-xs sm:text-sm font-extrabold text-muted-foreground hover:text-foreground hover:border-foreground/40 active:scale-98 transition-all cursor-pointer whitespace-nowrap"
+              title="Upload and process another file"
+            >
+              <RefreshCw className="h-4 w-4 shrink-0" />
+              <span>
+                {tool.slug === "compress-image"
+                  ? "Compress another File"
+                  : tool.slug.startsWith("convert-") || tool.slug.includes("-to-")
+                  ? "Convert another File"
+                  : tool.slug === "resize-image"
+                  ? "Resize another File"
+                  : tool.slug === "crop-image"
+                  ? "Crop another File"
+                  : "Process another File"}
+              </span>
+            </button>
+          </div>
+        </div>
+      ) : !imageSrc && !file && !processedSrc ? (
         tool.slug === "html-to-image" && htmlLandingMode === "plain_text" ? (
           /* Plain Text / HTML Code Direct Input Card with Next Button */
           <div className="flex flex-col items-center justify-center rounded-3xl border border-border bg-card p-6 sm:p-10 w-full max-w-4xl mx-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200">
@@ -9459,529 +10092,6 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
             </p>
           </div>
         )
-      ) : hasProcessed && !isEditingSettings ? (
-        /* Dedicated Processed View for All Tools */
-        <div className="flex flex-col gap-6 w-full max-w-5xl mx-auto animate-in fade-in zoom-in-95 duration-300">
-          {/* Top Result Banner with Statistics */}
-          <div className="rounded-3xl border border-border bg-card p-5 md:p-6 shadow-xl transition-all">
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
-              {/* Left Column: Icon & Headings */}
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shadow-xs">
-                  <Check className="h-6 w-6 stroke-[2.5]" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                      {tool.slug === "compress-image"
-                        ? "Compression Complete"
-                        : tool.slug.startsWith("convert-") || tool.slug.includes("-to-")
-                        ? "Conversion Complete"
-                        : tool.slug === "resize-image"
-                        ? "Resize Complete"
-                        : tool.slug === "crop-image"
-                        ? "Crop Complete"
-                        : `${tool.name} Complete`}
-                    </span>
-                    <span className="text-xs text-muted-foreground font-semibold">
-                      {dimensions.width} × {dimensions.height} px
-                    </span>
-                  </div>
-                  <h3 className="font-display text-xl md:text-2xl font-bold tracking-tight text-foreground mt-1">
-                    {tool.slug === "compress-image"
-                      ? "Image Successfully Compressed"
-                      : tool.slug.startsWith("convert-") || tool.slug.includes("-to-")
-                      ? "Image Successfully Converted"
-                      : tool.slug === "resize-image"
-                      ? "Image Successfully Resized"
-                      : tool.slug === "crop-image"
-                      ? "Image Successfully Cropped"
-                      : tool.slug === "blur-image" || tool.slug === "anonymise-image"
-                      ? "Image Successfully Blurred"
-                      : tool.slug === "watermark-image"
-                      ? "Watermark Successfully Applied"
-                      : tool.slug.includes("ocr") || tool.slug === "image-to-text"
-                      ? "Text Successfully Extracted"
-                      : `${tool.name} Completed Successfully`}
-                  </h3>
-                </div>
-              </div>
-
-              {/* Right Column: Comparative Stats Box OR Conversion Flow */}
-              {isConversionTool ? (
-                <div className="w-full md:w-auto flex items-center gap-3 bg-secondary/50 px-4 py-2.5 rounded-2xl border border-border/80 shadow-xs">
-                  <div className="flex items-center gap-2 text-xs font-bold text-foreground">
-                    <span className="text-[10px] uppercase font-extrabold text-muted-foreground tracking-wider block">Conversion:</span>
-                    <span className="rounded-lg bg-background border border-border px-2.5 py-1 text-xs font-mono font-black text-foreground shadow-2xs">
-                      {sourceFormatLabel}
-                    </span>
-                    <ArrowRight className="h-4 w-4 text-emerald-500 font-bold shrink-0 stroke-[2.5]" />
-                    <span className="rounded-lg bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-xs font-mono font-black text-emerald-600 dark:text-emerald-400 shadow-2xs">
-                      {targetFormatLabel}
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="w-full md:w-auto flex items-center justify-between md:justify-end gap-3.5 sm:gap-5 bg-secondary/50 px-4 py-2.5 rounded-2xl border border-border/80 shadow-xs">
-                  <div className="text-left md:text-right">
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block leading-tight">Original</span>
-                    <span className="font-mono text-xs sm:text-sm font-semibold text-muted-foreground">
-                      {formatBytes(origSize)}
-                    </span>
-                  </div>
-
-                  <ArrowRight className="h-4 w-4 text-muted-foreground/60 shrink-0" />
-
-                  <div className="text-left md:text-right">
-                    <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider block leading-tight">
-                      {tool.slug === "compress-image" ? "Compressed" : "Processed"}
-                    </span>
-                    <span className="font-mono text-sm sm:text-base font-bold text-foreground">
-                      {formatBytes(newSize || origSize)}
-                    </span>
-                  </div>
-
-                  {origSize > 0 && newSize > 0 && origSize > newSize && (
-                    <div className="pl-2 border-l border-border/70 flex items-center">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 px-3 py-1 text-xs font-extrabold shadow-xs">
-                        <AnimatedCounter
-                          value={Math.max(0, Math.round(((origSize - newSize) / origSize) * 100))}
-                          suffix="%"
-                        />
-                        <span>Smaller</span>
-                      </span>
-                    </div>
-                  )}
-                  {origSize > 0 && newSize > 0 && newSize >= origSize && tool.slug === "resize-image" && resizeQualityMode === "improved" && (
-                    <div className="pl-2 border-l border-border/70 flex items-center">
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 px-3 py-1 text-xs font-extrabold shadow-xs">
-                        <Sparkles className="h-3.5 w-3.5 text-amber-500 animate-pulse" />
-                        <span>HD Enhanced (+{Math.round(((newSize - origSize) / origSize) * 100)}% Size)</span>
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Processed Output Preview Stage */}
-          <div className="relative rounded-3xl border-2 border-border bg-card/70 overflow-hidden shadow-xl flex flex-col items-center justify-center p-4 md:p-8 min-h-[460px] max-h-[640px]">
-            {/* Top Preview Controls Bar */}
-            <div className="absolute top-4 inset-x-4 flex items-center justify-between z-10 pointer-events-none">
-              <span className="pointer-events-auto rounded-full bg-background/90 border border-border px-3.5 py-1 text-xs font-bold text-foreground shadow-sm backdrop-blur">
-                {file?.name || `${tool.slug}_output`}
-              </span>
-              <div className="flex items-center gap-2 pointer-events-auto">
-                {imageSrc && processedSrc && imageSrc !== processedSrc && (
-                  <button
-                    type="button"
-                    onMouseDown={() => setShowOriginalComparison(true)}
-                    onMouseUp={() => setShowOriginalComparison(false)}
-                    onTouchStart={() => setShowOriginalComparison(true)}
-                    onTouchEnd={() => setShowOriginalComparison(false)}
-                    className="rounded-full border border-border bg-background/90 px-3.5 py-1 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-sm flex items-center gap-1.5 backdrop-blur cursor-pointer"
-                    title="Press and hold to compare with original image"
-                  >
-                    <Eye className="h-3.5 w-3.5 text-accent" />
-                    <span>{showOriginalComparison ? "Showing Original" : "Hold for Original"}</span>
-                  </button>
-                )}
-                {["image-to-binary", "image-to-base64", "image-to-hex", "image-to-octal", "image-to-decimal", "image-to-ascii"].includes(tool.slug) ? (
-                  <button
-                    type="button"
-                    onClick={() => setIsCodeEditorOpen(true)}
-                    className="rounded-full border border-border bg-background/90 px-3.5 py-1 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-sm flex items-center gap-1.5 backdrop-blur cursor-pointer"
-                    title="Open in Code Editor"
-                  >
-                    <Code2 className="h-3.5 w-3.5 text-accent" />
-                    <span>Open in Code Editor</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsFullscreenPreview(true)}
-                    className="rounded-full border border-border bg-background/90 px-3 py-1 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-sm flex items-center gap-1.5 backdrop-blur cursor-pointer"
-                    title="Enlarge preview"
-                  >
-                    <Maximize2 className="h-3.5 w-3.5 text-accent" />
-                    <span>Enlarge</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Dedicated Previews for Document & OCR Tools */}
-            {hasProcessed && tool.slug === "image-to-excel" ? (
-              /* Excel 2D Spreadsheet Matrix Live Preview */
-              <div className="w-full max-w-4xl flex flex-col gap-3 z-0 mt-8">
-                {(() => {
-                  const lines = rawOcrDocumentLines.length > 0 ? rawOcrDocumentLines : (ocrText ? ocrText.split("\n") : []);
-                  const grid = parseOcrTextToGrid(lines, excelParserMode);
-                  const maxCols = Math.max(...grid.map((r) => r.length), 1);
-                  const totalCells = grid.reduce((s, r) => s + r.length, 0);
-
-                  const copyAsCsv = () => {
-                    const csvContent = grid
-                      .map((row) =>
-                        row
-                          .map((cell) => {
-                            const escaped = cell.replace(/"/g, '""');
-                            return escaped.includes(",") || escaped.includes('"') || escaped.includes("\n")
-                              ? `"${escaped}"`
-                              : escaped;
-                          })
-                          .join(",")
-                      )
-                      .join("\n");
-                    copyToClipboard(csvContent, "CSV Data");
-                  };
-
-                  return (
-                    <div className="space-y-3">
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-500">
-                            <FileSpreadsheet className="h-4 w-4" />
-                          </span>
-                          <span className="text-xs font-black text-foreground">
-                            Extracted Spreadsheet Table ({excelSheetName})
-                          </span>
-                          <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
-                            {grid.length} Rows × {maxCols} Cols · {totalCells} Cells
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={copyAsCsv}
-                            className="flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all shadow-xs cursor-pointer"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                            <span>Copy as CSV</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => copyToClipboard(ocrText, "Extracted Text")}
-                            className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-xs cursor-pointer"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                            <span>Copy Text</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Interactive Spreadsheet Grid View */}
-                      <div className="rounded-2xl border-2 border-border bg-card overflow-hidden shadow-inner max-h-[380px] overflow-x-auto overflow-y-auto">
-                        <table className="w-full border-collapse text-left text-xs font-mono">
-                          {/* Column Letters Row (A, B, C...) */}
-                          <thead>
-                            <tr className="bg-muted/70 border-b border-border sticky top-0 z-10">
-                              <th className="w-12 px-3 py-2 text-center text-[10px] font-bold text-muted-foreground border-r border-border bg-muted/80">
-                                #
-                              </th>
-                              {Array.from({ length: maxCols }).map((_, cIdx) => (
-                                <th
-                                  key={cIdx}
-                                  className="px-4 py-2 font-bold text-[11px] text-muted-foreground border-r border-border min-w-[120px] bg-muted/80"
-                                >
-                                  {getExcelColumnLetter(cIdx + 1)}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {grid.map((row, rIdx) => {
-                              const isHeader = rIdx === 0 && excelHighlightHeader;
-                              return (
-                                <tr
-                                  key={rIdx}
-                                  className={`border-b border-border/70 transition-colors ${
-                                    isHeader
-                                      ? "bg-emerald-500/10 font-bold text-foreground hover:bg-emerald-500/15"
-                                      : rIdx % 2 === 0
-                                      ? "bg-background hover:bg-muted/40"
-                                      : "bg-muted/20 hover:bg-muted/50"
-                                  }`}
-                                >
-                                  {/* Row Number (1, 2, 3...) */}
-                                  <td className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground border-r border-border select-none bg-muted/30">
-                                    {rIdx + 1}
-                                  </td>
-                                  {Array.from({ length: maxCols }).map((_, cIdx) => {
-                                    const cellVal = row[cIdx] ?? "";
-                                    const isNumeric = /^-?\d+(\.\d+)?$/.test(cellVal.trim()) && cellVal.trim().length <= 15;
-                                    return (
-                                      <td
-                                        key={cIdx}
-                                        className={`px-3 py-2 border-r border-border/70 truncate max-w-[240px] ${
-                                          isHeader
-                                            ? "text-emerald-700 dark:text-emerald-300 font-extrabold"
-                                            : isNumeric
-                                            ? "text-right text-blue-600 dark:text-blue-400 font-semibold"
-                                            : "text-foreground"
-                                        }`}
-                                        title={cellVal}
-                                      >
-                                        {cellVal || <span className="opacity-20 italic">—</span>}
-                                      </td>
-                                    );
-                                  })}
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            ) : hasProcessed && tool.slug === "image-to-word" ? (
-              /* Word Document Editable Live Preview */
-              <div className="w-full max-w-3xl flex flex-col gap-3 z-0 mt-8">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-500/20 text-blue-500">
-                      <FileType className="h-4 w-4" />
-                    </span>
-                    <span className="text-xs font-black text-foreground">
-                      Microsoft Word (.docx) Document Content
-                    </span>
-                    <span className="rounded-full bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 text-[10px] font-mono font-extrabold text-blue-600 dark:text-blue-400">
-                      {wordFontFamily} · {wordFontSize}pt
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(ocrText, "Document Text")}
-                      className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-xs cursor-pointer"
-                    >
-                      <Copy className="h-3.5 w-3.5 text-accent" />
-                      <span>Copy Text</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Styled Document Paper Preview */}
-                <div className="rounded-2xl border-2 border-border bg-background p-5 shadow-inner max-h-[380px] overflow-y-auto space-y-3">
-                  <textarea
-                    rows={12}
-                    value={ocrText}
-                    onChange={(e) => {
-                      setOcrText(e.target.value);
-                      const updatedLines = e.target.value.split("\n");
-                      setRawOcrDocumentLines(updatedLines);
-                      const fname = file?.name?.replace(/\.[^.]+$/, "") || "image";
-                      const updatedBlob = buildEditableDocxFromOcr(updatedLines, {
-                        fontFamily: wordFontFamily,
-                        fontSize: wordFontSize,
-                        mode: wordDocMode,
-                        imageDataUrl: processedSrc || imageSrc || undefined,
-                        imgW: dimensions.width,
-                        imgH: dimensions.height,
-                        filename: fname,
-                      });
-                      setDocumentBlob(updatedBlob);
-                      setNewSize(updatedBlob.size);
-                    }}
-                    placeholder="Extracted text will appear here. You can edit this text directly before downloading your Word document!"
-                    style={{ fontFamily: wordFontFamily, fontSize: `${wordFontSize + 2}px` }}
-                    className="w-full rounded-xl border border-border/80 bg-card p-4 text-foreground focus:border-accent focus:outline-none resize-none leading-relaxed shadow-inner"
-                  />
-                  <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
-                    <span>
-                      ✏️ <strong>Live Editable</strong>: Any changes typed above will be immediately included in your downloaded <strong className="text-foreground">.docx</strong> file.
-                    </span>
-                    <span className="font-mono font-bold">
-                      {ocrText ? `${ocrText.split(/\s+/).filter(Boolean).length} words · ${ocrText.length} chars` : "0 words"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ) : hasProcessed &&
-            (ocrText || binaryOutputText) &&
-            (tool.slug.includes("ocr") ||
-              tool.slug.includes("to-text") ||
-              tool.slug.includes("to-binary") ||
-              tool.slug.includes("to-ascii") ||
-              tool.slug.includes("to-base64") ||
-              tool.slug.includes("to-hex") ||
-              tool.slug.includes("to-octal") ||
-              tool.slug.includes("to-decimal")) ? (
-              <div className="w-full max-w-3xl flex flex-col gap-3 z-0 mt-8">
-                {/* Barcode / QR Code Quick Control Bar if detected */}
-                {detectedBarcodes.length > 0 && (
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 shadow-2xs">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white font-black text-[10px]">
-                        ✓
-                      </span>
-                      <span className="text-xs font-black text-foreground">
-                        {detectedBarcodes.length} {detectedBarcodes.some(b => b.type === "QR Code") && detectedBarcodes.some(b => b.type === "Barcode") ? "QR & Barcode" : detectedBarcodes[0]!.type} Detected
-                      </span>
-                      <div className="flex gap-1">
-                        {detectedBarcodes.map((b, bi) => (
-                          <span key={bi} className="rounded-md bg-background/80 border border-border px-2 py-0.5 text-[10px] font-mono font-bold text-foreground">
-                            {b.format}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-foreground bg-background/70 border border-border px-3 py-1 rounded-xl hover:border-foreground transition-all">
-                      <input
-                        type="checkbox"
-                        checked={skipBarcodeAndQr}
-                        onChange={(e) => {
-                          setSkipBarcodeAndQr(e.target.checked);
-                          recomputeOcrOutput(e.target.checked, ocrContrastMode, ocrOutputStructure);
-                        }}
-                        className="h-3.5 w-3.5 rounded accent-foreground cursor-pointer"
-                      />
-                      <span>Skip Barcode &amp; QR Code</span>
-                    </label>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                    <span>Extracted Content</span>
-                    <span className="rounded-full bg-secondary border border-border px-2 py-0.5 text-[10px] font-mono font-extrabold text-foreground">
-                      {ocrText ? `${ocrText.split(/\s+/).filter(Boolean).length} words · ${ocrText.length} chars` : `${binaryOutputText.length} chars`}
-                    </span>
-                  </span>
-                  <div className="flex items-center gap-2">
-                    {["image-to-binary", "image-to-base64", "image-to-hex", "image-to-octal", "image-to-decimal", "image-to-ascii"].includes(tool.slug) && (
-                      <button
-                        type="button"
-                        onClick={() => setIsCodeEditorOpen(true)}
-                        className="flex items-center gap-1.5 rounded-xl border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-bold text-accent hover:bg-accent hover:text-accent-foreground transition-all shadow-xs cursor-pointer"
-                        title="Open output in Custom Code & Binary Editor"
-                      >
-                        <Code2 className="h-3.5 w-3.5" />
-                        <span>Open in Code Editor</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(ocrText || binaryOutputText, "Extracted Text")}
-                      className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-xs cursor-pointer"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                      <span>Copy Text</span>
-                    </button>
-                  </div>
-                </div>
-
-                <textarea
-                  readOnly
-                  value={ocrText || binaryOutputText}
-                  className="w-full h-80 rounded-2xl border-2 border-border bg-background p-4 font-mono text-xs text-foreground focus:outline-none resize-none shadow-inner leading-relaxed"
-                />
-              </div>
-            ) : (
-              /* Image Preview */
-              <img
-                src={showOriginalComparison ? imageSrc || undefined : processedSrc || imageSrc || undefined}
-                alt="Processed Output Preview"
-                className="max-h-[480px] max-w-full object-contain rounded-xl shadow-lg border border-border/50 transition-all duration-200"
-              />
-            )}
-          </div>
-
-          {/* Action Buttons Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3.5 w-full items-stretch">
-            {/* 1. Primary Download Button */}
-            <button
-              type="button"
-              onClick={handleDownload}
-              className="sm:col-span-2 lg:col-span-6 w-full min-h-[58px] flex items-center justify-center gap-3 rounded-2xl bg-foreground px-6 py-4 text-base font-black text-background shadow-xl hover:shadow-2xl hover:scale-[1.01] active:scale-98 transition-all cursor-pointer whitespace-nowrap"
-            >
-              <Download className="h-5 w-5 text-accent shrink-0" />
-              <span>
-                {tool.slug === "compress-image"
-                  ? "Download Compressed Image"
-                  : tool.slug === "pdf-to-image"
-                  ? documentBlob
-                    ? `Download All ${pdfTotalPages} Pages (ZIP)`
-                    : pdfTotalPages > 1
-                    ? `Download Page ${pdfDocPage} (${pdfDocOutputFormat})`
-                    : `Download Image (${pdfDocOutputFormat})`
-                  : tool.slug === "powerpoint-to-image"
-                  ? documentBlob
-                    ? `Download All ${pptTotalSlides} Slides (ZIP)`
-                    : pptTotalSlides > 1
-                    ? `Download Slide ${pptDocSlide} (${pptDocOutputFormat})`
-                    : `Download Slide (${pptDocOutputFormat})`
-                  : tool.slug === "convert-to-jpg"
-                  ? "Download JPG File"
-                  : tool.slug === "convert-from-jpg"
-                  ? `Download ${targetFormatLabel} File`
-                  : tool.slug === "convert-to-png"
-                  ? "Download PNG File"
-                  : tool.slug === "convert-to-webp"
-                  ? "Download WebP File"
-                  : tool.slug === "image-to-pdf"
-                  ? "Download PDF Document"
-                  : tool.slug === "image-to-word"
-                  ? "Download Word Document"
-                  : tool.slug === "image-to-excel"
-                  ? "Download Excel Sheet"
-                  : tool.slug === "image-to-powerpoint"
-                  ? "Download Presentation"
-                  : isConversionTool
-                  ? `Download ${targetFormatLabel} File`
-                  : tool.slug === "resize-image"
-                  ? "Download Resized Image"
-                  : tool.slug === "crop-image"
-                  ? "Download Cropped Image"
-                  : tool.slug.includes("ocr") || tool.slug === "image-to-text"
-                  ? "Download Extracted Text"
-                  : `Download ${tool.outputs || "Processed"} File`}
-              </span>
-              {!isConversionTool && (
-                <span className="shrink-0 rounded-full bg-background/20 px-2.5 py-0.5 text-xs font-bold font-mono">
-                  {formatBytes(newSize || origSize)}
-                </span>
-              )}
-            </button>
-
-            {/* 2. Change Settings Button */}
-            <button
-              type="button"
-              onClick={() => setIsEditingSettings(true)}
-              className="sm:col-span-1 lg:col-span-3 w-full min-h-[58px] flex items-center justify-center gap-2 rounded-2xl border-2 border-border bg-card px-4 py-4 text-xs sm:text-sm font-extrabold text-foreground shadow-md hover:border-foreground hover:bg-secondary active:scale-98 transition-all cursor-pointer whitespace-nowrap"
-            >
-              <Sliders className="h-4 w-4 text-accent shrink-0" />
-              <span>Change Settings</span>
-            </button>
-
-            {/* 3. Process another File Button */}
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="sm:col-span-1 lg:col-span-3 w-full min-h-[58px] flex items-center justify-center gap-2 rounded-2xl border border-border bg-background px-4 py-4 text-xs sm:text-sm font-extrabold text-muted-foreground hover:text-foreground hover:border-foreground/40 active:scale-98 transition-all cursor-pointer whitespace-nowrap"
-              title="Upload and process another file"
-            >
-              <RefreshCw className="h-4 w-4 shrink-0" />
-              <span>
-                {tool.slug === "compress-image"
-                  ? "Compress another File"
-                  : tool.slug.startsWith("convert-") || tool.slug.includes("-to-")
-                  ? "Convert another File"
-                  : tool.slug === "resize-image"
-                  ? "Resize another File"
-                  : tool.slug === "crop-image"
-                  ? "Crop another File"
-                  : "Process another File"}
-              </span>
-            </button>
-          </div>
-        </div>
       ) : (
         /* Workspace Active Mode: Image Preview + Settings (Full width, no excess margins) */
         <div className={`grid items-start gap-6 lg:gap-8 w-full ${tool.slug === "watermark-image" ? "lg:grid-cols-[1.15fr_1fr]" : "lg:grid-cols-[2fr_1.2fr]"}`}>
@@ -10026,10 +10136,21 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {hasProcessed && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingSettings(false)}
+                    className="rounded-full border border-emerald-500/40 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-3 py-1 text-xs font-bold hover:bg-emerald-500 hover:text-white transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                    title="Return to processed result view"
+                  >
+                    <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                    <span>View Result</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setIsFullscreenPreview(true)}
-                  className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-sm flex items-center gap-1.5"
+                  className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
                   title="Enlarge preview"
                 >
                   <Maximize2 className="h-3.5 w-3.5 text-accent" />
@@ -10038,7 +10159,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-sm"
+                  className="rounded-full border border-border bg-background px-3 py-1 text-xs font-bold hover:bg-foreground hover:text-background transition-all shadow-sm cursor-pointer"
                 >
                   Change File
                 </button>
@@ -10060,13 +10181,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
               }`}
             >
               {/* Image Frame Wrapper */}
-              <div
-                className="relative inline-flex items-center justify-center max-h-full max-w-full"
-                style={{
-                  width: tool.slug === "resize-image" && renderedImgSize ? `${renderedImgSize.width}px` : "auto",
-                  height: tool.slug === "resize-image" && renderedImgSize ? `${renderedImgSize.height}px` : "auto",
-                }}
-              >
+              <div className="relative inline-flex items-center justify-center max-h-full max-w-full">
                 {/* TOP DIMENSION LINE: Width (Shown ONLY on Resize Tool) */}
                 {tool.slug === "resize-image" && (
                   <div
@@ -10103,7 +10218,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                         ? "text-accent scale-105 drop-shadow-[0_0_8px_rgba(249,115,22,0.6)]"
                         : "text-accent"
                     }`}
-                    style={{ left: "calc(100% - 28px)", top: 0, bottom: 0, height: "100%" }}
+                    style={{ left: "calc(100% + 14px)", top: 0, bottom: 0, height: "100%" }}
                   >
                     {/* Top tick ─ */}
                     <div className="w-3 h-[1.5px] bg-accent rounded-full" />
@@ -10284,7 +10399,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                         : settingsHeight
                         ? `${Math.max(tool.slug === "image-to-text-ocr" || tool.slug === "image-to-binary" ? 600 : 540, settingsHeight - (tool.slug === "resize-image" ? 110 : 90))}px`
                         : "580px",
-                      maxWidth: "100%",
+                      maxWidth: tool.slug === "resize-image" ? "calc(100% - 64px)" : "100%",
                       cursor: tool.slug === "color-picker-from-image" ? "crosshair" : "default",
                       transform: tool.slug === "rotate-image"
                         ? `scale(${(() => {
@@ -10559,7 +10674,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                         {isDetectingFaces ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
-                          <Sparkles className="h-3.5 w-3.5" />
+                          <Wand2 className="h-3.5 w-3.5" />
                         )}
                       </div>
                       <span>
@@ -10907,7 +11022,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                             : "text-muted-foreground hover:text-foreground hover:bg-card/40"
                         }`}
                       >
-                        <Sparkles className="h-4 w-4" />
+                        <Wand2 className="h-4 w-4" />
                         <span>Size</span>
                       </button>
                     </div>
@@ -11197,7 +11312,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                             : "text-muted-foreground hover:text-foreground hover:bg-card/40"
                         }`}
                       >
-                        <Sparkles className="h-4 w-4 text-accent" />
+                        <Wand2 className="h-4 w-4 text-accent" />
                         <span>Quality Improvement</span>
                       </button>
                     </div>
@@ -11651,7 +11766,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                     {/* Mode C: Blur Description */}
                     {rotateBgMode === "blur" && (
                       <div className="rounded-xl border border-border/80 bg-secondary/40 p-3 text-[11px] font-semibold text-muted-foreground flex items-center gap-2 animate-in fade-in duration-200">
-                        <Sparkles className="h-4 w-4 text-accent shrink-0" />
+                        <Wand2 className="h-4 w-4 text-accent shrink-0" />
                         <span>Artistic blurred expansion of your original image fills all rotated corner gaps smoothly.</span>
                       </div>
                     )}
@@ -12276,7 +12391,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                     <div className="grid grid-cols-2 gap-2">
                       {[
                         { id: "full_auto", name: "⚡ Full Auto AI Scan", desc: "Auto-detects all watermarks, logos & AI sparkles", badge: "Recommended" },
-                        { id: "gemini_ai", name: "✨ Gemini & AI Sparkles", desc: "Strictly targets AI badges & star glyphs", badge: "Precise" },
+                        { id: "gemini_ai", name: "✨ Gemini & AI Wand2", desc: "Strictly targets AI badges & star glyphs", badge: "Precise" },
                         { id: "corners", name: "↘️ Corner Logos & Stamps", desc: "Auto-cleans corner watermarks & timestamps", badge: "Corners" },
                         { id: "stock_grid", name: "🌐 Stock Photo Grid", desc: "Auto-cleans diagonal tiled crosshatches", badge: "Full Grid" },
                       ].map((item) => (
@@ -12542,7 +12657,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                   <div className="rounded-2xl border-2 border-accent/30 bg-accent/5 p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-accent" />
+                        <Wand2 className="h-4 w-4 text-accent" />
                         <span className="text-xs font-black text-foreground">
                           {faceRegions.length === 0
                             ? "No Faces Detected"
@@ -12568,7 +12683,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                           </>
                         ) : (
                           <>
-                            <Sparkles className="h-3.5 w-3.5 text-accent" />
+                            <Wand2 className="h-3.5 w-3.5 text-accent" />
                             <span>Auto-Detect & Blur Faces</span>
                           </>
                         )}
@@ -13395,7 +13510,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                       </span>
                     </div>
                     <div className="pt-1 border-t border-border/50 flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <Sparkles className="h-3 w-3 text-amber-500 shrink-0" />
+                      <Wand2 className="h-3 w-3 text-amber-500 shrink-0" />
                       <span>Changes reflect instantly in the live square preview!</span>
                     </div>
                   </div>
@@ -13407,7 +13522,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                     </label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {[
-                        { id: "blur", label: "Blurred", icon: Sparkles },
+                        { id: "blur", label: "Blurred", icon: Wand2 },
                         { id: "color", label: "Solid Color", icon: Palette },
                         { id: "gradient", label: "Gradients", icon: Layers },
                         { id: "transparent", label: "Transparent", icon: Grid3X3 },
@@ -14183,7 +14298,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                         onClick={() => setIsOcrLanguageDialogOpen(true)}
                         className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-xs font-extrabold text-accent hover:bg-accent hover:text-accent-foreground transition-all cursor-pointer shadow-2xs"
                       >
-                        <Sparkles className="h-3 w-3" />
+                        <Wand2 className="h-3 w-3" />
                         <span>Change Language</span>
                       </button>
                     </div>
@@ -14487,7 +14602,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                     </label>
                     <div className="grid grid-cols-3 gap-2">
                       {[
-                        { id: "auto", label: "Adaptive", sub: "Auto lighting", icon: Sparkles },
+                        { id: "auto", label: "Adaptive", sub: "Auto lighting", icon: Wand2 },
                         { id: "high", label: "High Contrast", sub: "B&W threshold", icon: Sun },
                         { id: "inverted", label: "Invert Dark", sub: "Dark mode invert", icon: Moon },
                       ].map((f) => {
@@ -15535,7 +15650,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                       <div>
                         <div className="flex items-center gap-2">
                           <label className="text-xs font-black uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                            <Sparkles className="h-3.5 w-3.5 text-accent" />
+                            <Wand2 className="h-3.5 w-3.5 text-accent" />
                             <span>Most Common Colors</span>
                           </label>
                           <span className="rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-500">
@@ -15751,7 +15866,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
 
                   {/* Usage Guide Tip */}
                   <div className="rounded-xl border border-accent/30 bg-accent/5 p-3 text-xs text-muted-foreground flex items-start gap-2.5">
-                    <Sparkles className="h-4 w-4 text-accent shrink-0 mt-0.5" />
+                    <Wand2 className="h-4 w-4 text-accent shrink-0 mt-0.5" />
                     <div>
                       <span className="font-bold text-foreground">Precision Pixel Zoom:</span> Hover anywhere over your image to inspect pixels through the 9×9 magnifying loupe. Click any pixel to pick and instantly copy its HEX code!
                     </div>
@@ -15886,7 +16001,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                         onClick={() => setIsOcrLanguageDialogOpen(true)}
                         className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-3 py-0.5 text-xs font-extrabold text-accent hover:bg-accent hover:text-accent-foreground transition-all cursor-pointer"
                       >
-                        <Sparkles className="h-3 w-3" />
+                        <Wand2 className="h-3 w-3" />
                         <span>Change (60+)</span>
                       </button>
                     </div>
@@ -16075,7 +16190,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                         onClick={() => setIsOcrLanguageDialogOpen(true)}
                         className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-3 py-0.5 text-xs font-extrabold text-accent hover:bg-accent hover:text-accent-foreground transition-all cursor-pointer"
                       >
-                        <Sparkles className="h-3 w-3" />
+                        <Wand2 className="h-3 w-3" />
                         <span>Change (60+)</span>
                       </button>
                     </div>
@@ -16252,6 +16367,73 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
 
               {/* Action Buttons: Convert/Process + Download */}
               <div className="pt-6 border-t border-border flex flex-col gap-3">
+                {/* Credit Cost or Free Daily Quota Indicator */}
+                {(() => {
+                  const cost = AdminStore.getToolCreditCost(tool.slug);
+                  const isFree = cost === 0;
+                  const currentCredits = AuthUser.getCredits();
+
+                  if (isFree) {
+                    const usage = AdminStore.getToolDailyUsage(tool.slug);
+                    return (
+                      <div className="flex items-center justify-between text-xs px-1 text-muted-foreground font-semibold">
+                        <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                          <Wand2 className="h-3.5 w-3.5" />
+                          <span>Free Tool (20 files/day)</span>
+                        </span>
+                        <span className="font-mono text-[11px] text-muted-foreground">
+                          {usage} / 20 used today
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  const silver = AuthUser.getSilverTokens();
+                  const gold = AuthUser.getGoldTokens();
+
+                  return (
+                    <div className="flex items-center justify-between text-xs px-1 text-muted-foreground font-semibold">
+                      <span className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-foreground font-bold">
+                          Cost: {cost} Token{cost === 1 ? "" : "s"}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 text-[11px] bg-muted/60 px-2 py-0.5 rounded-full border border-border/60">
+                          <span className="flex items-center gap-1" title="Silver Tokens (Free)">
+                            <TokenCoin type="silver" size="xs" />
+                            <span className="font-mono text-slate-700 dark:text-slate-300 font-bold">{silver}</span>
+                          </span>
+                          <span className="text-border">|</span>
+                          <span className="flex items-center gap-1" title="Gold Tokens (Purchased)">
+                            <TokenCoin type="gold" size="xs" showGlow={gold > 0} />
+                            <span className="font-mono text-amber-500 font-bold">{gold}</span>
+                          </span>
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof window !== "undefined") {
+                            window.dispatchEvent(
+                              new CustomEvent("bg:show_add_credits_dialog", {
+                                detail: {
+                                  toolName: tool.name,
+                                  toolSlug: tool.slug,
+                                  creditCost: cost,
+                                  currentCredits,
+                                },
+                              })
+                            );
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 hover:underline font-extrabold cursor-pointer text-xs"
+                      >
+                        <TokenCoin type="gold" size="xs" />
+                        <span>Get Gold Tokens</span>
+                      </button>
+                    </div>
+                  );
+                })()}
+
                 {/* 1. Primary Convert / Process Image Button */}
                 <button
                   type="button"
@@ -16310,7 +16492,7 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                     </>
                   ) : (
                     <>
-                      <Sparkles className="h-5 w-5" />
+                      <Wand2 className="h-5 w-5" />
                       <span>
                         {hasProcessed
                           ? tool.slug === "compress-image"
@@ -16349,6 +16531,10 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                             ? "Update Blurred Faces"
                             : tool.slug === "meme-generator"
                             ? "Update Meme Image"
+                            : tool.slug === "resize-image"
+                            ? "Update Resized Image"
+                            : tool.slug === "crop-image"
+                            ? "Update Cropped Image"
                             : `Re-process ${tool.name}`
                           : tool.slug === "compress-image"
                           ? "Compress Image"
@@ -16386,6 +16572,10 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                           ? "Apply Face Blur & View Output"
                           : tool.slug === "meme-generator"
                           ? "Generate Meme & View Output"
+                          : tool.slug === "resize-image"
+                          ? "Resize Image & View Output"
+                          : tool.slug === "crop-image"
+                          ? "Crop Image & View Output"
                           : "Convert / Process Image"}
                       </span>
                     </>
@@ -16403,86 +16593,38 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                   </button>
                 )}
 
-                {/* 2. Download Button (for other tools) */}
-                {tool.slug !== "compress-image" && (
+                {/* 2. Export Palette Button (only for color-picker-from-image) */}
+                {tool.slug === "color-picker-from-image" && (
                   <button
                     type="button"
                     onClick={() => {
-                      if (tool.slug === "color-picker-from-image") {
-                        const paletteList = colorHistory.length > 0 ? colorHistory : [pickedHex];
-                        const paletteContent = [
-                          `# BG Tool - Color Palette Export`,
-                          `# Active Color: ${pickedHex} | ${pickedRgb} | ${pickedHsl}`,
-                          ``,
-                          `/* CSS Variables */`,
-                          `:root {`,
-                          `  --color-active: ${pickedHex};`,
-                          ...paletteList.map((hex, i) => `  --color-${i + 1}: ${hex};`),
-                          `}`,
-                          ``,
-                          `/* Sampled Color Hex List (${paletteList.length} colors) */`,
-                          ...paletteList,
-                        ].join("\n");
-                        const blob = new Blob([paletteContent], { type: "text/plain;charset=utf-8" });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `palette-${pickedHex.replace("#", "")}.txt`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                        toast.success(`Exported ${paletteList.length} color palette (.txt)!`);
-                        return;
-                      }
-                      if ((tool.slug === "watermark-image" || tool.slug === "rotate-image" || tool.slug === "blur-face" || tool.slug === "meme-generator" || tool.slug === "base64-to-image" || tool.slug === "square-your-image") && (!processedSrc || isEditingSettings)) {
-                        processImage();
-                        setTimeout(() => handleDownload(), 350);
-                      } else {
-                        handleDownload();
-                      }
+                      const paletteList = colorHistory.length > 0 ? colorHistory : [pickedHex];
+                      const paletteContent = [
+                        `# BG Tool - Color Palette Export`,
+                        `# Active Color: ${pickedHex} | ${pickedRgb} | ${pickedHsl}`,
+                        ``,
+                        `/* CSS Variables */`,
+                        `:root {`,
+                        `  --color-active: ${pickedHex};`,
+                        ...paletteList.map((hex, i) => `  --color-${i + 1}: ${hex};`),
+                        `}`,
+                        ``,
+                        `/* Sampled Color Hex List (${paletteList.length} colors) */`,
+                        ...paletteList,
+                      ].join("\n");
+                      const blob = new Blob([paletteContent], { type: "text/plain;charset=utf-8" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `palette-${pickedHex.replace("#", "")}.txt`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                      toast.success(`Exported ${paletteList.length} color palette (.txt)!`);
                     }}
-                    disabled={!hasProcessed && !processedSrc && tool.slug !== "watermark-image" && tool.slug !== "rotate-image" && tool.slug !== "blur-face" && tool.slug !== "meme-generator" && tool.slug !== "color-picker-from-image" && tool.slug !== "square-your-image"}
-                    className={`w-full flex items-center justify-center gap-2 rounded-2xl px-6 py-3.5 text-sm font-extrabold shadow-lg transition-all ${
-                      hasProcessed || processedSrc || ((tool.slug === "watermark-image" || tool.slug === "rotate-image" || tool.slug === "blur-face" || tool.slug === "meme-generator" || tool.slug === "color-picker-from-image" || tool.slug === "square-your-image") && imageSrc)
-                        ? "bg-foreground text-background hover:scale-[1.02] cursor-pointer"
-                        : "bg-secondary text-muted-foreground opacity-60 cursor-not-allowed"
-                    }`}
+                    className="w-full flex items-center justify-center gap-2 rounded-2xl bg-foreground text-background hover:scale-[1.02] px-6 py-3.5 text-sm font-extrabold shadow-lg transition-all cursor-pointer"
                   >
-                    <Download className="h-4 w-4" />{" "}
-                    {tool.slug === "image-to-pdf"
-                      ? "Download PDF (.pdf) →"
-                      : tool.slug === "image-to-word"
-                      ? "Download Word (.docx) →"
-                      : tool.slug === "image-to-excel"
-                      ? "Download Excel (.xlsx) →"
-                      : tool.slug === "image-to-powerpoint"
-                      ? "Download Presentation (.pptx) →"
-                      : tool.slug === "pdf-to-image"
-                      ? `Download Image (${pdfDocOutputFormat}) →`
-                      : tool.slug === "word-to-image"
-                      ? `Download Image (${wordDocOutputFormat}) →`
-                      : tool.slug === "excel-to-image"
-                      ? `Download Image (${excelDocOutputFormat}) →`
-                      : tool.slug === "powerpoint-to-image"
-                      ? `Download Image (${pptDocOutputFormat}) →`
-                      : tool.slug === "image-to-text-ocr" || tool.slug === "image-to-text"
-                      ? "Download Extracted Text (.txt) →"
-                      : ["image-to-base64", "image-to-octal", "image-to-hex", "image-to-decimal", "image-to-ascii"].includes(tool.slug)
-                      ? "Download Text Data (.txt) →"
-                      : tool.slug === "base64-to-image"
-                      ? `Download Decoded Image (${base64ExportFormat}) →`
-                      : tool.slug === "watermark-image"
-                      ? "Download Watermarked Image →"
-                      : tool.slug === "square-your-image"
-                      ? `Download 1:1 Square Image (${squareExportFormat}) →`
-                      : tool.slug === "rotate-image"
-                      ? "Download Rotated Image →"
-                      : tool.slug === "blur-face"
-                      ? "Download Anonymized Image →"
-                      : tool.slug === "meme-generator"
-                      ? "Download Meme Image →"
-                      : tool.slug === "color-picker-from-image"
-                      ? `Export Palette (.txt) →`
-                      : "Download Result →"}
+                    <Download className="h-4 w-4" />
+                    <span>Export Palette (.txt)</span>
                   </button>
                 )}
               </div>

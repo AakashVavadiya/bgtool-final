@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Sparkles, X, ArrowRight, Send } from "lucide-react";
+import { Wand2, X, ArrowRight, Send } from "lucide-react";
 import { KarudiAvatar } from "@/components/KarudiAvatar";
 
 export function KarudiFab() {
@@ -105,7 +105,7 @@ export function KarudiFab() {
               Karudi 1.0 Prime
             </p>
             <p className="text-[10px] font-bold text-accent leading-none mt-1 flex items-center gap-1">
-              <Sparkles className="h-2.5 w-2.5 animate-spin" /> Try AI
+              <Wand2 className="h-2.5 w-2.5 animate-spin" /> Try AI
             </p>
           </div>
         </div>

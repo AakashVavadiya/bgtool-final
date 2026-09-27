@@ -12,9 +12,10 @@ import {
   Coins,
   MapPin,
   Clock,
-  Sparkles,
+  Wand2,
   Shield,
 } from "lucide-react";
+import { TokenCoin } from "@/components/TokenCoins";
 
 export function UsersManagement() {
   const [users, setUsers] = useState<LoggedUser[]>(() => AdminStore.getUsers());
@@ -128,7 +129,7 @@ export function UsersManagement() {
               <tr>
                 <th className="py-4 px-6">User & Profile</th>
                 <th className="py-4 px-6">Current Plan</th>
-                <th className="py-4 px-6">Credits Balance</th>
+                <th className="py-4 px-6">Tokens Balance</th>
                 <th className="py-4 px-6">Total Processed</th>
                 <th className="py-4 px-6">Location & Last Active</th>
                 <th className="py-4 px-6">Status</th>
@@ -168,11 +169,21 @@ export function UsersManagement() {
                     </span>
                   </td>
 
-                  {/* Credits */}
+                  {/* Tokens */}
                   <td className="py-4 px-6">
-                    <div className="flex items-center gap-2 font-mono font-bold text-foreground">
-                      <Coins className="h-3.5 w-3.5 text-amber-500" />
-                      <span>{u.credits.toLocaleString()}</span>
+                    <div className="flex items-center gap-1.5 font-mono font-bold text-foreground">
+                      <span>{u.credits.toLocaleString()} Total</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-1">
+                      <span className="inline-flex items-center gap-1 text-slate-700 dark:text-slate-300 font-semibold">
+                        <TokenCoin type="silver" size="xs" />
+                        <span>{u.freeCredits ?? 10} Silver</span>
+                      </span>
+                      <span>·</span>
+                      <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold">
+                        <TokenCoin type="gold" size="xs" showGlow={(u.paidCredits ?? 0) > 0} />
+                        <span>{u.paidCredits ?? 0} Gold</span>
+                      </span>
                     </div>
                   </td>
 

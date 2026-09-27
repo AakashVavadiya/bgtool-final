@@ -3,6 +3,7 @@ import {
   buildEditableDocxFromOcr,
   buildDocxFromImage,
   performAdvancedOcr,
+  buildEditableXlsxFromOcr,
 } from "@/components/InteractiveToolWorkspace";
 
 export type SubModelId = "karudi" | "ganga" | "brahmaputra" | "narmada" | "saraswati";
@@ -52,7 +53,7 @@ export const SUB_MODELS: Record<SubModelId, SubModelMetadata> = {
     badge: "OCR & Generative",
     color: "text-emerald-500",
     accentBg: "bg-emerald-500/10 border-emerald-500/30",
-    iconName: "Sparkles",
+    iconName: "Wand2",
   },
   saraswati: {
     id: "saraswati",
@@ -71,6 +72,8 @@ export type KarudiActionType =
   | "convert_file_general"
   | "jpg_to_word"
   | "pdf_to_word"
+  | "jpg_to_excel"
+  | "pdf_to_excel"
   | "image_to_pdf"
   | "pdf_to_image"
   | "image_to_text"
@@ -128,17 +131,36 @@ export interface KarudiContext {
   activeCutoutSrc?: string | undefined;
   activeFilename?: string | undefined;
   pendingAction?: string | undefined;
+  activeTargetFormat?: string | undefined;
+  lastAction?: KarudiActionType | undefined;
 }
 
 /**
- * Normalizes text to handle common typos, abbreviations, and informal speech
+ * Normalizes text to handle common typos, abbreviations, informal speech, and regional scripts
  */
 function normalizePrompt(raw: string): string {
-  return raw
+  let text = raw
     .toLowerCase()
     .trim()
     .replace(/[^\w\s]/g, " ")
     .replace(/\s+/g, " ");
+
+  const typoMap: [RegExp, string][] = [
+    [/\b(exel|excle|ecxel|exl|escel|xcel|excl|excell|exell|exle|ecxl|xcl)\b/g, "excel"],
+    [/\b(pdff|pdfd)\b/g, "pdf"],
+    [/\b(imgae|iamge|imej|imag|imagge)\b/g, "image"],
+    [/\b(convet|conert|covnert|cnvrt|cnvt|cnvert|covnert)\b/g, "convert"],
+    [/\b(backgroud|backgorund|bkg|back ground)\b/g, "background"],
+    [/\b(remov|rmv|remve|eraz)\b/g, "remove"],
+    [/\b(compres|comprss|compresss)\b/g, "compress"],
+    [/\b(resiz|resizee)\b/g, "resize"],
+    [/\b(wod|wrd)\b/g, "word"],
+    [/\b(docxx|dooc)\b/g, "docx"],
+  ];
+  for (const [re, rep] of typoMap) {
+    text = text.replace(re, rep);
+  }
+  return text;
 }
 
 /**
@@ -163,8 +185,15 @@ export function analyzeKarudiIntent(
     (context?.activeFilename && /\.(png|jpe?g|webp|avif|gif)$/i.test(context.activeFilename))
   );
 
+  // Check if user is explicitly requesting another action or correcting a previous action
+  const isExplicitOtherAction =
+    /\b(excel|xlsx|xls|spreadsheet|sheet|word|docx|doc|pdf|resize|compress|rotate|square|convert|format|binary)\b/i.test(norm) ||
+    /^(no|wait|actually|rather|instead)\b/i.test(norm) ||
+    /\b(no\s*i\s*need|no\s*i\s*want|actually\s*i\s*need|instead\s*of)\b/i.test(norm);
+
   // 1. ADD / STAGE BACKGROUND COLOR (when a cutout or image is available)
   const isBgColorRequest =
+    !isExplicitOtherAction &&
     (context?.activeCutoutSrc || context?.activeImageSrc) &&
     (/(add|change|set|put|make|apply)\s*(background|bg|backdrop)?\s*(color|colour|white|black|blue|red|green|blur)/i.test(norm) ||
       /(white|black|blue|red|green|blur|yellow|purple)\s*(background|bg|backdrop)/i.test(norm) ||
@@ -206,17 +235,17 @@ export function analyzeKarudiIntent(
     };
   }
 
-  // 2. BACKGROUND REMOVAL (handles "remove background", "remov bg", "rmv background", "bg removal", "cutout", "remove", etc.)
+  // 2. BACKGROUND REMOVAL (ONLY if user explicitly requested background removal and not another tool)
   const isBgRemoval =
-    context?.pendingAction === "remove_background" ||
-    /(remov|rmv|remve|eraz|erase|cut\s*out|isolat|isolate|clean)\s*(the\s*)?(background|backg|bkg|bg|backdrop)\b/i.test(norm) ||
-    /\b(background|bg)\s*(removal|remover|cutout|remove|erase)\b/i.test(norm) ||
-    /(bg|background)\s*(hata\s*do|hatao|nikal\s*do|saaf\s*karo)/i.test(norm) ||
-    /(piche\s*ka)\s*(hata\s*do|hatao|nikal\s*do)/i.test(norm) ||
-    /^(bg\s*removal|remove\s*bg|remove\s*background|cutout|remove|remov|rmv|cut\s*out|transparent|erase|isolate|remove\s*it|remove\s*this|do\s*it|bg|remov\s*bg\s*plz|remove\s*bg\s*pls)$/i.test(norm) ||
-    norm === "remove" ||
-    norm === "remov" ||
-    norm === "bg";
+    !isExplicitOtherAction &&
+    (
+      /(remov|rmv|remve|eraz|erase|cut\s*out|isolat|isolate|clean)\s*(the\s*)?(background|backg|bkg|bg|backdrop)\b/i.test(norm) ||
+      /\b(background|bg)\s*(removal|remover|cutout|remove|erase)\b/i.test(norm) ||
+      /(bg|background)\s*(hata\s*do|hatao|nikal\s*do|saaf\s*karo)/i.test(norm) ||
+      /(piche\s*ka)\s*(hata\s*do|hatao|nikal\s*do)/i.test(norm) ||
+      /^(bg\s*removal|remove\s*bg|remove\s*background|cutout|transparent|erase|isolate|remove\s*it|remove\s*this|remov\s*bg\s*plz|remove\s*bg\s*pls)$/i.test(norm) ||
+      ((context?.pendingAction === "remove_background" || norm === "remove" || norm === "remov" || norm === "bg") && !isExplicitOtherAction)
+    );
 
   if (isBgRemoval) {
     const hasImage = hasAttachedFiles || !!context?.activeImageSrc;
@@ -434,6 +463,54 @@ export function analyzeKarudiIntent(
       filePrompt: "Please upload or share an image or document scan to convert to Word (.docx).",
       acceptedFileTypes: "image/png,image/jpeg,image/webp,image/avif,application/pdf",
       summaryMessage: "Extracting text via neural OCR and compiling Word (.docx) document…",
+    };
+  }
+
+  // 10b. EXCEL SPREADSHEET (.XLSX) CONVERSION
+  const isExcelConversion =
+    /\b(in\s*excel|in\s*xlsx|into\s*excel|as\s*excel|excel\s*file|xlsx\s*file)\b/i.test(norm) ||
+    /\b(need|want)\s*(in\s*)?(excel|xlsx)\b/i.test(norm) ||
+    /\b(excel|xlsx)\s*(file|sheet|document)\b/i.test(norm) ||
+    /(img|image|images|jpg|jpeg|png|webp|scan|photo|file|doc|table|data)\s*(to|into|->|2|as|in)\s*(excel|xlsx|xls|csv|sheet|spreadsheet)/i.test(norm) ||
+    /(convert|turn|make|save|extract)\s*(this|the|my)?\s*(img|image|images|jpg|png|webp|file|table|scan)?\s*(to|into|->|2|as|in)\s*(excel|xlsx|xls|csv|sheet|spreadsheet)/i.test(norm) ||
+    /(need|want|give\s*me)\s*(in\s*)?(an?\s*)?(excel|xlsx|xls|csv|sheet|spreadsheet)/i.test(norm) ||
+    /(excel|xlsx)\s*(me\s*chahiye|joiye|ma\s*banavo|file)/i.test(norm) ||
+    /(no|actually|wait),?\s*(i\s*need\s*)?(in\s*)?(an?\s*)?(excel|xlsx|xls|sheet|spreadsheet)/i.test(norm) ||
+    ((hasAttachedFiles || context?.activeImageSrc) && (
+      /^(excel|xlsx|xls|sheet|spreadsheet)$/i.test(norm) ||
+      /^(to|in|into)\s*(excel|xlsx|xls|sheet|spreadsheet)$/i.test(norm) ||
+      norm === "make excel" ||
+      norm === "make in excel" ||
+      norm === "to excel" ||
+      norm === "i need excel" ||
+      norm === "no excel"
+    ));
+
+  if (isExcelConversion) {
+    const hasFile = hasAttachedFiles || !!context?.activeImageSrc;
+    if (isActivePdf) {
+      return {
+        action: "pdf_to_excel",
+        primaryModel: "narmada",
+        secondaryModel: "brahmaputra",
+        toolName: "PDF to Excel (.xlsx) Converter",
+        toolSlug: "pdf-to-excel",
+        needsFile: !hasFile,
+        filePrompt: "Please upload or share the PDF document you want to extract into an Excel (.xlsx) spreadsheet.",
+        acceptedFileTypes: "application/pdf,.pdf",
+        summaryMessage: "Extracting tables and data from PDF into an editable Excel (.xlsx) spreadsheet…",
+      };
+    }
+    return {
+      action: "jpg_to_excel",
+      primaryModel: "narmada",
+      secondaryModel: "brahmaputra",
+      toolName: "Image to Excel (.xlsx) Converter",
+      toolSlug: "image-to-excel",
+      needsFile: !hasFile,
+      filePrompt: "Please upload or share an image or table scan to convert into an Excel (.xlsx) spreadsheet.",
+      acceptedFileTypes: "image/*,application/pdf",
+      summaryMessage: "Extracting table rows and cells via neural OCR into an editable Excel (.xlsx) file…",
     };
   }
 
@@ -902,6 +979,64 @@ export async function executeImageToWord(
         docxUrl,
         textSnippet,
         lineCount: textLines.length,
+      });
+    };
+    img.src = imageSrc;
+  });
+}
+
+/**
+ * 3b. Image to Excel (.xlsx) Converter Tool Executor (Narmada + Brahmaputra)
+ */
+export async function executeImageToExcel(
+  imageSrc: string,
+  filename = "converted-spreadsheet"
+): Promise<{
+  xlsxBlob: Blob;
+  xlsxUrl: string;
+  textSnippet: string;
+  rowCount: number;
+}> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = async () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (ctx) ctx.drawImage(img, 0, 0);
+
+      // Narmada Model: Run OCR
+      let textLines: string[] = [];
+      try {
+        const ocrRes = await performAdvancedOcr(canvas, {
+          contrastMode: "auto",
+          language: "eng",
+        });
+        textLines = ocrRes.textLines.filter((l) => l.trim().length > 0);
+      } catch (e) {
+        console.warn("OCR pass fallback for Excel:", e);
+      }
+
+      // Brahmaputra Model: Build Excel .xlsx file
+      const xlsxBlob = buildEditableXlsxFromOcr(
+        textLines.length > 0 ? textLines : ["Extracted Spreadsheet Data", filename],
+        {
+          parserMode: "grid",
+          sheetName: "Extracted_Data",
+          highlightHeader: true,
+          filename,
+        }
+      );
+
+      const xlsxUrl = URL.createObjectURL(xlsxBlob);
+      const textSnippet = textLines.slice(0, 6).join("\n") || "Spreadsheet extracted from image";
+      resolve({
+        xlsxBlob,
+        xlsxUrl,
+        textSnippet,
+        rowCount: Math.max(1, textLines.length),
       });
     };
     img.src = imageSrc;

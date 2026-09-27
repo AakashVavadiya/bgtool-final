@@ -12,7 +12,7 @@ import {
   IndianRupee,
   ShieldCheck,
   Plus,
-  Sparkles,
+  Wand2,
   Flame,
   Gift,
   Zap,
@@ -252,7 +252,7 @@ export function PurchasesView() {
                 : "text-muted-foreground hover:text-foreground hover:bg-muted"
             }`}
           >
-            <Sparkles className="h-3.5 w-3.5 text-amber-500 fill-current" />
+            <Wand2 className="h-3.5 w-3.5 text-amber-500 fill-current" />
             <span>Plans & Festival Offers ({plans.length})</span>
           </button>
         </div>
@@ -431,7 +431,7 @@ export function PurchasesView() {
                         {activeFestivalOffer.badge || "FESTIVAL OFFER"}
                       </span>
                       <span className="text-xs font-bold text-amber-500 flex items-center gap-1">
-                        <Sparkles className="h-3.5 w-3.5 fill-current" />
+                        <Wand2 className="h-3.5 w-3.5 fill-current" />
                         Active on Website Popup Dialog
                       </span>
                     </div>
@@ -482,7 +482,7 @@ export function PurchasesView() {
             </div>
           ) : (
             <div className="rounded-3xl border border-dashed border-amber-500/30 bg-amber-500/5 p-6 text-center">
-              <Sparkles className="h-8 w-8 mx-auto mb-2 text-amber-500 fill-current opacity-70" />
+              <Wand2 className="h-8 w-8 mx-auto mb-2 text-amber-500 fill-current opacity-70" />
               <p className="font-bold text-sm text-foreground">No Festival Offer Dialog Active</p>
               <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
                 Create a festival or promotional plan with "Show in Festival Popup Dialog" enabled to greet users with celebration offers & images!

@@ -5,12 +5,13 @@ import { AdminStore, type PurchasePlanConfig } from "@/admin/lib/admin-store";
 import { AuthUser, type CurrentUser } from "@/lib/auth-user";
 import { openFestivalOffersDialog } from "@/components/FestivalOffersDialog";
 import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
-import { Sparkles, Zap, LogOut, ChevronDown, Menu, X } from "lucide-react";
+import { Wand2, Zap, LogOut, ChevronDown, Menu, X } from "lucide-react";
+import { DualTokenPill, TokenCoin } from "@/components/TokenCoins";
 
 const links = [
   { label: "Home.", to: "/" },
   { label: "Models.", to: "/models" },
-  { label: "Tools.", to: "/", hash: "tools" },
+  { label: "Tools.", to: "/tools" },
   { label: "Smart Assistant.", to: "/chat" },
   { label: "Pricing.", to: "/pricing" },
   { label: "FAQ.", to: "/pricing", hash: "faq" },
@@ -30,6 +31,8 @@ export function SiteHeader({ floating = false }: { floating?: boolean }) {
     };
     window.addEventListener(REALTIME_EVENT_NAME, update);
     window.addEventListener("storage", update);
+    window.addEventListener("focus", update);
+    document.addEventListener("visibilitychange", update);
 
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -41,6 +44,8 @@ export function SiteHeader({ floating = false }: { floating?: boolean }) {
     return () => {
       window.removeEventListener(REALTIME_EVENT_NAME, update);
       window.removeEventListener("storage", update);
+      window.removeEventListener("focus", update);
+      document.removeEventListener("visibilitychange", update);
       window.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
@@ -99,7 +104,7 @@ export function SiteHeader({ floating = false }: { floating?: boolean }) {
               className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-500 hover:bg-amber-500 hover:text-slate-950 transition-all cursor-pointer shadow-xs animate-pulse"
               title="Click to view special festival offer"
             >
-              <Sparkles className="h-3.5 w-3.5 fill-current" />
+              <Wand2 className="h-3.5 w-3.5 fill-current" />
               <span className="hidden sm:inline">Festival Offer</span>
               <span className="sm:hidden">Offer</span>
             </button>
@@ -110,14 +115,12 @@ export function SiteHeader({ floating = false }: { floating?: boolean }) {
           {/* User Logged In State vs Logged Out State */}
           {currentUser ? (
             <div className="flex items-center gap-2.5 sm:gap-3">
-              {/* Credits Pill */}
-              <Link
-                to="/pricing"
-                className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 font-mono text-xs font-bold text-amber-500 hover:bg-amber-500/20 transition-all"
-                title="View studio credits and pricing"
-              >
-                <Zap className="h-3.5 w-3.5 fill-current" />
-                <span>{currentUser.credits}</span>
+              {/* Dual Token Pill: Silver (Free) & Gold (Paid) Tokens */}
+              <Link to="/pricing">
+                <DualTokenPill
+                  silver={currentUser.freeCredits ?? 10}
+                  gold={currentUser.paidCredits ?? 0}
+                />
               </Link>
 
               {/* Profile Dropdown */}
@@ -135,13 +138,53 @@ export function SiteHeader({ floating = false }: { floating?: boolean }) {
                 </button>
 
                 {profileOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-border bg-card p-2.5 shadow-2xl z-50 animate-scale-up space-y-1.5">
+                  <div className="absolute right-0 top-full mt-2 w-68 rounded-2xl border border-border bg-card p-2.5 shadow-2xl z-50 animate-scale-up space-y-2">
                     <div className="px-3 py-2 border-b border-border">
                       <p className="font-bold text-xs text-foreground truncate">{currentUser.name}</p>
                       <p className="font-mono text-[11px] text-muted-foreground truncate">{currentUser.email}</p>
-                      <span className="mt-1 inline-block rounded-md bg-secondary px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground">
-                        {currentUser.plan} plan
-                      </span>
+                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                        <span className="inline-block rounded-md bg-secondary px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground">
+                          {currentUser.plan} plan
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-md bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/20 px-1.5 py-0.5 text-[9px] font-bold">
+                          <TokenCoin type="silver" size="xs" />
+                          <span>10 Free / Day</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Token Details Card */}
+                    <div className="rounded-xl bg-muted/40 p-2.5 space-y-2 text-xs">
+                      <div className="flex items-center justify-between pb-1 border-b border-border/50">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          Token Balance
+                        </span>
+                        <span className="font-mono font-bold text-foreground">
+                          {currentUser.credits} Total
+                        </span>
+                      </div>
+
+                      {/* Silver Free Tokens */}
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-muted-foreground">
+                          <TokenCoin type="silver" size="xs" />
+                          <span>Silver Tokens (Free)</span>
+                        </span>
+                        <span className="font-mono font-bold text-slate-700 dark:text-slate-200">
+                          {currentUser.freeCredits ?? 10}
+                        </span>
+                      </div>
+
+                      {/* Gold Paid Tokens */}
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-muted-foreground">
+                          <TokenCoin type="gold" size="xs" showGlow={(currentUser.paidCredits ?? 0) > 0} />
+                          <span>Gold Tokens (Purchased)</span>
+                        </span>
+                        <span className="font-mono font-bold text-amber-500">
+                          {currentUser.paidCredits ?? 0}
+                        </span>
+                      </div>
                     </div>
 
                     <Link
@@ -149,8 +192,11 @@ export function SiteHeader({ floating = false }: { floating?: boolean }) {
                       onClick={() => setProfileOpen(false)}
                       className="flex items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors"
                     >
-                      <span>Buy / Top-up Credits</span>
-                      <span className="font-mono font-bold text-amber-500">⚡ {currentUser.credits}</span>
+                      <span className="flex items-center gap-1.5">
+                        <TokenCoin type="gold" size="xs" />
+                        <span>Get Gold Tokens</span>
+                      </span>
+                      <span className="font-mono font-bold text-amber-500">Top up →</span>
                     </Link>
 
                     <Link

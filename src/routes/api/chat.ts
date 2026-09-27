@@ -342,40 +342,111 @@ function tryUnitOrValueConversion(raw: string): string | null {
   return null;
 }
 
+// ── KARUDI 1.0 PRIME: NATURAL LANGUAGE & TYPO NORMALIZER ─────────────────────
+export function normalizeKarudiPrompt(text: string): {
+  normalized: string;
+  original: string;
+  isCorrection: boolean;
+  detectedTarget?: "excel" | "pdf" | "word" | "jpg" | "png" | "webp" | undefined;
+  detectedOperation?: "convert" | "compress" | "resize" | "remove_bg" | "upscale" | "ocr" | undefined;
+} {
+  const original = text.trim();
+  let lower = original.toLowerCase();
+
+  // 1. Regional / Multi-lingual mappings (Hindi, Gujarati, Hinglish)
+  lower = lower
+    .replace(/\bisko\s*pdf\s*me\s*karo\b/g, "convert this to pdf")
+    .replace(/\bexcel\s*me\s*chahiye\b/g, "need excel")
+    .replace(/\bbackground\s*hata\s*do\b/g, "remove background")
+    .replace(/\bise\s*pdf\s*bnado\b/g, "convert this to pdf")
+    .replace(/\bise\s*pdf\s*banao\b/g, "convert this to pdf")
+    .replace(/\baa\s*image\s*ne\s*pdf\s*ma\s*convert\s*karo\b/g, "convert this image to pdf")
+    .replace(/\bmujhe\s*excel\s*file\s*joiye\b/g, "need excel file")
+    .replace(/\bpdf\s*ma\s*banavo\b/g, "convert to pdf")
+    .replace(/\bexcel\s*ma\s*banavo\b/g, "convert to excel")
+    .replace(/\bchota\s*karo\b/g, "compress")
+    .replace(/\bnanu\s*karo\b/g, "compress");
+
+  // 2. Typo and spelling normalization
+  // Excel: exel, excle, excel, ecxel, exl, exell, excl, excell, sheet, spreadsheet
+  lower = lower.replace(/\b(exel|excle|ecxel|exl|exell|excl|excell|exle|ecxl|xcl)\b/g, "excel");
+  // PDF: pdfd, pdff, pfd
+  lower = lower.replace(/\b(pdfd|pdff|pfd)\b/g, "pdf");
+  // Image: imgae, iamge, photto, fototo, fota
+  lower = lower.replace(/\b(imgae|iamge|photto|fototo|fota)\b/g, "image");
+  // Convert: convet, conert, covnert, cnvert
+  lower = lower.replace(/\b(convet|conert|covnert|cnvert)\b/g, "convert");
+  // Background: backgroud, backgorund, back ground
+  lower = lower.replace(/\b(backgroud|backgorund|back\s*ground)\b/g, "background");
+  // Remove bg: rem bg, rm bg
+  lower = lower.replace(/\b(rem\s*bg|rm\s*bg)\b/g, "remove bg");
+  // Word / Doc: docxx, docm
+  lower = lower.replace(/\b(docxx|docm)\b/g, "docx");
+
+  const clean = lower.replace(/[^\w\s×*]/g, " ").replace(/\s+/g, " ").trim();
+
+  // Detect explicit correction
+  const isCorrection =
+    /^(no|wait|actually|rather|instead)\b/i.test(clean) ||
+    /\b(no\s*i\s*need|no\s*i\s*want|actually\s*i\s*need|actually\s*i\s*want|instead\s*of|change\s*to)\b/i.test(clean) ||
+    /^(no,?\s*|actually\s+)(excel|pdf|word|jpg|png|webp)/i.test(clean);
+
+  let detectedTarget: "excel" | "pdf" | "word" | "jpg" | "png" | "webp" | undefined;
+  if (/\b(excel|xlsx|xls|spreadsheet|sheet)\b/i.test(clean)) detectedTarget = "excel";
+  else if (/\bpdf\b/i.test(clean)) detectedTarget = "pdf";
+  else if (/\b(word|docx|doc)\b/i.test(clean)) detectedTarget = "word";
+  else if (/\b(jpg|jpeg)\b/i.test(clean)) detectedTarget = "jpg";
+  else if (/\bpng\b/i.test(clean)) detectedTarget = "png";
+  else if (/\bwebp\b/i.test(clean)) detectedTarget = "webp";
+
+  let detectedOperation: "convert" | "compress" | "resize" | "remove_bg" | "upscale" | "ocr" | undefined;
+  if (/\b(remove\s*background|remove\s*bg|cutout)\b/i.test(clean)) detectedOperation = "remove_bg";
+  else if (/\b(compress|shrink|smaller|make\s*smaller)\b/i.test(clean)) detectedOperation = "compress";
+  else if (/\b(resize|dimension)\b/i.test(clean) || /\d+\s*[xX×]\s*\d+/.test(clean)) detectedOperation = "resize";
+  else if (/\b(upscale|enlarge|4k|2x|4x)\b/i.test(clean)) detectedOperation = "upscale";
+  else if (/\b(ocr|extract\s*text)\b/i.test(clean)) detectedOperation = "ocr";
+  else if (/\bconvert\b/i.test(clean) || detectedTarget) detectedOperation = "convert";
+
+  return {
+    normalized: clean,
+    original,
+    isCorrection,
+    detectedTarget,
+    detectedOperation,
+  };
+}
+
 export function generateKarudiReply(messages: UIMessage[] | string, tier?: string): string {
   const msgList: UIMessage[] = Array.isArray(messages)
     ? messages
     : [{ id: "m0", role: "user", parts: [{ type: "text", text: messages }] }];
 
   const lastMsg = msgList[msgList.length - 1] as any;
-  const raw = (
+  const rawText = (
     (typeof lastMsg?.content === "string" ? lastMsg.content : "") ||
     lastMsg?.parts?.find((p: any) => p.type === "text")?.text ||
     ""
   ).trim();
-  const lower = raw.toLowerCase();
-  const norm = lower.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ");
 
-  const hasAttachedFile = !!(
-    lastMsg?.parts?.some((p: any) => p.type === "file") ||
-    (Array.isArray(lastMsg?.experimental_attachments) && lastMsg.experimental_attachments.length > 0)
-  );
-
-  // Helper to get text from any message representation
+  // Helper to extract text from any message
   const getMsgText = (m: any): string => {
     if (!m) return "";
     if (typeof m.content === "string" && m.content) return m.content;
-    const textPart = m.parts?.find((p: any) => p.type === "text");
+    const textPart = m?.parts?.find((p: any) => p.type === "text");
     return textPart?.text || "";
   };
 
-  // Inspect previous conversation context (for C8 carry-over, C9 corrections)
+  // Inspect previous conversation context to maintain Task State
   let prevAssistantText = "";
   let prevUserText = "";
-  let hasConversationFile = hasAttachedFile;
+  let hasConversationFile = !!(
+    lastMsg?.parts?.some((p: any) => p.type === "file") ||
+    (Array.isArray(lastMsg?.experimental_attachments) && lastMsg.experimental_attachments.length > 0)
+  );
   let lastUploadedFilename = "";
   let lastUploadedMediaType = "";
   let pastActionTaken = "";
+  let prevTargetFormat: "PDF" | "Excel" | "Word" | "JPG" | "PNG" | "WebP" | "" = "";
 
   for (let i = msgList.length - 1; i >= 0; i--) {
     const m = msgList[i] as any;
@@ -398,21 +469,23 @@ export function generateKarudiReply(messages: UIMessage[] | string, tier?: strin
       const txt = getMsgText(m).toLowerCase().trim();
       if (!prevAssistantText && m.role === "assistant") {
         prevAssistantText = txt;
-        if (txt.includes("resizing your image") || txt.includes("resized")) {
-          pastActionTaken = "resize";
-        } else if (txt.includes("removing background") || txt.includes("removed background")) {
-          pastActionTaken = "remove_bg";
-        } else if (txt.includes("compressing")) {
-          pastActionTaken = "compress";
-        } else if (txt.includes("upscaling")) {
-          pastActionTaken = "upscale";
-        }
+        if (txt.includes("pdf")) prevTargetFormat = "PDF";
+        else if (txt.includes("excel") || txt.includes("xlsx") || txt.includes("spreadsheet")) prevTargetFormat = "Excel";
+        else if (txt.includes("word") || txt.includes("docx")) prevTargetFormat = "Word";
+        else if (txt.includes("jpg") || txt.includes("jpeg")) prevTargetFormat = "JPG";
+        else if (txt.includes("png")) prevTargetFormat = "PNG";
+        else if (txt.includes("webp")) prevTargetFormat = "WebP";
+
+        if (txt.includes("resiz")) pastActionTaken = "resize";
+        else if (txt.includes("background")) pastActionTaken = "remove_bg";
+        else if (txt.includes("compress")) pastActionTaken = "compress";
+        else if (txt.includes("upscal")) pastActionTaken = "upscale";
       } else if (!prevUserText && m.role === "user") {
         prevUserText = txt;
-        if (!pastActionTaken) {
-          if (/\b(resize|1000x1000|\d+x\d+)\b/i.test(txt)) pastActionTaken = "resize";
-          else if (/\b(remove bg|remove background|bg)\b/i.test(txt)) pastActionTaken = "remove_bg";
-          else if (/\b(compress|shrink)\b/i.test(txt)) pastActionTaken = "compress";
+        if (!prevTargetFormat) {
+          if (/\bpdf\b/i.test(txt)) prevTargetFormat = "PDF";
+          else if (/\b(excel|xlsx|spreadsheet|sheet)\b/i.test(txt)) prevTargetFormat = "Excel";
+          else if (/\b(word|docx)\b/i.test(txt)) prevTargetFormat = "Word";
         }
       }
     }
@@ -422,8 +495,8 @@ export function generateKarudiReply(messages: UIMessage[] | string, tier?: strin
   const currentTurnFile = lastMsg?.parts?.find((p: any) => p.type === "file") ||
     (Array.isArray(lastMsg?.experimental_attachments) ? lastMsg.experimental_attachments[0] : null);
 
-  const currentFilename = currentTurnFile?.filename || currentTurnFile?.name || (hasAttachedFile ? lastUploadedFilename : "");
-  const currentMediaType = currentTurnFile?.mediaType || currentTurnFile?.contentType || (hasAttachedFile ? lastUploadedMediaType : "");
+  const currentFilename = currentTurnFile?.filename || currentTurnFile?.name || (hasConversationFile ? lastUploadedFilename : "");
+  const currentMediaType = currentTurnFile?.mediaType || currentTurnFile?.contentType || (hasConversationFile ? lastUploadedMediaType : "");
 
   const isCurrentPdf =
     currentFilename.toLowerCase().endsWith(".pdf") ||
@@ -447,15 +520,19 @@ export function generateKarudiReply(messages: UIMessage[] | string, tier?: strin
 
   const isCurrentImage =
     currentMediaType.startsWith("image/") ||
-    /\.(png|jpe?g|webp|avif|gif|bmp|tiff)$/i.test(currentFilename);
+    /\.(png|jpe?g|webp|avif|gif|bmp|tiff)$/i.test(currentFilename) ||
+    (!isCurrentPdf && !isCurrentDocx && !isCurrentXlsx && !isCurrentPptx && hasConversationFile);
+
+  // Normalize prompt with typo & language correction
+  const { normalized: norm, isCorrection, detectedTarget, detectedOperation } = normalizeKarudiPrompt(rawText);
 
   // ── LAYER 1: SPECIALIZED UNIT CONVERSIONS ─────────────────────────────
-  const unitConversion = tryUnitOrValueConversion(raw);
+  const unitConversion = tryUnitOrValueConversion(rawText);
   if (unitConversion) {
     return unitConversion;
   }
 
-  // ── PART C12: MALICIOUS / UNSUPPORTED FILE ABUSE ───────────────────────
+  // ── ABUSE / EXECUTABLE CHECK ──────────────────────────────────────────
   const isAbuseOrExecutable =
     /\b(hack|exploit|bypass\s*copyright|steal\s*copyright|\.exe\b|\.bat\b|\.sh\b|\.cmd\b|\.msi\b)\b/i.test(norm) ||
     currentFilename.endsWith(".exe") ||
@@ -464,7 +541,7 @@ export function generateKarudiReply(messages: UIMessage[] | string, tier?: strin
     return "I can't help with that.";
   }
 
-  // ── PART C11: REQUESTS GENUINELY OUTSIDE SCOPE ────────────────────────
+  // ── OFF-TOPIC CHECK ───────────────────────────────────────────────────
   const isOutsideScope =
     /(write\s*(me\s*)?(a\s*)?(poem|poetry|story|essay|song|joke|script)|what('s|\s*is)\s*the\s*weather|who\s*won\s*the\s*(match|game|election)|solve\s*this\s*math|tell\s*me\s*a\s*joke|write\s*code\s*for|birthday\s*poem)/i.test(norm) ||
     /^(who\s*is\s*the\s*president|what\s*is\s*the\s*capital\s*of|how\s*to\s*make\s*money|recipe\s*for)/i.test(norm);
@@ -472,21 +549,108 @@ export function generateKarudiReply(messages: UIMessage[] | string, tier?: strin
     return "That's outside what I handle — I'm built for image and file tools. Have a file you want worked on?";
   }
 
-  // ── PART C10: EMOTIONAL / FRUSTRATED TONE ─────────────────────────────
+  // ── EMOTIONAL / FRUSTRATED TONE ───────────────────────────────────────
   const isFrustrated =
     /(this\s*is\s*so\s*slow|why\s*isn'?t\s*it\s*working|why\s*isn'?t\s*this\s*working|not\s*working\s*ugh|it\s*is\s*stuck|taking\s*too\s*long|so\s*slow\s*ugh|why\s*so\s*slow)/i.test(norm);
   if (isFrustrated) {
     return "I hear you — let me help troubleshoot. If an upload or process is stuck, try re-uploading the file or telling me your exact target format, and I'll process it right away.";
   }
 
-  // ── PART C9: CORRECTION / UNDO REQUESTS ────────────────────────────────
-  const wxhMatch = raw.match(/(\d+)\s*[xX×]\s*(\d+)/);
-  const isCorrection =
-    /(no\s*i\s*meant|wait\s*i\s*meant|i\s*meant|actually\s*i\s*meant|change\s*to|instead\s*of)\s*(\d+)\s*[xX×]\s*(\d+)/i.test(raw) ||
-    (/(no\s*i\s*meant|wait\s*i\s*meant|i\s*meant)/i.test(norm) && !!wxhMatch);
-
+  // ── SECTION 11 & SECTION 4: CORRECTION HANDLING (HIGHEST PRIORITY) ────
+  // e.g. "no i need excel", "no, excel", "actually excel", "i need excel file", "no i need in exl file"
+  const wxhMatch = rawText.match(/(\d+)\s*[xX×]\s*(\d+)/);
   if (isCorrection && wxhMatch) {
     return `Got it — resizing the original to ${wxhMatch[1]}×${wxhMatch[2]}px instead.`;
+  }
+
+  if (isCorrection || (detectedTarget && /^(no|wait|actually|instead|rather)/i.test(rawText))) {
+    if (detectedTarget === "excel") {
+      if (prevTargetFormat && prevTargetFormat !== "Excel") {
+        return `Got it — Excel instead of ${prevTargetFormat}. I’ll convert the current file to Excel.`;
+      }
+      return "Got it — you need an Excel file. I’ll convert the current file to Excel.";
+    }
+    if (detectedTarget === "word") {
+      if (prevTargetFormat && prevTargetFormat !== "Word") {
+        return `Got it — Word instead of ${prevTargetFormat}. I’ll convert the current file to Word.`;
+      }
+      return "Got it — you need a Word file. I’ll convert the current file to Word.";
+    }
+    if (detectedTarget === "pdf") {
+      if (prevTargetFormat && prevTargetFormat !== "PDF") {
+        return `Got it — PDF instead of ${prevTargetFormat}. I’ll convert the current file to PDF.`;
+      }
+      return "Got it — you need a PDF file. I’ll convert the current file to PDF.";
+    }
+    if (detectedTarget === "jpg") {
+      return "Got it — JPG instead. I’ll convert the current file to JPG.";
+    }
+    if (detectedTarget === "png") {
+      return "Got it — PNG instead. I’ll convert the current file to PNG.";
+    }
+    if (detectedTarget === "webp") {
+      return "Got it — WebP instead. I’ll convert the current file to WebP.";
+    }
+  }
+
+  // ── SECTION 22: SHORT COMMANDS (pdf, excel, word, jpg, png, compress, resize, remove bg, again, download) ──
+  const isExactShortPdf = /^(pdf|make\s*pdf|do\s*pdf|in\s*pdf)$/i.test(norm);
+  if (isExactShortPdf) {
+    if (prevTargetFormat && prevTargetFormat !== "PDF") {
+      return `Got it — PDF instead of ${prevTargetFormat}. Converting your file to PDF.`;
+    }
+    return "Sure — converting the image to PDF.";
+  }
+
+  const isExactShortExcel = /^(excel|xlsx|sheet|spreadsheet|make\s*excel|do\s*excel|in\s*excel)$/i.test(norm);
+  if (isExactShortExcel) {
+    if (prevTargetFormat && prevTargetFormat !== "Excel") {
+      return `Got it — Excel instead of ${prevTargetFormat}. Converting your file to Excel.`;
+    }
+    return "Sure — converting it to Excel.";
+  }
+
+  const isExactShortWord = /^(word|docx|doc|make\s*word|do\s*word|in\s*word)$/i.test(norm);
+  if (isExactShortWord) {
+    if (prevTargetFormat && prevTargetFormat !== "Word") {
+      return `Got it — Word instead of ${prevTargetFormat}. Converting your file to Word.`;
+    }
+    return "Sure — converting the file to Word.";
+  }
+
+  const isExactShortJpg = /^(jpg|jpeg|change\s*to\s*jpg|make\s*jpg)$/i.test(norm);
+  if (isExactShortJpg) {
+    return "Sure — converting your file to JPG.";
+  }
+
+  const isExactShortPng = /^(png|change\s*to\s*png|make\s*png)$/i.test(norm);
+  if (isExactShortPng) {
+    return "Sure — converting your file to PNG.";
+  }
+
+  const isExactShortCompress = /^(compress|compress\s*this|make\s*smaller|smaller|shrink)$/i.test(norm);
+  if (isExactShortCompress) {
+    return "Sure — I'll compress the file.";
+  }
+
+  const isExactShortResize = /^(resize|resize\s*this|resiz)$/i.test(norm);
+  if (isExactShortResize) {
+    return "Sure — what dimensions would you like? (e.g. 1000x1000px)";
+  }
+
+  const isExactShortRemoveBg = /^(remove\s*bg|rem\s*bg|rm\s*bg|remove\s*background|cutout)$/i.test(norm);
+  if (isExactShortRemoveBg) {
+    return "Sure — removing the background.";
+  }
+
+  const isExactAgain = /^(again|retry|redo|repeat)$/i.test(norm);
+  if (isExactAgain) {
+    return "Repeating the previous operation on your file...";
+  }
+
+  const isExactDownload = /^(download|get\s*file|save\s*file)$/i.test(norm);
+  if (isExactDownload) {
+    return "You can download your processed file using the download button above.";
   }
 
   const isUndoRequest = /^(undo|undo\s*that|revert|go\s*back|restore\s*original)$/i.test(norm);
@@ -494,189 +658,118 @@ export function generateKarudiReply(messages: UIMessage[] | string, tier?: strin
     return "Reverted to your original file. What would you like done with it instead?";
   }
 
-  // ── PART C8: MULTI-TURN CONTEXT CARRY-OVER ────────────────────────────
-  const isMultiTurnStep =
-    /(now\s*make\s*it\s*(a\s*)?pdf|actually\s*make\s*it\s*(a\s*)?pdf\s*too|convert\s*(it|this)?\s*to\s*pdf\s*now|make\s*it\s*(a\s*)?pdf\s*too|also\s*make\s*it\s*(a\s*)?pdf)/i.test(norm);
-  if (isMultiTurnStep) {
-    return "Converting the resized image to PDF...";
-  }
-
-  // ── PART C5: CAPABILITY QUESTIONS (NOT A TASK YET) ─────────────────────
-  const isGeneralCapabilityQuery =
-    /(what\s*all\s*can\s*(you|this)\s*do|what\s*can\s*(you|this)\s*do|what\s*are\s*your\s*capabilities|list\s*(all\s*)?your\s*tools|what\s*do\s*you\s*do)/i.test(norm);
-  if (isGeneralCapabilityQuery) {
-    return "I can help with AI edits (remove background, upscale, remove watermark, blur face, OCR), resizing/cropping/compressing, format conversion (PDF/Word/Excel/PPT ↔ image), encoding conversions (Base64/Hex/Binary etc.), and a few extras like color picking and memes. What do you need done?";
-  }
-
-  const isSpecificCapabilityQuery =
-    /(can\s*you|do\s*you\s*support|is\s*it\s*possible\s*to)\s*(remove\s*watermark|remove\s*bg|remove\s*background|upscale|blur\s*face|compress|resize|convert)/i.test(norm);
-  if (isSpecificCapabilityQuery && !hasAttachedFile) {
-    if (/watermark/i.test(norm)) {
-      return "Yes, I can remove watermarks and clean up overlays. Upload the image whenever you're ready!";
+  // ── SECTION 6 & 7: CLARIFICATION RULES ────────────────────────────────
+  // User: "convert this" / "convert"
+  if (/^(convert\s*(this|file|it)?|convet\s*(this|file|it)?)$/i.test(norm)) {
+    if (isCurrentImage) {
+      return "What format do you need: PDF, JPG, PNG, or Excel?";
     }
-    if (/background|bg/i.test(norm)) {
-      return "Yes, I can remove image backgrounds with sub-pixel precision. Upload your photo to get started!";
+    if (isCurrentPdf) {
+      return "What format do you need: Word, Excel, JPG, or PNG?";
     }
-    if (/upscale/i.test(norm)) {
-      return "Yes, I can upscale and enhance images to 2× HD or 4× 4K resolution. Upload your image to get started!";
+    if (isCurrentDocx) {
+      return "What format do you need: PDF, JPG, or PNG?";
     }
-    if (/blur/i.test(norm)) {
-      return "Yes, I can detect and blur faces for privacy. Upload your photo whenever you're ready!";
-    }
-    if (/compress/i.test(norm)) {
-      return "Yes, I can compress images to any target size like under 200KB or balanced quality. Upload your file to get started!";
-    }
+    return "What format do you need: PDF, Word, Excel, JPG, or PNG?";
   }
 
-  // ── PART C6: SMALL TALK / IDENTITY ────────────────────────────────────
-  if (/(who\s*made\s*you|who\s*created\s*you)/i.test(norm)) {
-    return "I'm Karudi, built for image and file tools. Got something you want processed?";
-  }
-  if (/(are\s*you\s*(a\s*)?(human|bot|ai|robot|person|real))/i.test(norm)) {
-    return "I'm Karudi, an AI specialist built for image and file processing. Got a file you want worked on?";
-  }
-  if (/^(how\s*are\s*you|how('s|\s*is)\s*it\s*going|sup|whats\s*up)$/i.test(norm)) {
-    return "I'm doing well, ready to process your files! Got an image or document you want worked on?";
-  }
-  if (/^(what('s|\s*is)\s*your\s*name|who\s*are\s*you)$/i.test(norm)) {
-    return "I'm Karudi — I handle image and file conversions. Got a file you want worked on?";
+  // User: "make this file"
+  if (/^make\s*(this|a)?\s*file$/i.test(norm)) {
+    return "What format do you need — PDF, Word, or Excel?";
   }
 
-  // ── PART C2: GOAL-PHRASED REQUESTS ────────────────────────────────────
-  const isAddressRemoval =
-    /(address\s*on\s*it|old\s*address|remove\s*address|get\s*rid\s*of\s*(my\s*)?address)/i.test(norm);
-  if (isAddressRemoval) {
-    return "Is the address in a specific corner I can crop out, or is it overlapping the main photo?";
-  }
-
-  const isFormUploadGoal =
-    /(need\s*this|upload\s*to\s*a\s*form|job\s*application|form\s*upload).*under\s*(\d+)\s*(kb|mb)/i.test(norm) ||
-    /under\s*(\d+)\s*(kb|mb)\s*for\s*(a\s*)?(job|application|upload|form)/i.test(norm);
-  if (isFormUploadGoal) {
-    const sizeMatch = norm.match(/under\s*(\d+)\s*(kb|mb)/i);
-    const sizeStr = sizeMatch ? `${sizeMatch[1].toUpperCase()}${sizeMatch[2].toUpperCase()}` : "200KB";
-    return `Compressing to under ${sizeStr} for your upload...`;
-  }
-
-  // ── PART C4: HINGLISH / REGIONAL PHRASING ──────────────────────────────
-  const isHinglishCompress =
-    /(ise|isko|is\s*file\s*ko|photo\s*ko)\s*(chota|chhota|kam)\s*(karo|kar\s*do|karna)/i.test(norm) ||
-    /(file\s*size|size)\s*(kam|chota|chhota)\s*(karo|kar\s*do|kijiye)/i.test(norm);
-  if (isHinglishCompress) {
-    return "File size chhota kar raha hoon (compressing)...";
-  }
-
-  const isHinglishPdf =
-    /(img|image|photo)\s*ko\s*pdf\s*(bnado|bana\s*do|karo)/i.test(norm) ||
-    /pdf\s*(bnado|bana\s*do)/i.test(norm);
-  if (isHinglishPdf) {
-    return "Converting your image into a PDF document...";
-  }
-
-  const isHinglishBg =
-    /(bg|background)\s*(hata\s*do|hatao|nikal\s*do|saaf\s*karo)/i.test(norm) ||
-    /(piche\s*ka)\s*(hata\s*do|hatao|nikal\s*do)/i.test(norm);
-  if (isHinglishBg) {
-    return "Removing background, please wait some time...";
-  }
-
-  // ── RULE 5: FILE-TYPE MISMATCH CHECK ──────────────────────────────────
+  // ── MULTI-STEP TASKS (Section 19) ─────────────────────────────────────
+  const hasAnd = /\b(and|then|after\s*that|also)\b/i.test(norm);
   const asksBgRemoval =
     /(remove|remov|rmv|no|transparent|cut\s*out|isolate|delete)\s*(the\s*)?(background|bg|backdrop)/i.test(norm) ||
-    /^(bg\s*removal|remove\s*bg|remove\s*background|cutout|remov\s*bg\s*plz|remove\s*bg\s*pls)$/i.test(norm) ||
-    isHinglishBg;
+    /^(bg\s*removal|remove\s*bg|remove\s*background|cutout)$/i.test(norm);
 
-  if (asksBgRemoval && (isCurrentDocx || lastUploadedFilename.toLowerCase().endsWith(".docx"))) {
-    return "This file is a Word document, not an image, so background removal doesn't apply. Did you mean to convert it first, or upload a different file?";
+  if (hasAnd && asksBgRemoval && /pdf/i.test(norm)) {
+    return "Got it — removing the background first, then converting to PDF...";
   }
-  if (asksBgRemoval && (isCurrentPdf || lastUploadedFilename.toLowerCase().endsWith(".pdf"))) {
-    return "This file is a PDF document, not an image, so background removal doesn't apply directly. Did you mean to convert PDF pages to images first?";
-  }
-  if (asksBgRemoval && isCurrentXlsx) {
-    return "This file is a spreadsheet, not an image, so background removal doesn't apply. Did you mean to convert it to an image first?";
-  }
-
-  // ── RULE 6: MULTI-ACTION HANDLING (e.g. "remove background and resize to 800x800")
-  const hasAnd = /\b(and|then|after\s*that|also)\b/i.test(norm);
-
   if (hasAnd && asksBgRemoval && (wxhMatch || /resize/i.test(norm))) {
     const dim = wxhMatch ? `${wxhMatch[1]}×${wxhMatch[2]}px` : "your requested dimensions";
     return `Got it — removing the background first, then resizing to ${dim}...`;
   }
   if (hasAnd && asksBgRemoval && /compress/i.test(norm)) {
-    return `Got it — removing the background first, then compressing the file...`;
+    return "Got it — removing the background first, then compressing the file...";
   }
-  if (hasAnd && asksBgRemoval && /upscale/i.test(norm)) {
-    return `Got it — removing the background first, then upscaling with AI...`;
-  }
-
-  // ── PART E / AMBIGUOUS ENCODING VS OCR CHECK ──────────────────────────
-  const isImageToTextRaw = /^(image\s*to\s*text|img\s*to\s*text|convert\s*(this\s*)?to\s*text)$/i.test(norm);
-  if (isImageToTextRaw) {
-    return "Do you want the words in the image extracted (OCR), or the file itself converted into a text-encoded string?";
+  if (hasAnd && asksBgRemoval && /png/i.test(norm)) {
+    return "Got it — removing the background first, and saving as PNG...";
   }
 
-  // ── PART D / TOOL 7: RESIZE IMAGE (Rule 1 & Typo tolerance C3) ────────
-  const isResizeRequest =
-    /\b(resize|resiz|dimensions?|scale\s*to)\b/i.test(norm) ||
-    !!wxhMatch;
+  // ── EXCEL INTENT (Section 2, 3, 13, 20) ───────────────────────────────
+  // "make this in excel", "make this excel", "convert this to excle", "convert this to exel", "i need excel file", "pdf into excle", "pdf to exel"
+  const isExcelIntent =
+    /\b(excel|xlsx|spreadsheet)\b/i.test(norm) &&
+    (/(make|convert|in|into|to|need|give|as|export)\b/i.test(norm) || /^(excel|xlsx)$/i.test(norm));
+
+  if (isExcelIntent) {
+    if (isCurrentPdf || /pdf\s*(to|into|in)\s*excel/i.test(norm)) {
+      return "Sure — converting the PDF to Excel.";
+    }
+    return "Sure — converting it to Excel.";
+  }
+
+  // ── WORD INTENT (Section 2, 13, 20) ───────────────────────────────────
+  // "can you make word", "can you make this word file", "convert to word", "make word"
+  const isWordIntent =
+    /\b(word|docx|doc)\b/i.test(norm) &&
+    (/(make|convert|in|into|to|need|give|as|export|can\s*you)\b/i.test(norm) || /^(word|docx)$/i.test(norm));
+
+  if (isWordIntent) {
+    if (isCurrentPdf || /pdf\s*(to|into|in)\s*word/i.test(norm)) {
+      return "Sure — converting the PDF to Word.";
+    }
+    return "Sure — converting the file to Word.";
+  }
+
+  // ── PDF INTENT (Section 2, 20) ────────────────────────────────────────
+  // "convert this image pdf", "img to pdf", "image convert pdf", "make pdf from photo", "make pdf"
+  const isPdfIntent =
+    /\bpdf\b/i.test(norm) &&
+    (/(make|convert|in|into|to|need|give|as|from|photo|image|img)\b/i.test(norm) || norm === "pdf");
+
+  if (isPdfIntent) {
+    return "Sure — converting the image to PDF.";
+  }
+
+  // ── BACKGROUND REMOVAL (Section 2, 20) ────────────────────────────────
+  if (asksBgRemoval) {
+    if (isCurrentDocx) {
+      return "This file is a Word document, not an image, so background removal doesn't apply. Did you mean to convert it first, or upload an image?";
+    }
+    if (isCurrentPdf) {
+      return "This file is a PDF document, not an image, so background removal doesn't apply directly. Did you mean to convert PDF pages to images first?";
+    }
+    return "Sure — removing the background.";
+  }
+
+  // ── COMPRESSION (Section 2, 20) ───────────────────────────────────────
+  const isCompressIntent =
+    /(compress|make\s*smaller|make\s*it\s*smaller|reduce\s*file\s*size|lighter\s*file|shrink)/i.test(norm) ||
+    /under\s*(\d+)\s*(kb|mb)/i.test(norm);
+
+  if (isCompressIntent) {
+    const sizeMatch = norm.match(/under\s*(\d+)\s*(kb|mb)/i);
+    if (sizeMatch && sizeMatch[1] && sizeMatch[2]) {
+      return `Compressing your file to under ${sizeMatch[1].toUpperCase()}${sizeMatch[2].toUpperCase()}...`;
+    }
+    return "Sure — I'll compress the file.";
+  }
+
+  // ── RESIZE IMAGE (Section 2) ──────────────────────────────────────────
+  const isResizeRequest = /\b(resize|resiz|dimensions?|scale\s*to)\b/i.test(norm) || !!wxhMatch;
   if (isResizeRequest) {
     if (wxhMatch) {
-      // Both dimensions given -> execute immediately!
       return `Resizing your image to ${wxhMatch[1]}×${wxhMatch[2]}px...`;
-    }
-    const singleDimMatch = norm.match(/(?:width|height|w|h|size)?\s*(\d{2,5})\s*(?:px)?/);
-    if (singleDimMatch && !norm.includes("under") && !norm.includes("kb") && !norm.includes("mb")) {
-      return "Should I keep the aspect ratio, or set an exact height too?";
     }
     return "Sure — what dimensions would you like? (e.g. 1000x1000px)";
   }
 
-  // ── PART D / TOOL 6: COMPRESS IMAGE vs RESIZE DISAMBIGUATION ──────────
-  const isSmallerRequest =
-    /make\s*(it|this|image|photo|file)?\s*smaller/i.test(norm) ||
-    /shrink\s*(it|this|image|photo|file)?/i.test(norm) ||
-    norm === "make smaller" ||
-    norm === "smaller";
-
-  const hasSizeUnit = /(kb|mb|bytes?|kilobytes?|megabytes?)/i.test(norm);
-  const hasPixelUnit = /(px|pixels?|\d+\s*[xX]\s*\d+)/i.test(norm);
-
-  if (isSmallerRequest && !hasSizeUnit && !hasPixelUnit) {
-    return "Do you want a smaller file size (Compress) or smaller pixel dimensions (Resize)?";
-  }
-
-  const isCompressRequest =
-    /(compress|reduce\s*file\s*size|lighter\s*file)/i.test(norm) ||
-    isHinglishCompress ||
-    (isSmallerRequest && hasSizeUnit) ||
-    /under\s*(\d+)\s*(kb|mb)/i.test(norm);
-
-  if (isCompressRequest) {
-    const targetSizeMatch = norm.match(/under\s*(\d+)\s*(kb|mb)/i) || norm.match(/to\s*(\d+)\s*(kb|mb)/i);
-    if (targetSizeMatch) {
-      return `Compressing your image to under ${targetSizeMatch[1].toUpperCase()}${targetSizeMatch[2].toUpperCase()}...`;
-    }
-    return "Compressing with balanced quality — want a specific target size like under 200KB?";
-  }
-
-  // ── PART D / TOOL 12: SQUARE YOUR IMAGE ───────────────────────────────
-  const isSquareRequest =
-    /\b(square|1\s*:\s*1|instagram\s*square)\b/i.test(norm) ||
-    /(make\s*(it|this)?\s*square|square\s*(crop|image|it))/i.test(norm);
-
-  if (isSquareRequest) {
-    return "Making it square using a centered crop — let me know if you'd prefer padding instead.";
-  }
-
-  // ── PART D / TOOL 1: REMOVE BACKGROUND ────────────────────────────────
-  if (asksBgRemoval) {
-    return "Removing background, please wait some time...";
-  }
-
-  // ── PART D / TOOL 2: UPSCALE IMAGE ────────────────────────────────────
+  // ── UPSCALE IMAGE ─────────────────────────────────────────────────────
   const isUpscaleRequest =
-    /(upscale|make\s*(it)?\s*bigger|increase\s*resolution|hd\s*version|4k\s*(this)?|sharpen\s*and\s*enlarge|improve\s*quality|quality\s*badhao|photo\s*saaf\s*karo)/i.test(norm);
+    /(upscale|make\s*(it)?\s*bigger|increase\s*resolution|hd\s*version|4k\s*(this)?|sharpen\s*and\s*enlarge|improve\s*quality)/i.test(norm);
   if (isUpscaleRequest) {
     if (norm.includes("4x") || norm.includes("4k")) {
       return "Upscaling your image to 4× (4K resolution)...";
@@ -687,231 +780,74 @@ export function generateKarudiReply(messages: UIMessage[] | string, tier?: strin
     return "How much would you like to upscale — 2x or 4x?";
   }
 
-  // ── PART D / TOOL 3: REMOVE WATERMARK ─────────────────────────────────
-  const isRemoveWatermark =
-    /(remove|delete|clean|erase|get\s*rid\s*of)\s*(the\s*)?(watermark|logo|stamp|text\s*overlay)/i.test(norm);
-  if (isRemoveWatermark) {
+  // ── WATERMARK REMOVAL / ADDITION ──────────────────────────────────────
+  if (/(remove|delete|clean|erase)\s*(the\s*)?(watermark|logo|stamp)/i.test(norm)) {
     return "Removing the watermark and reconstructing the background...";
   }
-
-  // ── PART D / TOOL 11: WATERMARK IMAGE ─────────────────────────────────
-  const isAddWatermark =
-    /(add|put|apply)\s*(a\s*)?(watermark|logo|text\s*overlay|branding)/i.test(norm) ||
-    /(brand\s*this\s*image)/i.test(norm);
-
-  if (isAddWatermark) {
-    const textMatch = raw.match(/(?:say|text|saying|with text|watermark)\s*["':]\s*([^"'\n]+)["']?/i);
-    if (textMatch && textMatch[1]) {
-      return `Adding your watermark "${textMatch[1].trim()}" to the bottom-right corner...`;
-    }
+  if (/(add|put|apply)\s*(a\s*)?(watermark|logo|text\s*overlay)/i.test(norm)) {
     return "What should the watermark say, or do you have a logo file to upload?";
   }
 
-  // ── PART D / TOOL 4: BLUR FACE ────────────────────────────────────────
-  const isBlurFace =
-    /(blur\s*face|hide\s*identity|anonymize\s*photo|anonymise\s*photo|blur\s*(the\s*)?person)/i.test(norm);
-  if (isBlurFace) {
-    if (norm.includes("all faces") || norm.includes("everyone")) {
-      return "Detecting and blurring all faces for privacy...";
-    }
+  // ── BLUR FACE ─────────────────────────────────────────────────────────
+  if (/(blur\s*face|hide\s*identity|anonymize\s*photo|anonymise\s*photo)/i.test(norm)) {
     return "Detecting and blurring faces for privacy...";
   }
 
-  // ── PART D / TOOL 8: CROP IMAGE ───────────────────────────────────────
-  const isCropRequest =
-    /\b(crop|cut\s*out\s*this\s*part|trim\s*edges|remove\s*the\s*(sides|top|bottom))\b/i.test(norm);
-  if (isCropRequest) {
-    const ratioMatch = norm.match(/(1\s*:\s*1|4\s*:\s*3|16\s*:\s*9|9\s*:\s*16|top\s*half|bottom\s*half|center)/i);
+  // ── CROP IMAGE ────────────────────────────────────────────────────────
+  if (/\b(crop|cut\s*out\s*this\s*part|trim\s*edges)\b/i.test(norm)) {
+    const ratioMatch = norm.match(/(1\s*:\s*1|4\s*:\s*3|16\s*:\s*9|9\s*:\s*16)/i);
     if (ratioMatch) {
       return `Cropping image to ${ratioMatch[1]}...`;
     }
     return "Which part should I keep — can you describe the area or give a ratio like 1:1, 4:3?";
   }
 
-  // ── PART D / TOOL 10: ROTATE / FLIP IMAGE ─────────────────────────────
-  const isRotateRequest = /\b(rotate|flip|turn\s*90|sideways|upside\s*down)\b/i.test(norm);
-  if (isRotateRequest) {
-    if (norm.includes("90") && (norm.includes("counter") || norm.includes("left"))) {
+  // ── ROTATE / FLIP IMAGE ───────────────────────────────────────────────
+  if (/\b(rotate|flip|turn\s*90)\b/i.test(norm)) {
+    if (norm.includes("counter") || norm.includes("left")) {
       return "Rotating image 90° counter-clockwise...";
     }
-    if (norm.includes("90") || norm.includes("clockwise") || norm.includes("right")) {
+    if (norm.includes("clockwise") || norm.includes("right") || norm.includes("90")) {
       return "Rotating image 90° clockwise...";
     }
     if (norm.includes("180") || norm.includes("upside down")) {
       return "Rotating image 180°...";
     }
-    if (norm.includes("horizontal")) {
-      return "Flipping image horizontally...";
-    }
-    if (norm.includes("vertical")) {
-      return "Flipping image vertically...";
-    }
     return "Which way — 90° clockwise, 90° counter-clockwise, or 180°?";
   }
 
-  // ── PART D / TOOL 9: PHOTO EDITOR ─────────────────────────────────────
-  const isPhotoEditor =
-    /(edit\s*photo|adjust\s*(brightness|contrast|saturation)|filters?|touch\s*up|make\s*it\s*look\s*better)/i.test(norm);
-  if (isPhotoEditor) {
-    const adjMatch = norm.match(/(brightness|contrast|saturation|grayscale|sepia)/i);
-    if (adjMatch) {
-      return `Adjusting ${adjMatch[1]} in Photo Editor...`;
-    }
-    return "Applying auto-enhance (brightness/contrast/color balance)...";
+  // ── FORMAT CONVERSION (JPG, PNG, WEBP) ────────────────────────────────
+  if (/(change\s*to\s*jpg|convert\s*to\s*jpg|make\s*it\s*jpg)/i.test(norm)) {
+    return "Sure — converting the file to JPG.";
+  }
+  if (/(change\s*to\s*png|convert\s*to\s*png|make\s*it\s*png)/i.test(norm)) {
+    return "Sure — converting the file to PNG.";
+  }
+  if (/(change\s*to\s*webp|convert\s*to\s*webp|make\s*it\s*webp)/i.test(norm)) {
+    return "Sure — converting the file to WebP.";
   }
 
-  // ── PART D / TOOL 37: COLOR PICKER FROM IMAGE ─────────────────────────
-  const isColorPicker =
-    /(what\s*color\s*is\s*this|pick\s*color|get\s*hex\s*code|sample\s*this\s*color|color\s*picker)/i.test(norm);
-  if (isColorPicker) {
-    return "Here's the dominant color — click a specific spot if you want an exact pixel color instead.";
-  }
-
-  // ── PART D / TOOL 38: MEME GENERATOR ──────────────────────────────────
-  const isMemeRequest =
-    /(make\s*a\s*meme|add\s*meme\s*text|caption\s*this\s*image|meme\s*generator)/i.test(norm);
-  if (isMemeRequest) {
-    const textMatch = raw.match(/(?:says?|caption|text)\s*["':]\s*([^"'\n]+)["']?/i);
-    if (textMatch && textMatch[1]) {
-      return `Creating your meme with caption "${textMatch[1].trim()}"...`;
-    }
-    return "What should the top and bottom text say?";
-  }
-
-  // ── PART D / TOOL 5: IMAGE TO TEXT (OCR) ──────────────────────────────
-  const isOcrRequest =
-    /(extract\s*text|read\s*text\s*from\s*image|ocr\s*this|what\s*does\s*this\s*say|get\s*the\s*text\s*out)/i.test(norm);
-  if (isOcrRequest) {
-    if (norm.includes("word") || norm.includes("docx")) {
-      return "Extracting text and compiling it into an editable Word (.docx) document...";
-    }
+  // ── OCR / EXTRACT TEXT ────────────────────────────────────────────────
+  if (/(extract\s*text|read\s*text\s*from\s*image|ocr\s*this|what\s*does\s*this\s*say)/i.test(norm)) {
     return "Extracting text from your image using neural OCR...";
   }
 
-  // ── PART D / TOOLS 13–20: DOCUMENT CONVERTERS ─────────────────────────
-  // PDF <-> Image
-  const isPdfToImg = /(pdf\s*(to|into|->|2|as)\s*(img|image|images|jpg|jpeg|png|webp))/i.test(norm);
-  if (isPdfToImg || (isCurrentPdf && /(jpg|jpeg|png|webp|images?)/i.test(norm))) {
-    return "Converting PDF pages into high-resolution images...";
-  }
-
-  const isImgToPdf =
-    /(image|img|photos?|jpg|png|webp)\s*(to|into|->|2|as)\s*pdf/i.test(norm) ||
-    isHinglishPdf ||
-    (norm === "convert to pdf" && (isCurrentImage || hasAttachedFile));
-  if (isImgToPdf) {
-    return "Converting your image into a PDF document...";
-  }
-
-  // Word <-> Image
-  const isWordToImg = /(word|docx|doc)\s*(to|into|->|2|as)\s*(img|image|images|jpg|png)/i.test(norm);
-  if (isWordToImg || (isCurrentDocx && /(img|image|images|jpg|png)/i.test(norm))) {
-    return "Converting Word document pages into images...";
-  }
-
-  const isImgToWord =
-    /(image|img|photos?|jpg|png|webp|scan)\s*(to|into|->|2|as)\s*(word|docx|doc)/i.test(norm) ||
-    (norm === "convert to word" && (isCurrentImage || hasAttachedFile));
-  if (isImgToWord) {
-    return "Extracting text and converting your image into an editable Word (.docx) document...";
-  }
-
-  // Excel <-> Image
-  const isExcelToImg = /(excel|xlsx|csv|spreadsheet)\s*(to|into|->|2|as)\s*(img|image|png|jpg)/i.test(norm);
-  if (isExcelToImg || (isCurrentXlsx && /(img|image|png|jpg)/i.test(norm))) {
-    return "Rendering your spreadsheet into a clean, readable table image...";
-  }
-
-  const isImgToExcel = /(image|img|table|scan)\s*(to|into|->|2|as)\s*(excel|xlsx|spreadsheet)/i.test(norm);
-  if (isImgToExcel) {
-    return "Extracting table rows and cells into an editable Excel (.xlsx) file...";
-  }
-
-  // PowerPoint <-> Image
-  const isPptToImg = /(powerpoint|pptx|ppt|slides?)\s*(to|into|->|2|as)\s*(img|image|images|png|jpg)/i.test(norm);
-  if (isPptToImg || (isCurrentPptx && /(img|image|images|png|jpg)/i.test(norm))) {
-    return "Exporting each presentation slide as an image...";
-  }
-
-  const isImgToPpt = /(image|img|photos?)\s*(to|into|->|2|as)\s*(powerpoint|pptx|ppt|slides?)/i.test(norm);
-  if (isImgToPpt) {
-    return "Converting your images into a PowerPoint (.pptx) presentation...";
-  }
-
-  // ── PART D / TOOLS 21–35: FORMAT & BINARY CONVERTERS ──────────────────
-  // HTML to Image
-  const isHtmlToImg = /(html\s*(to|into|->|2|as)\s*(img|image|png|jpg)|screenshot\s*this\s*html|render\s*this\s*page)/i.test(norm);
-  if (isHtmlToImg) {
-    return "Rendering HTML code into a high-resolution image...";
-  }
-
-  // Convert to / from JPG
-  const isConvertToJpg = /(convert\s*to\s*jpg|make\s*it\s*jpg|png\s*to\s*jpg|webp\s*to\s*jpg)/i.test(norm);
-  if (isConvertToJpg) {
-    return "Converting your image to JPG format...";
-  }
-
-  const isConvertToPng = /(convert\s*to\s*png|make\s*it\s*png|jpg\s*to\s*png)/i.test(norm);
-  if (isConvertToPng) {
-    return "Converting your image to PNG format...";
-  }
-
-  const isConvertToWebp = /(convert\s*to\s*webp|make\s*it\s*webp|change\s*to\s*webp)/i.test(norm);
-  if (isConvertToWebp) {
-    return "Converting your image to WebP format...";
-  }
-
-  const isGenericFormatChange = /(change\s*format|convert\s*format|convert\s*the\s*format)/i.test(norm);
-  if (isGenericFormatChange) {
-    return "Convert to which format — JPG, PNG, or WebP?";
-  }
-
-  // Base64
-  if (/(base64\s*(this|image)|image\s*to\s*base64)/i.test(norm)) {
+  // ── BASE64, BINARY, HEX ───────────────────────────────────────────────
+  if (/base64/i.test(norm)) {
     return "Encoding your image into a Base64 data string...";
   }
-  if (/(base64\s*to\s*image|decode\s*base64)/i.test(norm)) {
-    return "Decoding Base64 string into an image...";
-  }
-
-  // Binary
-  if (/(image\s*to\s*binary|binary\s*file|convert\s*to\s*binary)/i.test(norm)) {
+  if (/binary/i.test(norm)) {
     return "Converting image into a raw binary bitstream...";
   }
-  if (/(binary\s*to\s*image|decode\s*binary)/i.test(norm)) {
-    return "Reconstructing image from binary data...";
-  }
-
-  // Hex
-  if (/(image\s*to\s*hex|hex\s*code\s*of\s*image)/i.test(norm)) {
+  if (/hex/i.test(norm)) {
     return "Converting image into a Hexadecimal byte string...";
   }
-  if (/(hex\s*to\s*image|decode\s*hex)/i.test(norm)) {
-    return "Reconstructing image from Hexadecimal bytes...";
-  }
 
-  // Octal
-  if (/(image\s*to\s*octal)/i.test(norm)) {
-    return "Converting image into Octal numeric sequence...";
-  }
-  if (/(octal\s*to\s*image)/i.test(norm)) {
-    return "Reconstructing image from Octal byte data...";
-  }
-
-  // Decimal
-  if (/(image\s*to\s*decimal)/i.test(norm)) {
-    return "Converting image into Decimal byte array (0–255)...";
-  }
-  if (/(decimal\s*to\s*image)/i.test(norm)) {
-    return "Reconstructing image from Decimal byte numbers...";
-  }
-
-  // ASCII
-  if (/(image\s*to\s*ascii|ascii\s*art)/i.test(norm)) {
-    return "Transforming your photo into ASCII character art...";
-  }
-  if (/(ascii\s*to\s*image)/i.test(norm)) {
-    return "Rendering ASCII art into a high-resolution image...";
+  // ── CAPABILITY QUESTIONS ──────────────────────────────────────────────
+  const isGeneralCapabilityQuery =
+    /(what\s*all\s*can\s*(you|this)\s*do|what\s*can\s*(you|this)\s*do|what\s*are\s*your\s*capabilities|list\s*(all\s*)?your\s*tools|what\s*do\s*you\s*do)/i.test(norm);
+  if (isGeneralCapabilityQuery) {
+    return "I can convert documents (PDF ↔ Excel, Word, Image), remove backgrounds, compress files, resize, upscale, and extract text via OCR. What would you like done?";
   }
 
   // ── GREETINGS & SPIRITUAL ORIGIN ──────────────────────────────────────
@@ -923,36 +859,21 @@ export function generateKarudiReply(messages: UIMessage[] | string, tier?: strin
     return `**Karudi** (કારુડી) refers to **Maa Mahakali**, the supreme Hindu Goddess of strength and protection, affectionately called "Karudi" (કારુડી મા) in Gujarati. As your AI assistant, I bring that same dedication to help you process files, edit images, and convert formats with speed and precision.`;
   }
 
-  // ── RULE 4 & CASE D: NO TOOL MATCHES → NARROW SUGGESTION ──────────────
-  if (norm.includes("cartoon") || norm.includes("anime") || norm.includes("caricature")) {
-    return "I don't have a cartoon-effect tool. Closest options: Photo Editor (filters/adjustments) or Meme Generator. Want one of these?";
-  }
-  if (norm.includes("video") || norm.includes("mp4") || norm.includes("audio") || norm.includes("mp3")) {
-    return "I don't have video or audio editing tools. I specialize in image and document processing (e.g. PDF converters, image editing, and OCR). Can I help with an image or document instead?";
-  }
-  if (norm.includes("3d") || norm.includes("mesh") || norm.includes("obj") || norm.includes("stl")) {
-    return "I don't have 3D modeling tools. Closest options: Upscale Image (to 4K) or Photo Editor for 2D enhancement. Would you like to try one of those?";
-  }
-
-  // ── PART C7: FULLY UNCLEAR / NO ACTIONABLE CONTENT ─────────────────────
-  // If user uploaded a file with no text, prompt for intent cleanly WITHOUT guessing silently
-  if (hasAttachedFile) {
+  // ── SECTION 8: NEVER USE GENERIC FALLBACKS WHEN CONTEXT EXISTS ────────
+  if (hasConversationFile || prevAssistantText || prevUserText) {
+    if (isCurrentImage) {
+      return "What format or operation do you need for this image — PDF, Excel, resize, compress, or remove background?";
+    }
     if (isCurrentPdf) {
-      return "Got your PDF! Would you like to convert it to images (JPG/PNG), or extract text into an editable Word document?";
+      return "What format or operation do you need for this PDF — convert to Excel, Word, images, or compress?";
     }
     if (isCurrentDocx) {
-      return "Got your Word document! Would you like to convert it to images or extract text?";
+      return "What would you like done with this Word document — convert to PDF or images?";
     }
-    if (isCurrentXlsx) {
-      return "Got your spreadsheet! Would you like to convert it to an image table?";
-    }
-    if (isCurrentPptx) {
-      return "Got your PowerPoint presentation! Would you like to export slides as images?";
-    }
-    return "What would you like done with this — resize, compress, convert, or edit it in some way?";
+    return "What format or operation do you need for this file — convert, compress, or edit?";
   }
 
-  // Clean fallback
+  // Zero-context true cold start only
   return "I'm here to help! Tell me what you'd like to do (e.g. remove background, resize, upscale, compress, or convert documents).";
 }
 

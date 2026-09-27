@@ -12,7 +12,7 @@ import {
   GitFork,
   Volume2,
   VolumeX,
-  Sparkles,
+  Wand2,
   Layers,
   Cpu,
   ShieldCheck,
@@ -418,7 +418,7 @@ export function MessageFeedbackToolbar({
         <DialogContent className="sm:max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg font-bold text-foreground">
-              <Sparkles className="h-5 w-5 text-amber-500" />
+              <Wand2 className="h-5 w-5 text-amber-500" />
               Sources & Engine Attribution
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">

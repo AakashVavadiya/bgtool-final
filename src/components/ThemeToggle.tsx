@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Sun, Moon, Sparkles } from "lucide-react";
+import { Sun, Moon, Wand2 } from "lucide-react";
 import { DottedThemeWave } from "@/components/DottedThemeWave";
 
 export function ThemeToggle() {
@@ -109,7 +109,7 @@ export function ThemeToggle() {
           {isDark ? "Night" : "Day"}
         </span>
 
-        <Sparkles className="h-3 w-3 text-accent transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:scale-125 group-hover:rotate-12" />
+        <Wand2 className="h-3 w-3 text-accent transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:scale-125 group-hover:rotate-12" />
       </button>
     </>
   );

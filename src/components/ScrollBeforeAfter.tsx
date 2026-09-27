@@ -15,7 +15,6 @@ export function ScrollBeforeAfter() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [displayPos, setDisplayPos] = useState(30);
   const [isDragging, setIsDragging] = useState(false);
-  const [isHovering, setIsHovering] = useState(false);
 
   const targetPosRef = useRef(30);
   const currentPosRef = useRef(30);
@@ -67,10 +66,10 @@ export function ScrollBeforeAfter() {
     [updateTargetPos]
   );
 
-  // Handle scroll-driven animation when not dragging or actively hovering
+  // Scroll-driven animation when not manually dragging the handle
   useEffect(() => {
     const handleScroll = () => {
-      if (isDragging || isHovering || !containerRef.current) return;
+      if (isDragging || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const windowHeight = window.innerHeight;
 
@@ -82,7 +81,7 @@ export function ScrollBeforeAfter() {
       const progress = (windowHeight - top) / (windowHeight + height);
 
       if (progress >= 0 && progress <= 1) {
-        // Map 15% to 85% scroll progress smoothly to 0% - 100% split
+        // Map 20% to 80% scroll progress smoothly to 0% - 100% split
         const mapped = Math.max(0, Math.min(100, (progress - 0.2) * 166.6));
         updateTargetPos(mapped);
       }
@@ -98,9 +97,9 @@ export function ScrollBeforeAfter() {
         animFrameRef.current = null;
       }
     };
-  }, [isDragging, isHovering, updateTargetPos]);
+  }, [isDragging, updateTargetPos]);
 
-  // Global mouse drag & touch handling
+  // Global mouse drag & touch handling when handle button is grabbed
   useEffect(() => {
     if (!isDragging) return;
 
@@ -134,27 +133,7 @@ export function ScrollBeforeAfter() {
   return (
     <div
       ref={containerRef}
-      onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
-      onMouseMove={(e) => {
-        if (isDragging || isHovering) {
-          updatePosFromClientX(e.clientX, isDragging);
-        }
-      }}
-      onWheel={(e) => {
-        // Smoothly adjust target position on mouse wheel scroll over container
-        const step = e.deltaY > 0 ? 6 : -6;
-        updateTargetPos(targetPosRef.current + step);
-      }}
-      onMouseDown={(e) => {
-        setIsDragging(true);
-        updatePosFromClientX(e.clientX, true);
-      }}
-      onTouchStart={(e) => {
-        setIsDragging(true);
-        if (e.touches[0]) updatePosFromClientX(e.touches[0].clientX, true);
-      }}
-      className="group relative h-[420px] sm:h-[540px] md:h-[640px] w-full max-w-5xl mx-auto overflow-hidden rounded-3xl border-2 border-border shadow-2xl select-none cursor-ew-resize touch-none"
+      className="group relative h-[420px] sm:h-[540px] md:h-[640px] w-full max-w-5xl mx-auto overflow-hidden rounded-3xl border-2 border-border shadow-2xl select-none"
       style={{
         ...cleanCheckerStyle,
         userSelect: "none",
@@ -199,10 +178,27 @@ export function ScrollBeforeAfter() {
         className="pointer-events-none absolute top-0 bottom-0 z-20 w-1 bg-white shadow-[0_0_20px_rgba(0,0,0,0.8)] will-change-[left]"
         style={{ left: `${displayPos}%` }}
       >
-        {/* Handle Button */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex h-14 w-14 items-center justify-center rounded-full bg-foreground text-background shadow-2xl transition-transform group-hover:scale-110">
+        {/* Marked Black Handle Button (Only manual drag trigger) */}
+        <button
+          type="button"
+          aria-label="Drag to reveal before and after"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(true);
+            updatePosFromClientX(e.clientX, true);
+          }}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            setIsDragging(true);
+            if (e.touches[0]) updatePosFromClientX(e.touches[0].clientX, true);
+          }}
+          className={`pointer-events-auto absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex h-14 w-14 items-center justify-center rounded-full bg-foreground text-background shadow-2xl transition-transform hover:scale-110 active:scale-95 focus:outline-none focus:ring-4 focus:ring-accent/30 ${
+            isDragging ? "cursor-grabbing scale-110" : "cursor-grab"
+          }`}
+        >
           <svg
-            className="h-7 w-7 stroke-current"
+            className="h-7 w-7 stroke-current pointer-events-none"
             fill="none"
             viewBox="0 0 24 24"
             strokeWidth="2.5"
@@ -212,7 +208,7 @@ export function ScrollBeforeAfter() {
             <path d="m9 18-6-6 6-6" />
             <path d="m15 6 6 6-6 6" />
           </svg>
-        </div>
+        </button>
       </div>
 
       {/* Badges */}
@@ -225,9 +221,8 @@ export function ScrollBeforeAfter() {
 
       {/* Top Banner Prompt */}
       <div className="pointer-events-none select-none absolute top-5 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-background/90 px-5 py-2 text-xs font-semibold text-foreground backdrop-blur border border-border shadow-md">
-        <span>Hover mouse, scroll wheel, or drag to reveal background removal ✨</span>
+        <span>Scroll page to reveal, or drag center button ↔</span>
       </div>
     </div>
   );
 }
-

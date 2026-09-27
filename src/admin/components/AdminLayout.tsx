@@ -8,8 +8,12 @@ import { UsersManagement } from "@/admin/views/UsersManagement";
 import { PurchasesView } from "@/admin/views/PurchasesView";
 import { ToolsConfigView } from "@/admin/views/ToolsConfigView";
 import { ErrorLogsView } from "@/admin/views/ErrorLogsView";
+import { WebsiteHealthCheckupView } from "@/admin/views/WebsiteHealthCheckupView";
+import { ToolsHealthTestView } from "@/admin/views/ToolsHealthTestView";
+import { SeoOptimizationView } from "@/admin/views/SeoOptimizationView";
 import { SupportDeskView } from "@/admin/views/SupportDeskView";
 import { MarketingMailView } from "@/admin/views/MarketingMailView";
+import { OlderReportsView } from "@/admin/views/OlderReportsView";
 import {
   Activity,
   Users,
@@ -24,6 +28,10 @@ import {
   ChevronRight,
   Menu,
   X,
+  HeartPulse,
+  Cpu,
+  Wand2,
+  Archive,
 } from "lucide-react";
 
 export type AdminTab =
@@ -32,11 +40,27 @@ export type AdminTab =
   | "purchases"
   | "tools"
   | "errors"
+  | "health"
+  | "tools-health"
+  | "seo-audit"
+  | "older-reports"
   | "support"
   | "marketing";
 
 const ADMIN_ACTIVE_TAB_KEY = "bg.admin.active_tab.v2";
-const VALID_TABS: AdminTab[] = ["overview", "users", "purchases", "tools", "errors", "support", "marketing"];
+const VALID_TABS: AdminTab[] = [
+  "overview",
+  "users",
+  "purchases",
+  "tools",
+  "errors",
+  "health",
+  "tools-health",
+  "seo-audit",
+  "older-reports",
+  "support",
+  "marketing",
+];
 
 function getInitialAdminTab(): AdminTab {
   if (typeof window === "undefined") return "overview";
@@ -70,6 +94,10 @@ const navTabs = [
   { id: "purchases" as const, label: "Purchases & Plans", icon: CreditCard },
   { id: "tools" as const, label: "Tools Limits & Toggles", icon: Wrench },
   { id: "errors" as const, label: "Error Logs & Reports", icon: AlertTriangle },
+  { id: "health" as const, label: "Website Health Checkup", icon: HeartPulse },
+  { id: "tools-health" as const, label: "Tools Health Test", icon: Cpu },
+  { id: "seo-audit" as const, label: "SEO Optimisation Tool", icon: Wand2 },
+  { id: "older-reports" as const, label: "Older Audit Reports", icon: Archive },
   { id: "support" as const, label: "Support Desk & Inbox", icon: Inbox },
   { id: "marketing" as const, label: "Marketing Broadcast", icon: Mail },
 ];
@@ -251,6 +279,12 @@ export function AdminLayout() {
           {activeTab === "purchases" && <PurchasesView />}
           {activeTab === "tools" && <ToolsConfigView />}
           {activeTab === "errors" && <ErrorLogsView />}
+          {activeTab === "health" && <WebsiteHealthCheckupView />}
+          {activeTab === "tools-health" && <ToolsHealthTestView />}
+          {activeTab === "seo-audit" && <SeoOptimizationView />}
+          {activeTab === "older-reports" && (
+            <OlderReportsView onNavigateToTab={(t) => setActiveTab(t as AdminTab)} />
+          )}
           {activeTab === "support" && <SupportDeskView />}
           {activeTab === "marketing" && <MarketingMailView />}
         </main>

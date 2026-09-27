@@ -9,7 +9,7 @@ import {
   PanelLeftOpen,
   Image as ImageIcon,
   FileText,
-  Sparkles,
+  Wand2,
   Search,
   Share2,
   Check,
@@ -17,20 +17,14 @@ import {
   Scissors,
   RefreshCw,
   BookOpen,
-  Crown,
-  ChevronDown,
-  Lock,
+  Construction,
+  ArrowRight,
 } from "lucide-react";
 import { KarudiAvatar } from "@/components/KarudiAvatar";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { DualTokenPill } from "@/components/TokenCoins";
 import { useThreads, notifyThreadsChanged } from "@/hooks/use-threads";
 import { deleteThread, newId, upsertThread } from "@/lib/chat-threads";
-import { karudiModels } from "@/lib/krishna";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/chat")({
@@ -87,7 +81,8 @@ export function ChatLayout() {
     };
   }, []);
 
-  const credits = currentUser ? currentUser.credits : AuthUser.getCredits();
+  const silverTokens = currentUser ? (currentUser.freeCredits ?? 10) : AuthUser.getSilverTokens();
+  const goldTokens = currentUser ? (currentUser.paidCredits ?? 0) : AuthUser.getGoldTokens();
   const displayName = currentUser?.name || "Upanishad Official";
   const initial = displayName.charAt(0).toUpperCase();
 
@@ -345,89 +340,14 @@ export function ChatLayout() {
                 <PanelLeftOpen className="h-5 w-5" />
               </button>
             )}
-
-            {/* Karudi Model Family Selector Dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="flex items-center gap-1.5 sm:gap-2 rounded-2xl border border-border/70 bg-card/80 px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-semibold text-foreground shadow-xs hover:bg-muted/70 transition-all cursor-pointer select-none min-w-0"
-                >
-                  <KarudiAvatar size="sm" />
-                  <span className="font-display font-extrabold tracking-tight truncate max-w-[105px] sm:max-w-none">
-                    Karudi 1.0 Prime
-                  </span>
-                  <span className="hidden sm:inline-block rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
-                    Flagship
-                  </span>
-                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-0.5 shrink-0" />
-                </button>
-              </DropdownMenuTrigger>
-
-              <DropdownMenuContent align="start" className="w-80 sm:w-88 rounded-2xl border border-border bg-card p-2.5 shadow-2xl z-50">
-                <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border/40 mb-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Karudi Model Architecture
-                  </span>
-                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                    Auto-Managed
-                  </span>
-                </div>
-
-                {/* Informative notification banner */}
-                <div className="mx-1 mb-2.5 rounded-xl border border-amber-500/20 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300 shadow-xs">
-                  <div className="flex items-center gap-1.5 font-bold">
-                    <Lock className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                    <span>Personal model selection is not available right now</span>
-                  </div>
-                  <p className="mt-1 text-[11px] leading-relaxed opacity-90">
-                    Karudi Prime automatically coordinates Ganga, Brahmaputra, Narmada, and Saraswati depending on your workflow.
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
-                  {karudiModels.map((m) => {
-                    const isPrime = m.id === "prime-1.0";
-                    return (
-                      <div
-                        key={m.id}
-                        onClick={() => {
-                          if (!isPrime) {
-                            toast.info("Personal model selection is not available right now. Karudi Prime automatically orchestrates all models.");
-                          }
-                        }}
-                        className={`flex flex-col items-start gap-1 rounded-xl p-2.5 transition-all select-none ${
-                          isPrime
-                            ? "bg-primary/10 border border-primary/25 cursor-default"
-                            : "opacity-60 bg-muted/30 border border-border/40 cursor-not-allowed hover:bg-muted/40"
-                        }`}
-                      >
-                        <div className="flex w-full items-center justify-between">
-                          <span className="font-bold text-xs text-foreground flex items-center gap-1.5">
-                            {isPrime ? <Crown className="h-3.5 w-3.5 text-primary" /> : <Lock className="h-3 w-3 text-muted-foreground" />}
-                            {m.name}
-                          </span>
-                          <span className="rounded-full bg-muted border border-border/70 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                            {isPrime ? "Active Orchestrator" : m.badge}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">
-                          {m.blurb}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
 
-          {/* Center Tabs: Chat | + Work (As in Reference Screenshot) */}
-          <div className="hidden md:flex items-center rounded-full border border-border/60 bg-card/60 p-1 shadow-xs">
+          {/* Center Tabs: Chat | + Work */}
+          <div className="flex items-center rounded-full border border-border/60 bg-card/60 p-0.5 sm:p-1 shadow-xs">
             <button
               type="button"
               onClick={() => setActiveTab("chat")}
-              className={`rounded-full px-4 py-1 text-xs font-bold transition-all ${
+              className={`rounded-full px-3 sm:px-4 py-1 text-xs font-bold transition-all ${
                 activeTab === "chat"
                   ? "bg-foreground text-background shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
@@ -438,7 +358,7 @@ export function ChatLayout() {
             <button
               type="button"
               onClick={() => setActiveTab("work")}
-              className={`rounded-full px-4 py-1 text-xs font-bold transition-all ${
+              className={`rounded-full px-3 sm:px-4 py-1 text-xs font-bold transition-all ${
                 activeTab === "work"
                   ? "bg-foreground text-background shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
@@ -455,24 +375,9 @@ export function ChatLayout() {
               <span>Proprietary AI Engine</span>
             </div>
 
-            {credits > 0 ? (
-              <Link
-                to="/pricing"
-                className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3.5 py-1.5 font-mono text-xs font-bold text-amber-500 hover:bg-amber-500/20 transition-all shadow-xs"
-                title="View studio credits and pricing"
-              >
-                <Zap className="h-3.5 w-3.5 fill-current" />
-                <span>{credits}</span>
-              </Link>
-            ) : (
-              <Link
-                to="/pricing"
-                className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-500 to-rose-500 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-sm transition-all hover:scale-105"
-              >
-                <Zap className="h-3.5 w-3.5" />
-                <span>Upgrade</span>
-              </Link>
-            )}
+            <Link to="/pricing">
+              <DualTokenPill silver={silverTokens} gold={goldTokens} />
+            </Link>
 
             <button
               type="button"
@@ -487,9 +392,81 @@ export function ChatLayout() {
           </div>
         </header>
 
-        {/* Outlet: The Actual Chat Thread Window */}
+        {/* Main Content Area: Chat or Work */}
         <main className="flex-1 min-h-0 min-w-0 flex flex-col relative overflow-hidden">
-          <Outlet />
+          {activeTab === "chat" ? (
+            <Outlet />
+          ) : (
+            <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center p-6 sm:p-10 text-center relative select-none animate-in fade-in zoom-in-95 duration-200">
+              <div className="max-w-md w-full flex flex-col items-center">
+                {/* Construction Icon Badge */}
+                <div className="relative mb-5">
+                  <div className="h-20 w-20 rounded-3xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center shadow-xl shadow-amber-500/10 ring-8 ring-amber-500/5">
+                    <Construction className="h-10 w-10 text-amber-500 animate-pulse" />
+                  </div>
+                  <span className="absolute -top-1 -right-1 flex h-6 px-1.5 items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-black tracking-wide shadow-md">
+                    2.0
+                  </span>
+                </div>
+
+                {/* Status Pill */}
+                <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3.5 py-1 text-xs font-bold text-amber-600 dark:text-amber-400 mb-3 shadow-2xs">
+                  <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" />
+                  <span>UNDER CONSTRUCTION</span>
+                </div>
+
+                {/* Title */}
+                <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+                  Karudi 2.0 is under Construction
+                </h2>
+
+                {/* Description */}
+                <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
+                  Soon we will activate this. We are developing the next-generation autonomous workspace engine for intelligent multi-step workflows, creative pipelines, and background tool automations.
+                </p>
+
+                {/* Feature preview cards */}
+                <div className="mt-6 w-full grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+                  <div className="p-3.5 rounded-2xl border border-border/70 bg-card/60 shadow-2xs">
+                    <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Wand2 className="h-3.5 w-3.5 text-amber-500" />
+                      <span>Smart Multi-Tool Runs</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                      Chain background removal, upscaling, OCR & conversions together automatically.
+                    </p>
+                  </div>
+                  <div className="p-3.5 rounded-2xl border border-border/70 bg-card/60 shadow-2xs">
+                    <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Zap className="h-3.5 w-3.5 text-emerald-500" />
+                      <span>Autonomous Workspace</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                      Delegated task execution with live progress reporting and real-time artifact previews.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Action buttons */}
+                <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("chat")}
+                    className="inline-flex items-center gap-2 rounded-xl bg-foreground text-background px-5 py-2.5 text-xs sm:text-sm font-bold shadow-md hover:opacity-90 transition-all cursor-pointer"
+                  >
+                    <span>Back to AI Chat</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                  <Link
+                    to="/tools"
+                    className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-card/80 px-5 py-2.5 text-xs sm:text-sm font-semibold text-foreground hover:bg-muted/70 transition-all shadow-2xs"
+                  >
+                    <span>Explore Tools</span>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>

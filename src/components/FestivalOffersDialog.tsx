@@ -5,7 +5,7 @@ import { AuthUser } from "@/lib/auth-user";
 import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
 import {
   X,
-  Sparkles,
+  Wand2,
   CheckCircle2,
   Zap,
   Gift,
@@ -160,7 +160,7 @@ export function FestivalOffersDialog({
           {/* Floating Badges */}
           <div className="absolute left-4 top-4 z-10 flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1 font-mono text-[11px] font-extrabold uppercase text-slate-950 shadow-md shadow-amber-500/30 animate-pulse">
-              <Sparkles className="h-3.5 w-3.5 fill-current" />
+              <Wand2 className="h-3.5 w-3.5 fill-current" />
               <span>Special Festival Offer</span>
             </span>
 

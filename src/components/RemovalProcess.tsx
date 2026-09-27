@@ -4,12 +4,13 @@ import {
   Download,
   Loader2,
   Upload,
-  Sparkles,
+  Wand2,
   RefreshCw,
   Eye,
   Image as ImageIcon,
   FolderUp,
   Pencil,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { bgModels } from "@/lib/bg-models";
@@ -174,6 +175,42 @@ export function RemovalProcess() {
     }
     if (!beforeImage || processing) return;
 
+    const { AdminStore } = await import("@/admin/lib/admin-store");
+    const cost = AdminStore.getToolCreditCost("remove-background");
+    const isFree = cost === 0;
+
+    if (isFree) {
+      const limitCheck = AdminStore.checkDailyToolLimit("remove-background");
+      if (limitCheck.reached) {
+        toast.error(`Free daily limit reached (${limitCheck.usedToday}/${limitCheck.limit || 20} files today). Add credits or wait until midnight.`);
+        window.dispatchEvent(
+          new CustomEvent("bg:show_add_credits_dialog", {
+            detail: {
+              toolName: "Background Remover",
+              toolSlug: "remove-background",
+              creditCost: 1,
+              currentCredits: AuthUser.getCredits(),
+            },
+          })
+        );
+        return;
+      }
+    } else {
+      if (!AuthUser.hasCredits(cost)) {
+        window.dispatchEvent(
+          new CustomEvent("bg:show_add_credits_dialog", {
+            detail: {
+              toolName: "Background Remover",
+              toolSlug: "remove-background",
+              creditCost: cost,
+              currentCredits: AuthUser.getCredits(),
+            },
+          })
+        );
+        return;
+      }
+    }
+
     setProcessing(true);
     setHasProcessed(false);
     setAfterImage(null);
@@ -233,9 +270,11 @@ export function RemovalProcess() {
     import("@/admin/lib/admin-store").then(({ AdminStore }) => {
       AdminStore.recordToolDailyUsage("remove-background");
       const cost = AdminStore.getToolCreditCost("remove-background");
-      import("@/lib/auth-user").then(({ AuthUser }) => {
-        AuthUser.deductCredit(cost);
-      });
+      if (cost > 0) {
+        import("@/lib/auth-user").then(({ AuthUser }) => {
+          AuthUser.deductCredit(cost);
+        });
+      }
     });
 
     toast.success("Background removed cleanly with AI!");
@@ -243,10 +282,37 @@ export function RemovalProcess() {
 
   const handleDownload = () => {
     if (!afterImage) return;
+    const downloadName = fileName ? `bg_removed_${fileName.replace(/\.[^.]+$/, "")}.png` : "bg_removed_transparent.png";
+    if (afterImage.startsWith("data:")) {
+      try {
+        const parts = afterImage.split(",");
+        const mime = parts[0]?.match(/:(.*?);/)?.[1] || "image/png";
+        const binary = atob(parts[1] || "");
+        const array = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          array[i] = binary.charCodeAt(i);
+        }
+        const blob = new Blob([array], { type: mime });
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = objectUrl;
+        a.download = downloadName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+        toast.success("Background removed PNG downloaded!");
+        return;
+      } catch (e) {
+        console.warn("Fallback to direct data url click:", e);
+      }
+    }
     const a = document.createElement("a");
     a.href = afterImage;
-    a.download = fileName ? `bg_removed_${fileName.replace(/\.[^.]+$/, "")}.png` : "bg_removed_transparent.png";
+    a.download = downloadName;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     toast.success("Background removed PNG downloaded!");
   };
 
@@ -611,13 +677,44 @@ export function RemovalProcess() {
               </div>
 
               <div className="mt-6 flex flex-col gap-3">
+                {/* Credit Cost Indicator */}
+                <div className="flex items-center justify-between text-xs px-1 text-muted-foreground font-semibold">
+                  <span className="flex items-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5 text-amber-500 fill-current" />
+                    <span>Cost: <strong className="text-foreground">1 credit</strong></span>
+                    <span className="text-[11px] text-muted-foreground ml-1">
+                      (Balance: <span className="font-mono font-bold text-amber-500">{AuthUser.getCredits()}</span>)
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(
+                          new CustomEvent("bg:show_add_credits_dialog", {
+                            detail: {
+                              toolName: "Background Remover",
+                              toolSlug: "remove-background",
+                              creditCost: 1,
+                              currentCredits: AuthUser.getCredits(),
+                            },
+                          })
+                        );
+                      }
+                    }}
+                    className="text-amber-600 dark:text-amber-400 hover:underline font-extrabold cursor-pointer text-xs"
+                  >
+                    + Add Credits
+                  </button>
+                </div>
+
                 {!hasProcessed && !processing ? (
                   <button
                     type="button"
                     onClick={startRemovalProcess}
                     className="w-full inline-flex items-center justify-center gap-3 rounded-full bg-foreground px-8 py-4 text-sm md:text-base font-extrabold text-background shadow-xl transition-all hover:scale-105 hover:shadow-accent/30"
                   >
-                    <Sparkles className="h-5 w-5 text-amber-400" /> Remove Background Now →
+                    <Wand2 className="h-5 w-5 text-amber-400" /> Remove Background Now →
                   </button>
                 ) : processing ? (
                   <button

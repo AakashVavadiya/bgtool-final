@@ -168,6 +168,12 @@ export function SiteFooter() {
                   </span>
                 </Link>
               </li>
+              <li className="pt-1 border-t border-border/50">
+                <Link to="/tools" className="font-bold text-accent hover:underline flex items-center gap-1">
+                  <span>Browse All 130+ Tools</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </li>
             </ul>
           </div>
 
