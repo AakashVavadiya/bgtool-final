@@ -217,6 +217,53 @@ export function DualTokenPill({
   );
 }
 
+// ============================================================================
+// MergedTokenPill — Single compact pill: one coin icon + total count
+// Shows gold coin (with glow) when paid credits exist, silver otherwise
+// ============================================================================
+interface MergedTokenPillProps {
+  silver: number;
+  gold: number;
+  onClick?: () => void;
+  className?: string;
+}
+
+export function MergedTokenPill({
+  silver = 0,
+  gold = 0,
+  onClick,
+  className = "",
+}: MergedTokenPillProps) {
+  const total = (silver || 0) + (gold || 0);
+  const hasGold = (gold || 0) > 0;
+
+  const Component = onClick ? "button" : "div";
+
+  return (
+    <Component
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-card/90 px-2.5 py-1 text-xs font-semibold shadow-2xs hover:bg-muted/70 transition-all select-none ${
+        onClick ? "cursor-pointer" : ""
+      } ${className}`}
+      title={`Token Balance: ${total} Total (${silver} Free + ${gold} Paid)`}
+    >
+      <TokenCoin
+        type={hasGold ? "gold" : "silver"}
+        size="sm"
+        showGlow={hasGold}
+      />
+      <span
+        className={`font-mono font-bold text-[12px] leading-none ${
+          hasGold ? "text-amber-600 dark:text-amber-400" : "text-slate-700 dark:text-slate-300"
+        }`}
+      >
+        {total}
+      </span>
+    </Component>
+  );
+}
+
 interface TokenBalanceBreakdownProps {
   silver: number;
   gold: number;

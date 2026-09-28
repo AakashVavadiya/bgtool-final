@@ -6,7 +6,7 @@ import { AuthUser, type CurrentUser } from "@/lib/auth-user";
 import { openFestivalOffersDialog } from "@/components/FestivalOffersDialog";
 import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
 import { Wand2, Zap, LogOut, ChevronDown, Menu, X } from "lucide-react";
-import { DualTokenPill, TokenCoin } from "@/components/TokenCoins";
+import { DualTokenPill, MergedTokenPill, TokenCoin } from "@/components/TokenCoins";
 
 const links = [
   { label: "Home.", to: "/" },
@@ -101,12 +101,10 @@ export function SiteHeader({ floating = false }: { floating?: boolean }) {
             <button
               type="button"
               onClick={openFestivalOffersDialog}
-              className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-500 hover:bg-amber-500 hover:text-slate-950 transition-all cursor-pointer shadow-xs animate-pulse"
+              className="inline-flex items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 h-9 w-9 text-amber-500 hover:bg-amber-500 hover:text-slate-950 transition-all cursor-pointer shadow-xs animate-pulse"
               title="Click to view special festival offer"
             >
-              <Wand2 className="h-3.5 w-3.5 fill-current" />
-              <span className="hidden sm:inline">Festival Offer</span>
-              <span className="sm:hidden">Offer</span>
+              <Wand2 className="h-4 w-4 fill-current" />
             </button>
           )}
 
@@ -115,9 +113,9 @@ export function SiteHeader({ floating = false }: { floating?: boolean }) {
           {/* User Logged In State vs Logged Out State */}
           {currentUser ? (
             <div className="flex items-center gap-2.5 sm:gap-3">
-              {/* Dual Token Pill: Silver (Free) & Gold (Paid) Tokens */}
+              {/* Merged Token Pill: single coin + total number */}
               <Link to="/pricing">
-                <DualTokenPill
+                <MergedTokenPill
                   silver={currentUser.freeCredits ?? 10}
                   gold={currentUser.paidCredits ?? 0}
                 />

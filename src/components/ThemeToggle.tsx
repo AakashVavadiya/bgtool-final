@@ -61,7 +61,7 @@ export function ThemeToggle() {
 
   if (!mounted) {
     return (
-      <div className="h-9 w-24 rounded-full border border-border bg-card/60 animate-pulse" />
+      <div className="h-9 w-9 rounded-full border border-border bg-card/60 animate-pulse" />
     );
   }
 
@@ -87,14 +87,13 @@ export function ThemeToggle() {
         onClick={handleToggle}
         title={`Switch to ${isDark ? "Day Mode (Light)" : "Night Mode (Dark)"}`}
         aria-label={`Toggle theme. Currently ${isDark ? "Night" : "Day"} mode.`}
-        className="wobbly-btn group relative flex h-9 items-center gap-2 rounded-full border border-border bg-card/90 px-2.5 py-1 shadow-sm backdrop-blur-md cursor-pointer hover:border-foreground/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="wobbly-btn group relative flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/90 shadow-sm backdrop-blur-md cursor-pointer hover:border-foreground/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all"
       >
-        {/* Animated Sliding Pill Indicator Thumb with Wobbly Physics */}
         <div
           className={`relative flex h-6 w-6 items-center justify-center rounded-full transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
             isDark
-              ? "bg-zinc-800 text-amber-300 shadow-sm border border-zinc-700/60 rotate-0 scale-100"
-              : "bg-amber-500 text-white shadow-sm rotate-0 scale-100"
+              ? "bg-zinc-800 text-amber-300 shadow-sm border border-zinc-700/60"
+              : "bg-amber-500 text-white shadow-sm"
           }`}
         >
           {isDark ? (
@@ -103,13 +102,6 @@ export function ThemeToggle() {
             <Sun className="h-3.5 w-3.5 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:rotate-90 group-hover:scale-110" />
           )}
         </div>
-
-        {/* Text Label */}
-        <span className="text-xs font-bold tracking-wide text-foreground/90 select-none transition-transform duration-300 group-hover:scale-105">
-          {isDark ? "Night" : "Day"}
-        </span>
-
-        <Wand2 className="h-3 w-3 text-accent transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:scale-125 group-hover:rotate-12" />
       </button>
     </>
   );
