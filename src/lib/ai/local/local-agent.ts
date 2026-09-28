@@ -102,13 +102,18 @@ export class LocalAgentOrchestrator {
         lower.includes("bg hata") ||
         lower.includes("background hata");
 
+      // IMPORTANT: Only match when user explicitly states PDF as the target
+      // Do NOT match bare words like "convert", "convert file", "convert this"
       const mentionsPdf =
-        lower.includes("create a pdf") ||
-        lower.includes("make a pdf") ||
         lower.includes("convert to pdf") ||
-        lower.includes("creating a pdf") ||
+        lower.includes("make a pdf") ||
+        lower.includes("make pdf") ||
         lower.includes("png to pdf") ||
-        lower.includes("image to pdf");
+        lower.includes("jpg to pdf") ||
+        lower.includes("jpeg to pdf") ||
+        lower.includes("image to pdf") ||
+        lower.includes("create a pdf") ||
+        lower.includes("creating a pdf");
 
       if (hasImage && mentionsRemoveBg && mentionsPdf) {
         specs.push({ tool: "remove_background", arguments: {} });
@@ -234,7 +239,22 @@ export class LocalAgentOrchestrator {
     const queryMentionsPdf =
       lowerQuery.includes("make pdf") ||
       lowerQuery.includes("convert to pdf") ||
+      lowerQuery.includes("jpg to pdf") ||
+      lowerQuery.includes("png to pdf") ||
       lowerQuery.includes("image to pdf");
+
+    // Bare "convert" without explicit target = AMBIGUOUS, ask for clarification
+    const isAmbiguousConvert =
+      /^convert(\s+(this|file|it|image|photo))?[.!?]?$/i.test(lowerQuery) ||
+      lowerQuery === "convert";
+
+    if (hasAnyFile && isAmbiguousConvert) {
+      return {
+        reply: "What would you like to convert to? You can say:\n• **PDF** — image to PDF\n• **Word** (.docx) — extract text to Word\n• **Excel** (.xlsx) — extract data to Excel\n• **WebP / JPG / PNG** — change image format",
+        steps: [],
+        toolExecuted: undefined,
+      };
+    }
 
     if (!hasImage && queryMentionsBg) {
       const isGujarati = /[\u0A80-\u0AFF]|(photo|karo|kari|aapo|nathi|che)\b/i.test(latestUserQuery);
