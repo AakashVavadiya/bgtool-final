@@ -9,6 +9,18 @@ export default defineConfig({
     hmr: {
       overlay: false, // Completely suppress dev overlay to protect internal file paths
     },
+    watch: {
+      ignored: [
+        (path: string) => /[\\/]data[\\/]/.test(path) || path.endsWith(".json") || /[\\/]\.git[\\/]/.test(path) || /[\\/](temp|tmp)[\\/]/.test(path) || path.endsWith(".log"),
+        "**/data/**",
+        "**/data/*",
+        "**/*.json",
+        "**/.git/**",
+        "**/temp/**",
+        "**/tmp/**",
+        "**/*.log",
+      ],
+    },
   },
   plugins: [
     tanstackStart({ server: { entry: "server" } }),

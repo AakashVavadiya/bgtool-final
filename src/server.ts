@@ -416,7 +416,14 @@ export default {
               }
             }
             if (modified) {
-              fs.writeFileSync(filePath, JSON.stringify(users, null, 2), "utf-8");
+              const newStr = JSON.stringify(users, null, 2);
+              let currentStr = "";
+              try {
+                if (fs.existsSync(filePath)) currentStr = fs.readFileSync(filePath, "utf-8");
+              } catch {}
+              if (currentStr !== newStr) {
+                fs.writeFileSync(filePath, newStr, "utf-8");
+              }
             }
           }
           return new Response(JSON.stringify(users), {
@@ -431,7 +438,14 @@ export default {
       if (request.method === "POST") {
         try {
           const body = await request.json();
-          fs.writeFileSync(filePath, JSON.stringify(body, null, 2), "utf-8");
+          const newStr = JSON.stringify(body, null, 2);
+          let currentStr = "";
+          try {
+            if (fs.existsSync(filePath)) currentStr = fs.readFileSync(filePath, "utf-8");
+          } catch {}
+          if (currentStr !== newStr) {
+            fs.writeFileSync(filePath, newStr, "utf-8");
+          }
           return new Response(JSON.stringify({ success: true }), {
             status: 200,
             headers: { "Content-Type": "application/json" },

@@ -85,9 +85,6 @@ function ToolPage() {
       }
       const ds = AdminStore.checkDailyToolLimit(slug);
       setDailyStatus(ds);
-      if (ds.reached) {
-        setShowLimitModal(true);
-      }
     };
 
     const handleAddCreditsEvent = (e: Event) => {
@@ -250,11 +247,11 @@ function ToolPage() {
                 </div>
               )}
               {isBgRemover ? (
-                <RemovalProcess />
+                <RemovalProcess key="removal-process" />
               ) : tool.category === "PDF Tools" ? (
-                <PdfToolWorkspace tool={tool} />
+                <PdfToolWorkspace key={`pdf-${tool.slug}`} tool={tool} />
               ) : (
-                <InteractiveToolWorkspace tool={tool} />
+                <InteractiveToolWorkspace key={`workspace-${tool.slug}`} tool={tool} />
               )}
             </>
           )}

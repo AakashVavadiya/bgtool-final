@@ -5333,6 +5333,158 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
     }
   };
 
+  const renderSquareImageToDataUrl = (
+    img: HTMLImageElement,
+    cfg?: {
+      bgMode?: "blur" | "color" | "gradient" | "transparent" | "fit";
+      blurAmount?: number;
+      bgColor?: string;
+      gradient?: string;
+      scale?: number;
+      cornerRadius?: number;
+      shadow?: "none" | "soft" | "float" | "card";
+      exportFormat?: "PNG" | "JPG" | "WEBP";
+    }
+  ): string => {
+    const bgMode = cfg?.bgMode ?? squareBgMode;
+    const blurAmount = cfg?.blurAmount ?? squareBlurAmount;
+    const bgColor = cfg?.bgColor ?? squareBgColor;
+    const gradient = cfg?.gradient ?? squareGradient;
+    const scale = cfg?.scale ?? squareScale;
+    const cornerRadius = cfg?.cornerRadius ?? squareCornerRadius;
+    const shadow = cfg?.shadow ?? squareShadow;
+    const exportFormat = cfg?.exportFormat ?? squareExportFormat;
+
+    const maxDim = Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height);
+    const canvas = document.createElement("canvas");
+    canvas.width = maxDim;
+    canvas.height = maxDim;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.clearRect(0, 0, maxDim, maxDim);
+
+    // 1. Background layer
+    if (bgMode === "blur") {
+      ctx.save();
+      const blurPx = Math.max(10, Math.round((blurAmount / 500) * maxDim));
+      ctx.filter = `blur(${blurPx}px)`;
+      const bgScale = Math.max(maxDim / img.width, maxDim / img.height) * 1.25;
+      const bgW = img.width * bgScale;
+      const bgH = img.height * bgScale;
+      ctx.drawImage(img, (maxDim - bgW) / 2, (maxDim - bgH) / 2, bgW, bgH);
+      ctx.restore();
+    } else if (bgMode === "color") {
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, maxDim, maxDim);
+    } else if (bgMode === "gradient") {
+      const grad = ctx.createLinearGradient(0, 0, maxDim, maxDim);
+      const colorMatches = gradient.match(/#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|rgba?\([^)]+\)/g);
+      if (colorMatches && colorMatches.length >= 2 && colorMatches[0] && colorMatches[colorMatches.length - 1]) {
+        grad.addColorStop(0, colorMatches[0]);
+        grad.addColorStop(1, colorMatches[colorMatches.length - 1] as string);
+      } else {
+        grad.addColorStop(0, "#667eea");
+        grad.addColorStop(1, "#764ba2");
+      }
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, maxDim, maxDim);
+    } else if (bgMode === "transparent") {
+      if (exportFormat === "JPG") {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, maxDim, maxDim);
+      } else {
+        ctx.clearRect(0, 0, maxDim, maxDim);
+      }
+    }
+
+    // 2. Foreground image layer
+    if (bgMode === "fit") {
+      const coverScale = Math.max(maxDim / img.width, maxDim / img.height) * (scale / 100);
+      const drawW = img.width * coverScale;
+      const drawH = img.height * coverScale;
+      const dx = (maxDim - drawW) / 2;
+      const dy = (maxDim - drawH) / 2;
+
+      ctx.save();
+      if (cornerRadius > 0) {
+        const radPx = cornerRadius === 9999 ? maxDim / 2 : Math.round((cornerRadius / 500) * maxDim);
+        ctx.beginPath();
+        if (typeof ctx.roundRect === "function") {
+          ctx.roundRect(0, 0, maxDim, maxDim, radPx);
+        } else {
+          ctx.rect(0, 0, maxDim, maxDim);
+        }
+        ctx.clip();
+      }
+      ctx.drawImage(img, dx, dy, drawW, drawH);
+      ctx.restore();
+    } else {
+      const scaleMultiplier = Math.max(0.2, Math.min(1.0, scale / 100));
+      let fgW = img.width;
+      let fgH = img.height;
+      if (fgW >= fgH) {
+        fgW = maxDim * scaleMultiplier;
+        fgH = (img.height / img.width) * fgW;
+      } else {
+        fgH = maxDim * scaleMultiplier;
+        fgW = (img.width / img.height) * fgH;
+      }
+
+      const dx = (maxDim - fgW) / 2;
+      const dy = (maxDim - fgH) / 2;
+      const radPx = cornerRadius === 9999 ? Math.min(fgW, fgH) / 2 : Math.round((cornerRadius / 500) * maxDim);
+
+      if (shadow !== "none") {
+        ctx.save();
+        if (shadow === "soft") {
+          ctx.shadowColor = "rgba(0, 0, 0, 0.38)";
+          ctx.shadowBlur = Math.round(maxDim * 0.035);
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = Math.round(maxDim * 0.015);
+        } else if (shadow === "float") {
+          ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
+          ctx.shadowBlur = Math.round(maxDim * 0.06);
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = Math.round(maxDim * 0.03);
+        } else if (shadow === "card") {
+          ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
+          ctx.shadowBlur = Math.round(maxDim * 0.02);
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = Math.round(maxDim * 0.01);
+        }
+
+        ctx.beginPath();
+        if (radPx > 0 && typeof ctx.roundRect === "function") {
+          ctx.roundRect(dx, dy, fgW, fgH, radPx);
+        } else {
+          ctx.rect(dx, dy, fgW, fgH);
+        }
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+        ctx.restore();
+      }
+
+      ctx.save();
+      if (radPx > 0) {
+        ctx.beginPath();
+        if (typeof ctx.roundRect === "function") {
+          ctx.roundRect(dx, dy, fgW, fgH, radPx);
+        } else {
+          ctx.rect(dx, dy, fgW, fgH);
+        }
+        ctx.clip();
+      }
+      ctx.drawImage(img, dx, dy, fgW, fgH);
+      ctx.restore();
+    }
+
+    const mime = exportFormat === "JPG" ? "image/jpeg" : exportFormat === "WEBP" ? "image/webp" : "image/png";
+    return canvas.toDataURL(mime, 0.98);
+  };
+
   const processSelectedFile = (selected: File) => {
     // Base64-to-image tool: read as text (.txt, .b64, etc.) and auto-decode
     if (tool.slug === "base64-to-image") {
@@ -5690,6 +5842,29 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         setTargetWidth(img.width);
         setTargetHeight(img.height);
         setCropBox({ x: 10, y: 10, w: 80, h: 80 });
+
+        // Auto-process for Square Your Image tool so the user directly gets the Download Screen
+        if (tool.slug === "square-your-image") {
+          const maxDim = Math.max(img.width, img.height);
+          setDimensions({ width: maxDim, height: maxDim });
+          setTargetWidth(maxDim);
+          setTargetHeight(maxDim);
+          try {
+            const squareUrl = renderSquareImageToDataUrl(img);
+            if (squareUrl) {
+              setProcessedSrc(squareUrl);
+              const b64Part = squareUrl.split(",")[1] || "";
+              const pad = b64Part.endsWith("==") ? 2 : b64Part.endsWith("=") ? 1 : 0;
+              setNewSize(Math.max(1, Math.round((b64Part.length * 3) / 4 - pad)));
+              setHasProcessed(true);
+              setIsEditingSettings(false);
+              setProcessing(false);
+              toast.success("1:1 Square Image ready to download!");
+            }
+          } catch (sqErr) {
+            console.error("Auto square generation error:", sqErr);
+          }
+        }
       };
       img.src = b64;
     };
@@ -6782,12 +6957,16 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
   }, [isDraggingCrop, cropDragHandle, cropDragStart]);
 
   const recordToolExecution = () => {
-    Telemetry.trackToolUsage(tool.slug, tool.name);
-    const cost = AdminStore.getToolCreditCost(tool.slug);
-    if (cost > 0) {
-      AuthUser.deductCredit(cost);
+    try {
+      Telemetry.trackToolUsage(tool.slug, tool.name);
+      const cost = AdminStore.getToolCreditCost(tool.slug);
+      if (cost > 0) {
+        AuthUser.deductCredit(cost);
+      }
+      AdminStore.recordToolDailyUsage(tool.slug);
+    } catch (e) {
+      console.warn("recordToolExecution error:", e);
     }
-    AdminStore.recordToolDailyUsage(tool.slug);
   };
 
   const processImage = () => {
@@ -7205,6 +7384,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         const maxDim = Math.max(img.width, img.height);
         w = maxDim;
         h = maxDim;
+        setDimensions({ width: maxDim, height: maxDim });
+        setTargetWidth(maxDim);
+        setTargetHeight(maxDim);
       }
 
       // 2. Resize / Upscale logic
@@ -7456,7 +7638,9 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       } else {
         ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
       }
-      ctx.restore();
+      if (tool.slug !== "square-your-image") {
+        ctx.restore();
+      }
 
       // Localized Face Anonymization Pass (Python YuNet AI Backend + High-Precision Client Fallback)
       if (tool.slug === "blur-face") {
@@ -8183,16 +8367,25 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
       }
 
       let dataUrl = "";
-      try {
-        dataUrl = canvas.toDataURL(format, exportQuality);
-      } catch {
+      if (tool.slug === "square-your-image") {
         try {
-          dataUrl = canvas.toDataURL("image/png");
-        } catch (canvasErr) {
-          console.error("Canvas export failed:", canvasErr);
-          setProcessing(false);
-          toast.error("Could not export image. Please try another image file.");
-          return;
+          dataUrl = renderSquareImageToDataUrl(img);
+        } catch {
+          // fallback to canvas
+        }
+      }
+      if (!dataUrl) {
+        try {
+          dataUrl = canvas.toDataURL(format, exportQuality);
+        } catch {
+          try {
+            dataUrl = canvas.toDataURL("image/png");
+          } catch (canvasErr) {
+            console.error("Canvas export failed:", canvasErr);
+            setProcessing(false);
+            toast.error("Could not export image. Please try another image file.");
+            return;
+          }
         }
       }
 
@@ -8479,6 +8672,10 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
         : `${baseName}_${tool.slug}.${ext}`;
 
     triggerFileDownload(url, downloadFilename);
+
+    if (tool.slug === "square-your-image") {
+      recordToolExecution();
+    }
 
     toast.success(
       tool.slug === "compress-image"
@@ -8806,10 +9003,14 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                         ? "Resize Complete"
                         : tool.slug === "crop-image"
                         ? "Crop Complete"
+                        : tool.slug === "square-your-image"
+                        ? "1:1 Square Complete"
                         : `${tool.name} Complete`}
                     </span>
                     <span className="text-xs text-muted-foreground font-semibold">
-                      {dimensions.width} × {dimensions.height} px
+                      {tool.slug === "square-your-image"
+                        ? `${Math.max(dimensions.width || 0, dimensions.height || 0)} × ${Math.max(dimensions.width || 0, dimensions.height || 0)} px`
+                        : `${dimensions.width} × ${dimensions.height} px`}
                     </span>
                   </div>
                   <h3 className="font-display text-xl md:text-2xl font-bold tracking-tight text-foreground mt-1">
@@ -8821,6 +9022,8 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                       ? "Image Successfully Resized"
                       : tool.slug === "crop-image"
                       ? "Image Successfully Cropped"
+                      : tool.slug === "square-your-image"
+                      ? "1:1 Square Image Ready to Download"
                       : tool.slug === "blur-image" || tool.slug === "anonymise-image"
                       ? "Image Successfully Blurred"
                       : tool.slug === "watermark-image"
@@ -9264,6 +9467,8 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                   ? "Download Resized Image"
                   : tool.slug === "crop-image"
                   ? "Download Cropped Image"
+                  : tool.slug === "square-your-image"
+                  ? `Download 1:1 Square Image (${squareExportFormat})`
                   : tool.slug.includes("ocr") || tool.slug === "image-to-text"
                   ? "Download Extracted Text"
                   : `Download ${tool.outputs || "Processed"} File`}
@@ -9302,6 +9507,8 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                   ? "Resize another File"
                   : tool.slug === "crop-image"
                   ? "Crop another File"
+                  : tool.slug === "square-your-image"
+                  ? "Square another Image"
                   : "Process another File"}
               </span>
             </button>
@@ -10136,6 +10343,18 @@ export function InteractiveToolWorkspace({ tool }: { tool: Tool }) {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {tool.slug === "square-your-image" && imageSrc && (
+                  <button
+                    type="button"
+                    onClick={processImage}
+                    disabled={processing}
+                    className="rounded-full bg-foreground text-background hover:bg-neutral-800 dark:hover:bg-neutral-200 px-3.5 py-1 text-xs font-black transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                    title="Export 1:1 square output and go to download screen"
+                  >
+                    <Download className="h-3.5 w-3.5 text-accent" />
+                    <span>Download 1:1 Square</span>
+                  </button>
+                )}
                 {hasProcessed && (
                   <button
                     type="button"

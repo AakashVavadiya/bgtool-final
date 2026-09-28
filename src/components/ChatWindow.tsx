@@ -36,6 +36,8 @@ import {
   ArrowDownToLine,
   FileSpreadsheet,
   ScanText,
+  Image as ImageIcon,
+  Globe,
 } from "lucide-react";
 import karudiKLogo from "@/assets/karudi-k-logo.png";
 import { SingleImageBgRemovalWidget } from "@/components/SingleImageBgRemovalWidget";
@@ -449,7 +451,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
     transport: new DefaultChatTransport({
       api: "/api/chat",
       prepareSendMessagesRequest: ({ messages: m, id }) => ({
-        body: { messages: m, tier: currentTier, id },
+        body: { messages: m, tier: currentTier, id, isThinking: isThinkingEnabled },
       }),
     }),
     onError: (err) => toast.error(err.message || "Karudi could not reply."),
@@ -476,6 +478,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
           messages: conversationUpToTurn,
           tier: currentTier,
           id: thread.id,
+          isThinking: isThinkingEnabled,
         }),
       });
 
@@ -646,6 +649,22 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+  };
+
+  // Convert Base64 Data URL to Blob
+  const dataUrlToBlob = (dataUrl: string): Blob => {
+    try {
+      const parts = dataUrl.split(";base64,");
+      const contentType = parts[0]?.replace("data:", "") || "application/octet-stream";
+      const raw = window.atob(parts[1] || "");
+      const uInt8Array = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; ++i) {
+        uInt8Array[i] = raw.charCodeAt(i);
+      }
+      return new Blob([uInt8Array], { type: contentType });
+    } catch {
+      return new Blob([], { type: "application/octet-stream" });
+    }
   };
 
   // Download helper for data URLs
@@ -1814,6 +1833,44 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                 Object.values(taskMap).find((t) => t.turnIndex === idx - 1) ||
                 Object.values(taskMap).find((t) => t.id === m.id) ||
                 null;
+
+              // Check for real LLM tool-call results delivered via AI SDK UI message stream
+              if (!task && m.parts) {
+                const toolResultPart = m.parts.find(
+                  (p: any) =>
+                    (p.type === "tool-invocation" && p.toolInvocation?.state === "result") ||
+                    (p.type === "custom" && p.providerMetadata?.karudi?.toolInvocation?.state === "result")
+                ) as any;
+
+                const invocation =
+                  toolResultPart?.toolInvocation ||
+                  toolResultPart?.providerMetadata?.karudi?.toolInvocation;
+                if (invocation?.result) {
+                  const res = invocation.result;
+                  const toolName = invocation.toolName || "tool";
+                  if (res.success !== false) {
+                    const actionName = (res.action || res.tool || toolName) as KarudiActionType;
+                    task = {
+                      id: m.id,
+                      userPrompt: "",
+                      action: actionName,
+                      primaryModel: "brahmaputra",
+                      toolName: res.tool || toolName.replace(/_/g, " "),
+                      status: "done",
+                      progressMessage: res.message || "Operation completed successfully.",
+                      resultImageSrc: res.resultImageSrc,
+                      resultPdfBlob: res.resultPdfDataUrl ? dataUrlToBlob(res.resultPdfDataUrl) : undefined,
+                      resultPdfFilename: res.filename || "document.pdf",
+                      targetWidth: res.width,
+                      targetHeight: res.height,
+                      compressedSize: res.compressedSize || res.bytes,
+                      rotationDegrees: res.rotationDegrees,
+                      completionMessage: res.message,
+                      selectedFormat: res.format,
+                    };
+                  }
+                }
+              }
             }
 
             return (
@@ -2074,6 +2131,26 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                                       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
                                     }}
                                   />
+                                );
+                              }
+                              if (part.type === "tool-invocation") {
+                                const invocation = (part as any).toolInvocation;
+                                const toolName = (invocation?.toolName || "tool").replace(/_/g, " ");
+                                const isCall = invocation?.state === "call";
+                                return (
+                                  <div
+                                    key={`${m.id}-tool-${i}`}
+                                    className="my-2 inline-flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400"
+                                  >
+                                    {isCall ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />
+                                    ) : (
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                    )}
+                                    <span>
+                                      {isCall ? `Executing ${toolName}…` : `Executed ${toolName}`}
+                                    </span>
+                                  </div>
                                 );
                               }
                               return null;
@@ -2582,6 +2659,32 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                     </div>
                   )}
                 </div>
+
+                {/* Think Mode Toggle Pill */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsThinkingEnabled((prev) => {
+                      const next = !prev;
+                      if (next) {
+                        toast.info("Think mode enabled: Deeper analysis & evidence synthesis.");
+                      } else {
+                        toast.info("Think mode disabled: Fast path enabled.");
+                      }
+                      return next;
+                    });
+                  }}
+                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs md:text-sm font-medium transition-all cursor-pointer ${
+                    isThinkingEnabled
+                      ? "bg-amber-500/15 border border-amber-500/40 text-amber-600 dark:text-amber-400 shadow-2xs"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent"
+                  }`}
+                  title="Toggle Think Mode (deep analysis & web research when needed)"
+                >
+                  <Brain className={`h-4 w-4 ${isThinkingEnabled ? "text-amber-500 animate-pulse" : "text-muted-foreground"}`} />
+                  <span className="font-semibold">Think</span>
+                  {isThinkingEnabled && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
+                </button>
               </div>
 
               {/* Right Action: Vibrant Blue Circular Send Button */}

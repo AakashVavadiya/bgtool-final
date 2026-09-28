@@ -620,7 +620,7 @@ export function OlderReportsView({
                         <tr key={r.id} className="hover:bg-muted/30">
                           <td className="py-2.5 px-4">
                             <span className="font-bold text-foreground block">{r.name}</span>
-                            <span className="font-mono text-[11px] text-muted-foreground">{r.path}</span>
+                            <span className="font-mono text-[11px] text-muted-foreground">{r.url}</span>
                           </td>
                           <td className="py-2.5 px-4">
                             <span

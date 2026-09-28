@@ -83,6 +83,7 @@ export function ChatLayout() {
 
   const silverTokens = currentUser ? (currentUser.freeCredits ?? 10) : AuthUser.getSilverTokens();
   const goldTokens = currentUser ? (currentUser.paidCredits ?? 0) : AuthUser.getGoldTokens();
+  const credits = currentUser ? (currentUser.credits ?? (silverTokens + goldTokens)) : AuthUser.getCredits();
   const displayName = currentUser?.name || "Upanishad Official";
   const initial = displayName.charAt(0).toUpperCase();
 

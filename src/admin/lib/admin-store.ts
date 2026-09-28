@@ -512,14 +512,18 @@ export const AdminStore = {
     }
     return valid;
   },
+  _lastSavedUsersJson: "",
   saveUsers(users: LoggedUser[]) {
     saveToStorage(STORAGE_KEYS.USERS, users);
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent(REALTIME_EVENT_NAME, { detail: { type: "admin_users_updated" } }));
+      const str = JSON.stringify(users);
+      if (str === this._lastSavedUsersJson) return;
+      this._lastSavedUsersJson = str;
       fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(users),
+        body: str,
       }).catch(() => {});
     }
   },

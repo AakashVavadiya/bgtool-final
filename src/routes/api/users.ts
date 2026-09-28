@@ -35,7 +35,14 @@ export const Route = createFileRoute("/api/users")({
           }
         }
         if (modified) {
-          fs.writeFileSync(filePath, JSON.stringify(users, null, 2), "utf-8");
+          const newStr = JSON.stringify(users, null, 2);
+          let currentStr = "";
+          try {
+            if (fs.existsSync(filePath)) currentStr = fs.readFileSync(filePath, "utf-8");
+          } catch {}
+          if (currentStr !== newStr) {
+            fs.writeFileSync(filePath, newStr, "utf-8");
+          }
         }
       }
       return { users };
