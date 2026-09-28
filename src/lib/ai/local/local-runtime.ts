@@ -72,7 +72,7 @@ class LocalModelRuntimeManager {
       "--host", this.config.host,
       "--port", this.config.port.toString(),
       "-c", this.config.contextSize.toString(),
-      "-t", "4", // 4 CPU threads for i7
+      "-t", "8", // 8 threads for i7
       "-b", "512",
       "--temp", this.config.temperature.toString(),
     ];

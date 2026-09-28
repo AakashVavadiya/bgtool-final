@@ -2052,9 +2052,23 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
 
                             {/* 4. Other Options in Bottom (1-Click Action Pills) */}
                             {(() => {
-                              const srcFile = task.originalImageSrc || task.resultImageSrc || task.uploadedFile?.dataUrl || activeImageSrc;
-                              const srcName = task.originalFilename || task.uploadedFile?.name || activeFilename || "file.png";
+                              // Prioritize the processed result (e.g. transparent cutout) over original image!
+                              const srcFile = task.resultImageSrc || activeCutoutSrc || task.originalImageSrc || task.uploadedFile?.dataUrl || activeImageSrc;
+                              const srcName = (task.resultImageSrc || activeCutoutSrc)
+                                ? (task.originalFilename?.replace(/\.[^.]+$/, "") || "cutout") + ".png"
+                                : (task.originalFilename || task.uploadedFile?.name || activeFilename || "file.png");
                               if (!srcFile) return null;
+
+                              const triggerQuickOption = (actionType: KarudiActionType, opts?: any) => {
+                                const newMsgId = "a_" + Date.now();
+                                const assistantMsg: UIMessage = {
+                                  id: newMsgId,
+                                  role: "assistant",
+                                  parts: [{ type: "text", text: `Processing ${srcName} with ${actionType.replace(/_/g, " ")}...` }],
+                                };
+                                setMessages((prev) => [...prev, assistantMsg]);
+                                void executeTaskAction(newMsgId, actionType, srcFile, srcName, opts);
+                              };
 
                               return (
                                 <div className="pt-2 border-t border-border/40 space-y-2 max-w-xl">
@@ -2070,7 +2084,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                                     {task.action !== "image_to_pdf" && (
                                       <button
                                         type="button"
-                                        onClick={() => void executeTaskAction(task.id, "image_to_pdf", srcFile, srcName)}
+                                        onClick={() => triggerQuickOption("image_to_pdf")}
                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
                                       >
                                         <FileText className="h-3.5 w-3.5 text-blue-500" /> Make PDF
@@ -2079,7 +2093,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                                     {task.action !== "jpg_to_excel" && task.action !== "pdf_to_excel" && (
                                       <button
                                         type="button"
-                                        onClick={() => void executeTaskAction(task.id, "jpg_to_excel", srcFile, srcName)}
+                                        onClick={() => triggerQuickOption("jpg_to_excel")}
                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
                                       >
                                         <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-500" /> Make Excel
@@ -2088,7 +2102,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                                     {task.action !== "jpg_to_word" && task.action !== "pdf_to_word" && (
                                       <button
                                         type="button"
-                                        onClick={() => void executeTaskAction(task.id, "jpg_to_word", srcFile, srcName)}
+                                        onClick={() => triggerQuickOption("jpg_to_word")}
                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
                                       >
                                         <FileText className="h-3.5 w-3.5 text-purple-500" /> Make Word
@@ -2097,7 +2111,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                                     {task.action !== "convert_format" && (
                                       <button
                                         type="button"
-                                        onClick={() => void executeTaskAction(task.id, "convert_format", srcFile, srcName, { targetFormat: "image/jpeg" })}
+                                        onClick={() => triggerQuickOption("convert_format", { targetFormat: "image/jpeg" })}
                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
                                       >
                                         <RefreshCw className="h-3.5 w-3.5 text-amber-500" /> Make JPG
@@ -2106,7 +2120,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                                     {task.action !== "remove_background" && (
                                       <button
                                         type="button"
-                                        onClick={() => void executeTaskAction(task.id, "remove_background", srcFile, srcName)}
+                                        onClick={() => triggerQuickOption("remove_background")}
                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
                                       >
                                         <Scissors className="h-3.5 w-3.5 text-rose-500" /> Remove BG
@@ -2115,7 +2129,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                                     {task.action !== "compress_image" && (
                                       <button
                                         type="button"
-                                        onClick={() => void executeTaskAction(task.id, "compress_image", srcFile, srcName)}
+                                        onClick={() => triggerQuickOption("compress_image")}
                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
                                       >
                                         <Archive className="h-3.5 w-3.5 text-teal-500" /> Compress
@@ -2124,7 +2138,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
                                     {task.action !== "resize_image" && (
                                       <button
                                         type="button"
-                                        onClick={() => void executeTaskAction(task.id, "resize_image", srcFile, srcName, { targetWidth: 1000, targetHeight: 1000 })}
+                                        onClick={() => triggerQuickOption("resize_image", { targetWidth: 1000, targetHeight: 1000 })}
                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted text-xs font-bold text-foreground transition-all cursor-pointer shadow-2xs"
                                       >
                                         <Scaling className="h-3.5 w-3.5 text-indigo-500" /> Resize

@@ -31,6 +31,21 @@ export interface LocalAgentExecutionResult {
   } | undefined;
 }
 
+function normalizeUserTypos(text: string): string {
+  return text
+    .replace(/\brfemove\b/gi, "remove")
+    .replace(/\bremov\b/gi, "remove")
+    .replace(/\brmv\b/gi, "remove")
+    .replace(/\bbakground\b/gi, "background")
+    .replace(/\bbakgroud\b/gi, "background")
+    .replace(/\bconvet\b/gi, "convert")
+    .replace(/\bconert\b/gi, "convert")
+    .replace(/\bresiz\b/gi, "resize")
+    .replace(/\bcompres\b/gi, "compress")
+    .replace(/\bcompresss\b/gi, "compress")
+    .replace(/\bpdff\b/gi, "pdf");
+}
+
 export class LocalAgentOrchestrator {
   private static instance: LocalAgentOrchestrator;
 
@@ -46,7 +61,7 @@ export class LocalAgentOrchestrator {
   /**
    * Parses JSON tool calls or multi-tool calls emitted by the local model
    */
-  public parseToolCalls(modelOutput: string): ToolCallSpec[] {
+  public parseToolCalls(modelOutput: string, userQuery?: string): ToolCallSpec[] {
     const specs: ToolCallSpec[] = [];
 
     // Search for code block with JSON: ```json { ... } ``` or raw JSON objects
@@ -67,10 +82,28 @@ export class LocalAgentOrchestrator {
     }
 
     // Semantic action recovery: if the local LLM declared its execution intent in text
+    // Semantic action recovery: if the local LLM declared its execution intent in text or user query
     if (specs.length === 0) {
-      const lower = modelOutput.toLowerCase();
-      const mentionsRemoveBg = lower.includes("remove the background") || lower.includes("remove background") || lower.includes("removing the background");
-      const mentionsPdf = lower.includes("create a pdf") || lower.includes("make a pdf") || lower.includes("convert to pdf") || lower.includes("creating a pdf");
+      const lower = (modelOutput + " " + (userQuery || "")).toLowerCase();
+      const mentionsRemoveBg =
+        lower.includes("remove the background") ||
+        lower.includes("remove background") ||
+        lower.includes("removing the background") ||
+        lower.includes("background remove") ||
+        lower.includes("bg remove") ||
+        lower.includes("remove bg") ||
+        lower.includes("rfemove bg") ||
+        lower.includes("bg hata") ||
+        lower.includes("background hata");
+
+      const mentionsPdf =
+        lower.includes("create a pdf") ||
+        lower.includes("make a pdf") ||
+        lower.includes("convert to pdf") ||
+        lower.includes("creating a pdf") ||
+        lower.includes("png to pdf") ||
+        lower.includes("image to pdf");
+
       const mentionsResize = lower.includes("resize") && (lower.includes("image") || lower.includes("photo"));
       const mentionsCompress = lower.includes("compress") && (lower.includes("image") || lower.includes("pdf"));
 
@@ -147,6 +180,7 @@ export class LocalAgentOrchestrator {
     // 2. Prepare conversation history for the local LLM
     const modelMessages: ChatMessage[] = [{ role: "system", content: systemPrompt }];
 
+    let latestUserQuery = "";
     for (const m of userMessages) {
       let content = "";
       if (typeof m.content === "string") {
@@ -156,9 +190,11 @@ export class LocalAgentOrchestrator {
         if (textPart && textPart.text) content = textPart.text;
       }
       if (content) {
+        const cleaned = m.role === "user" ? normalizeUserTypos(content) : content;
+        if (m.role === "user") latestUserQuery = cleaned;
         modelMessages.push({
           role: m.role === "assistant" ? "assistant" : "user",
-          content,
+          content: cleaned,
         });
       }
     }
@@ -175,11 +211,11 @@ export class LocalAgentOrchestrator {
       const modelOutput = await localInference.completeChat({
         messages: modelMessages,
         temperature: config.temperature,
-        maxTokens: Math.min(config.maxTokens, 512),
+        maxTokens: Math.min(config.maxTokens, 384),
       });
 
-      // Check if model emitted tool calls
-      const toolCalls = this.parseToolCalls(modelOutput);
+      // Check if model emitted tool calls (only check query fallback on first iteration)
+      const toolCalls = this.parseToolCalls(modelOutput, currentIteration === 1 ? latestUserQuery : undefined);
 
       if (toolCalls.length === 0) {
         // Model provided final answer
@@ -239,6 +275,12 @@ export class LocalAgentOrchestrator {
             content: `Tool Execution Error:\n${JSON.stringify(errRes)}`,
           });
         }
+      }
+
+      // Fast exit: if a single tool action completed successfully, return the result immediately
+      if (lastToolResult && lastToolResult.success !== false && toolCalls.length === 1) {
+        finalAssistantReply = lastToolResult.message || "Done — the requested operation was completed successfully.";
+        break;
       }
     }
 

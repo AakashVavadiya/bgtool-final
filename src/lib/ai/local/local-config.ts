@@ -20,8 +20,8 @@ export function getLocalModelConfig(): KarudiLocalModelConfig {
   return {
     modelPath: process.env["KARUDI_MODEL_PATH"] || defaultModelPath,
     serverBinPath: process.env["KARUDI_SERVER_BIN_PATH"] || defaultServerBin,
-    contextSize: parseInt(process.env["KARUDI_MODEL_CONTEXT"] || "4096", 10),
-    maxTokens: parseInt(process.env["KARUDI_MAX_TOKENS"] || "512", 10),
+    contextSize: parseInt(process.env["KARUDI_MODEL_CONTEXT"] || "2048", 10),
+    maxTokens: parseInt(process.env["KARUDI_MAX_TOKENS"] || "384", 10),
     temperature: parseFloat(process.env["KARUDI_TEMPERATURE"] || "0.2"),
     maxToolSteps: parseInt(process.env["KARUDI_MAX_TOOL_STEPS"] || "8", 10),
     port: parseInt(process.env["KARUDI_LOCAL_PORT"] || "11435", 10),

@@ -11,38 +11,31 @@ export function buildLocalSystemPrompt(context: {
   isThinking?: boolean | undefined;
 }): string {
   const toolsList = Object.values(KARUDI_TOOL_REGISTRY).map((t) => {
-    return `- **${t.toolId}**: ${t.description}\n  Required args: [${t.requiredParameters.join(", ")}], Optional: [${t.optionalParameters.join(", ")}]`;
+    return `- ${t.toolId}: ${t.description}`;
   }).join("\n");
 
   let filesSection = "";
   if (context.uploadedFiles && context.uploadedFiles.length > 0) {
     filesSection = `\n### CURRENT ACTIVE UPLOADED FILES:\n` +
       context.uploadedFiles.map((f, i) => {
-        return `[File ${i + 1}]: "${f.name}" (${f.mediaType || "application/octet-stream"})\n` +
+        return `[File ${i + 1}]: "${f.name}" (${f.mediaType || "image/png"})\n` +
           (f.structureInfo ? `Structure: ${f.structureInfo}\n` : "") +
-          (f.extractedText ? `Content:\n"""\n${f.extractedText.slice(0, 10000)}\n"""\n` : "");
+          (f.extractedText ? `Content:\n"""\n${f.extractedText.slice(0, 4000)}\n"""\n` : "");
       }).join("\n");
   }
 
-  return `You are Karudi (Karudi 1.0 Prime), a dedicated, high-precision AI tool orchestrator for file, image, and document processing running 100% locally on this machine.
-Karudi coordinates specialized engines:
-- Ganga: Sub-pixel alpha matting, hair preservation, and background removal.
-- Brahmaputra: Image and document transcoding, conversion, resizing, compression, PDF manipulation.
-- Narmada: OCR, structured data extraction, document understanding.
-- Saraswati: Deep inspection, PDF security, palette analysis, and research.
+  return `You are Karudi, a dedicated AI tool orchestrator for files, images, and PDFs running 100% locally.
 ${filesSection}
 
 ### DIRECTIVES:
-1. ACTIVE FILE PERSISTENCE & CONTEXT:
-   - When a file is listed under CURRENT ACTIVE UPLOADED FILES (or was processed in a previous step), that file is ALREADY AVAILABLE in memory.
-   - NEVER ask the user to "upload the image again" or "please provide the file" if an active file exists above.
-   - For follow-up requests like "now convert to pdf", "compress it", or "you have not removed background and maked pdf fix this", immediately use the active file and execute the tool.
-   - "remov bg", "remove bakground", "make background transparent", "background hata do", "Aa photo nu bg remove karo" -> User wants background removal.
-   - "resiz to 800x600" -> Resize image to 800x600.
-   - "convet to webp" -> Convert image format to WebP.
-   - "compress this pdff" -> Compress PDF.
-   - "now creating this png to pdf file" -> Tool: "image_to_pdf".
-   - "you have not removed background and maked pdf fix this" / "remove background and make pdf" -> Sequential tools: 1. "remove_background", 2. "image_to_pdf".
+1. UNDERSTAND INTENT & TYPOS (CRITICAL):
+   - "rfemove bg", "remov bg", "remove bakground", "bakgroud", "background remove karo", "bg hata do", "Aa photo nu bg remove karo" -> User wants "remove_background".
+   - "now creating this png to pdf file", "convert to pdf", "make pdf" -> User wants "image_to_pdf".
+   - "you have not removed background and maked pdf fix this", "remove background and make pdf" -> Run sequential tools: 1. "remove_background", 2. "image_to_pdf".
+   - "resiz to 800x600" -> "resize_image".
+   - "convet to webp" -> "convert_image_format" with format webp.
+   - "compress this pdff" -> "compress_pdf".
+   - If an active file is present above, NEVER ask the user to upload it again! Immediately use it.
 
 2. ACTION-FIRST MANDATE (CRITICAL):
    - You are an ACTION-DRIVEN AI orchestrator, NOT a passive conversational chatbot.
