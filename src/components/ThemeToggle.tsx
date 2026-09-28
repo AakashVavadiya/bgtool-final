@@ -90,16 +90,16 @@ export function ThemeToggle() {
         className="wobbly-btn group relative flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/90 shadow-sm backdrop-blur-md cursor-pointer hover:border-foreground/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all"
       >
         <div
-          className={`relative flex h-6 w-6 items-center justify-center rounded-full transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+          className={`relative flex h-5 w-5 items-center justify-center rounded-full transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
             isDark
               ? "bg-zinc-800 text-amber-300 shadow-sm border border-zinc-700/60"
               : "bg-amber-500 text-white shadow-sm"
           }`}
         >
           {isDark ? (
-            <Moon className="h-3.5 w-3.5 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:-rotate-12 group-hover:scale-110" />
+            <Moon className="h-3 w-3 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:-rotate-12 group-hover:scale-110" />
           ) : (
-            <Sun className="h-3.5 w-3.5 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:rotate-90 group-hover:scale-110" />
+            <Sun className="h-3 w-3 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:rotate-90 group-hover:scale-110" />
           )}
         </div>
       </button>

@@ -243,14 +243,14 @@ export function MergedTokenPill({
     <Component
       type={onClick ? "button" : undefined}
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-card/90 px-2.5 py-1 text-xs font-semibold shadow-2xs hover:bg-muted/70 transition-all select-none ${
+      className={`inline-flex h-9 items-center gap-1.5 rounded-full border border-border/80 bg-card/90 px-2.5 text-xs font-semibold shadow-2xs hover:bg-muted/70 transition-all select-none ${
         onClick ? "cursor-pointer" : ""
       } ${className}`}
       title={`Token Balance: ${total} Total (${silver} Free + ${gold} Paid)`}
     >
       <TokenCoin
         type={hasGold ? "gold" : "silver"}
-        size="sm"
+        size="xs"
         showGlow={hasGold}
       />
       <span
