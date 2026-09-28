@@ -19,6 +19,7 @@ import { Telemetry } from "@/lib/telemetry";
 import { initWebsiteTranslator } from "@/lib/translator";
 import { FestivalOffersDialog } from "@/components/FestivalOffersDialog";
 import { RestrictedUserDialog } from "@/components/RestrictedUserDialog";
+import { KarudiFab } from "@/components/KarudiFab";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
@@ -139,6 +140,7 @@ function RootComponent() {
       <Toaster />
       <FestivalOffersDialog />
       {!isAdminRoute && <RestrictedUserDialog />}
+      {!isAdminRoute && <KarudiFab />}
     </QueryClientProvider>
   );
 }

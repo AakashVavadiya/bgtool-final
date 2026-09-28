@@ -14,6 +14,8 @@ import { SeoOptimizationView } from "@/admin/views/SeoOptimizationView";
 import { SupportDeskView } from "@/admin/views/SupportDeskView";
 import { MarketingMailView } from "@/admin/views/MarketingMailView";
 import { OlderReportsView } from "@/admin/views/OlderReportsView";
+import { ProSettingsView } from "@/admin/views/ProSettingsView";
+import { AdminStore } from "@/admin/lib/admin-store";
 import {
   Activity,
   Users,
@@ -32,6 +34,8 @@ import {
   Cpu,
   Wand2,
   Archive,
+  Sliders,
+  BotOff,
 } from "lucide-react";
 
 export type AdminTab =
@@ -39,6 +43,7 @@ export type AdminTab =
   | "users"
   | "purchases"
   | "tools"
+  | "pro-settings"
   | "errors"
   | "health"
   | "tools-health"
@@ -53,6 +58,7 @@ const VALID_TABS: AdminTab[] = [
   "users",
   "purchases",
   "tools",
+  "pro-settings",
   "errors",
   "health",
   "tools-health",
@@ -93,6 +99,7 @@ const navTabs = [
   { id: "users" as const, label: "Logged Users & Credits", icon: Users },
   { id: "purchases" as const, label: "Purchases & Plans", icon: CreditCard },
   { id: "tools" as const, label: "Tools Limits & Toggles", icon: Wrench },
+  { id: "pro-settings" as const, label: "Pro Settings & Page Tree", icon: Sliders },
   { id: "errors" as const, label: "Error Logs & Reports", icon: AlertTriangle },
   { id: "health" as const, label: "Website Health Checkup", icon: HeartPulse },
   { id: "tools-health" as const, label: "Tools Health Test", icon: Cpu },
@@ -262,12 +269,27 @@ export function AdminLayout() {
             <div className="rounded-2xl border border-border bg-muted/40 p-4 text-xs space-y-2">
               <div className="flex items-center justify-between font-bold text-[11px]">
                 <span className="text-muted-foreground">AI Processing Engines</span>
-                <span className="text-emerald-600 dark:text-emerald-400">All 5 Models Online</span>
+                {AdminStore.getUiSettings().aiMasterEnabled ? (
+                  <span className="text-emerald-600 dark:text-emerald-400">All 5 Models Online</span>
+                ) : (
+                  <span className="text-rose-500 font-extrabold flex items-center gap-1">
+                    <BotOff className="h-3 w-3" />
+                    AI Deactivated
+                  </span>
+                )}
               </div>
               <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full w-[99%]" />
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    AdminStore.getUiSettings().aiMasterEnabled ? "bg-emerald-500 w-[99%]" : "bg-rose-500 w-[15%]"
+                  }`}
+                />
               </div>
-              <p className="text-[10px] text-muted-foreground">Sub-pixel matting & background removal ready</p>
+              <p className="text-[10px] text-muted-foreground">
+                {AdminStore.getUiSettings().aiMasterEnabled
+                  ? "Sub-pixel matting & background removal ready"
+                  : "All AI models & assistant turned OFF via Pro Settings"}
+              </p>
             </div>
           </div>
         </aside>
@@ -278,6 +300,7 @@ export function AdminLayout() {
           {activeTab === "users" && <UsersManagement />}
           {activeTab === "purchases" && <PurchasesView />}
           {activeTab === "tools" && <ToolsConfigView />}
+          {activeTab === "pro-settings" && <ProSettingsView />}
           {activeTab === "errors" && <ErrorLogsView />}
           {activeTab === "health" && <WebsiteHealthCheckupView />}
           {activeTab === "tools-health" && <ToolsHealthTestView />}

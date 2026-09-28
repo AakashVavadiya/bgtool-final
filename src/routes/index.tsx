@@ -11,6 +11,8 @@ import { Faq } from "@/components/Faq";
 import { ScrollBeforeAfter } from "@/components/ScrollBeforeAfter";
 import { KarudiAvatar } from "@/components/KarudiAvatar";
 import { karudiModels } from "@/lib/krishna";
+import { AdminStore, type UiEditSettings } from "@/admin/lib/admin-store";
+import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -225,6 +227,20 @@ function TypewriterHeroTitle() {
 }
 
 function Index() {
+  const [uiSettings, setUiSettings] = useState<UiEditSettings>(() => AdminStore.getUiSettings());
+
+  useEffect(() => {
+    const sync = () => {
+      setUiSettings(AdminStore.getUiSettings());
+    };
+    window.addEventListener(REALTIME_EVENT_NAME, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(REALTIME_EVENT_NAME, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
       <SiteHeader />
@@ -267,13 +283,18 @@ function Index() {
           >
             Remove a background <span aria-hidden>→</span>
           </Link>
-          <Link
-            to="/chat"
-            className="inline-flex items-center gap-3 rounded-full border-2 border-foreground px-9 py-5 text-base font-bold transition-all hover:scale-105 hover:bg-foreground hover:text-background shadow-md"
-          >
-            <KarudiAvatar size="sm" />
-            Try Karudi 1.0 Prime
-          </Link>
+          {uiSettings.aiMasterEnabled &&
+            uiSettings.aiAssistantEnabled &&
+            uiSettings.aiHomeSectionsEnabled &&
+            AdminStore.isPageEnabled("/chat") && (
+              <Link
+                to="/chat"
+                className="inline-flex items-center gap-3 rounded-full border-2 border-foreground px-9 py-5 text-base font-bold transition-all hover:scale-105 hover:bg-foreground hover:text-background shadow-md"
+              >
+                <KarudiAvatar size="sm" />
+                Try Karudi 1.0 Prime
+              </Link>
+            )}
           <Link
             to="/pricing"
             className="inline-flex items-center gap-3 rounded-full border-2 border-border bg-card px-9 py-5 text-base font-bold transition-all hover:scale-105 hover:border-foreground shadow-md"
@@ -374,81 +395,91 @@ function Index() {
       </section>
 
       {/* Removal models overview & link to separate models page */}
-      <section id="models-summary" className="border-t border-border bg-card/30 px-5 py-16 md:px-10 md:py-24">
-        <div className="mx-auto max-w-5xl text-center">
-          <p className="font-display text-sm font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-            ai removal engines
-          </p>
-          <h2 className="mt-4 font-display text-3xl font-bold leading-tight md:text-5xl">
-            Five Neural Engines for Any Edge Challenge<span className="text-accent">.</span>
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-base text-muted-foreground md:text-lg">
-            From 4K ultra-resolution exports to fine hair and translucent matting, pick the engine engineered for your image.
-          </p>
+      {uiSettings.aiMasterEnabled &&
+        uiSettings.aiModelsPageEnabled &&
+        uiSettings.aiHomeSectionsEnabled &&
+        AdminStore.isPageEnabled("/models") && (
+          <section id="models-summary" className="border-t border-border bg-card/30 px-5 py-16 md:px-10 md:py-24">
+            <div className="mx-auto max-w-5xl text-center">
+              <p className="font-display text-sm font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+                ai removal engines
+              </p>
+              <h2 className="mt-4 font-display text-3xl font-bold leading-tight md:text-5xl">
+                Five Neural Engines for Any Edge Challenge<span className="text-accent">.</span>
+              </h2>
+              <p className="mx-auto mt-4 max-w-xl text-base text-muted-foreground md:text-lg">
+                From 4K ultra-resolution exports to fine hair and translucent matting, pick the engine engineered for your image.
+              </p>
 
-          <div className="mt-10 flex flex-wrap justify-center gap-4">
-            <Link
-              to="/models"
-              className="inline-flex items-center gap-3 rounded-full bg-foreground px-8 py-4 text-base font-semibold text-background transition-all hover:scale-[1.03]"
-            >
-              View All Model Details & FAQ
-              <span aria-hidden>→</span>
-            </Link>
-          </div>
-        </div>
-      </section>
+              <div className="mt-10 flex flex-wrap justify-center gap-4">
+                <Link
+                  to="/models"
+                  className="inline-flex items-center gap-3 rounded-full bg-foreground px-8 py-4 text-base font-semibold text-background transition-all hover:scale-[1.03]"
+                >
+                  View All Model Details & FAQ
+                  <span aria-hidden>→</span>
+                </Link>
+              </div>
+            </div>
+          </section>
+        )}
 
       {/* Karudi Smart Assistant */}
-      <section className="grain border-t border-border px-5 py-24 md:px-10 md:py-32">
-        <div className="grid items-center gap-12 lg:grid-cols-2">
-          <Reveal>
-            <p className="font-display text-sm uppercase tracking-[0.3em] text-muted-foreground">
-              karudi 1.0 prime assistant
-            </p>
-            <h2 className="mt-6 max-w-xl font-display text-4xl font-medium leading-[1.02] md:text-6xl">
-              Meet Karudi 1.0 Prime<span className="text-accent">.</span>
-            </h2>
-            <p className="mt-6 max-w-lg text-sm leading-relaxed text-muted-foreground md:text-base">
-              Ask anything, or upload a PDF, image, Excel sheet, Word doc, PowerPoint or text file
-              and get it read, summarised and answered — powered by Karudi 1.0 Prime.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-2">
-              {["PDF", "Image", "Excel", "Word", "PowerPoint", "Text"].map((f) => (
-                <span
-                  key={f}
-                  className="rounded-full border border-border bg-card px-4 py-2 text-xs font-medium"
-                >
-                  {f}
-                </span>
-              ))}
-            </div>
-            <Link
-              to="/chat"
-              className="mt-10 inline-flex items-center gap-3 rounded-full bg-foreground px-8 py-4 text-sm font-medium text-background transition-all hover:gap-6"
-            >
-              <KarudiAvatar size="sm" />
-              Try Karudi 1.0 Prime
-              <span aria-hidden>→</span>
-            </Link>
-          </Reveal>
-
-          <Reveal delay={120}>
-            <div className="rounded-3xl border border-border bg-card p-6 md:p-8">
-              {karudiModels.map((m, i) => (
-                <div
-                  key={m.id}
-                  className={`py-4 ${
-                    i > 0 ? "border-t border-border" : ""
-                  }`}
-                >
-                  <p className="font-display text-lg font-medium">{m.fullName || m.name}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{m.blurb}</p>
+      {uiSettings.aiMasterEnabled &&
+        uiSettings.aiAssistantEnabled &&
+        uiSettings.aiHomeSectionsEnabled &&
+        AdminStore.isPageEnabled("/chat") && (
+          <section className="grain border-t border-border px-5 py-24 md:px-10 md:py-32">
+            <div className="grid items-center gap-12 lg:grid-cols-2">
+              <Reveal>
+                <p className="font-display text-sm uppercase tracking-[0.3em] text-muted-foreground">
+                  karudi 1.0 prime assistant
+                </p>
+                <h2 className="mt-6 max-w-xl font-display text-4xl font-medium leading-[1.02] md:text-6xl">
+                  Meet Karudi 1.0 Prime<span className="text-accent">.</span>
+                </h2>
+                <p className="mt-6 max-w-lg text-sm leading-relaxed text-muted-foreground md:text-base">
+                  Ask anything, or upload a PDF, image, Excel sheet, Word doc, PowerPoint or text file
+                  and get it read, summarised and answered — powered by Karudi 1.0 Prime.
+                </p>
+                <div className="mt-8 flex flex-wrap gap-2">
+                  {["PDF", "Image", "Excel", "Word", "PowerPoint", "Text"].map((f) => (
+                    <span
+                      key={f}
+                      className="rounded-full border border-border bg-card px-4 py-2 text-xs font-medium"
+                    >
+                      {f}
+                    </span>
+                  ))}
                 </div>
-              ))}
+                <Link
+                  to="/chat"
+                  className="mt-10 inline-flex items-center gap-3 rounded-full bg-foreground px-8 py-4 text-sm font-medium text-background transition-all hover:gap-6"
+                >
+                  <KarudiAvatar size="sm" />
+                  Try Karudi 1.0 Prime
+                  <span aria-hidden>→</span>
+                </Link>
+              </Reveal>
+
+              <Reveal delay={120}>
+                <div className="rounded-3xl border border-border bg-card p-6 md:p-8">
+                  {karudiModels.map((m, i) => (
+                    <div
+                      key={m.id}
+                      className={`py-4 ${
+                        i > 0 ? "border-t border-border" : ""
+                      }`}
+                    >
+                      <p className="font-display text-lg font-medium">{m.fullName || m.name}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{m.blurb}</p>
+                    </div>
+                  ))}
+                </div>
+              </Reveal>
             </div>
-          </Reveal>
-        </div>
-      </section>
+          </section>
+        )}
 
 
 

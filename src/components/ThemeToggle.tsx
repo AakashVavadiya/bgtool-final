@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Sun, Moon, Wand2 } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
 import { DottedThemeWave } from "@/components/DottedThemeWave";
 
 export function ThemeToggle() {

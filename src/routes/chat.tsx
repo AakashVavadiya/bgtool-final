@@ -2,6 +2,8 @@ import { createFileRoute, Link, Outlet, useNavigate, useParams } from "@tanstack
 import { useState, useEffect } from "react";
 import { AuthUser, type CurrentUser } from "@/lib/auth-user";
 import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
+import { AdminStore } from "@/admin/lib/admin-store";
+import { SiteHeader } from "@/components/SiteHeader";
 import {
   Plus,
   Trash2,
@@ -19,6 +21,8 @@ import {
   BookOpen,
   Construction,
   ArrowRight,
+  BotOff,
+  Wrench,
 } from "lucide-react";
 import { KarudiAvatar } from "@/components/KarudiAvatar";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -42,6 +46,7 @@ export const Route = createFileRoute("/chat")({
 });
 
 export function ChatLayout() {
+  const [chatEnabled, setChatEnabled] = useState(() => AdminStore.isPageEnabled("/chat"));
   const { threads } = useThreads();
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as { threadId?: string };
@@ -60,6 +65,56 @@ export function ChatLayout() {
   const [activeTab, setActiveTab] = useState<"chat" | "work">("chat");
   const [copied, setCopied] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => AuthUser.getCurrentUser());
+
+  useEffect(() => {
+    const sync = () => {
+      setChatEnabled(AdminStore.isPageEnabled("/chat"));
+    };
+    window.addEventListener(REALTIME_EVENT_NAME, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(REALTIME_EVENT_NAME, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  if (!chatEnabled) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex flex-col">
+        <SiteHeader />
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md w-full rounded-3xl border border-border bg-card p-8 text-center space-y-5 shadow-xl animate-fade-in">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-500/10 text-rose-500 border border-rose-500/20">
+              <BotOff className="h-8 w-8" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="font-display text-2xl font-bold text-foreground">
+                AI Assistant is Currently Offline
+              </h2>
+              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                The smart AI Assistant and chat models have been deactivated by the system administrator. All our independent image processing and background removal tools remain 100% active.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2.5 pt-2">
+              <Link
+                to="/tools"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-foreground py-3 text-xs font-bold text-background shadow-md hover:opacity-90 transition-all"
+              >
+                <Wrench className="h-4 w-4" />
+                <span>Explore 130+ Active Tools</span>
+              </Link>
+              <Link
+                to="/"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+              >
+                <span>Return to Homepage</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     const handleResize = () => {

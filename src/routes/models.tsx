@@ -1,8 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { BgModels } from "@/components/BgModels";
 import { bgModels } from "@/lib/bg-models";
+import { AdminStore } from "@/admin/lib/admin-store";
+import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
+import { BotOff, Wrench } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -54,6 +58,58 @@ export const Route = createFileRoute("/models")({
 });
 
 function ModelsPage() {
+  const [modelsEnabled, setModelsEnabled] = useState(() => AdminStore.isPageEnabled("/models"));
+
+  useEffect(() => {
+    const sync = () => {
+      setModelsEnabled(AdminStore.isPageEnabled("/models"));
+    };
+    window.addEventListener(REALTIME_EVENT_NAME, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(REALTIME_EVENT_NAME, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  if (!modelsEnabled) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex flex-col">
+        <SiteHeader />
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md w-full rounded-3xl border border-border bg-card p-8 text-center space-y-5 shadow-xl animate-fade-in">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+              <BotOff className="h-8 w-8" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="font-display text-2xl font-bold text-foreground">
+                AI Models Suite is Currently Offline
+              </h2>
+              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                The AI Models specifications page and neural engine features have been deactivated by the system administrator. All our independent image processing and background removal tools remain 100% active.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2.5 pt-2">
+              <Link
+                to="/tools"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-foreground py-3 text-xs font-bold text-background shadow-md hover:opacity-90 transition-all"
+              >
+                <Wrench className="h-4 w-4" />
+                <span>Explore 130+ Active Tools</span>
+              </Link>
+              <Link
+                to="/"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+              >
+                <span>Return to Homepage</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <SiteHeader />

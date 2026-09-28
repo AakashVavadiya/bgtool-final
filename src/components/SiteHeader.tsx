@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { AdminStore, type PurchasePlanConfig } from "@/admin/lib/admin-store";
+import { AdminStore, type PurchasePlanConfig, type UiEditSettings } from "@/admin/lib/admin-store";
 import { AuthUser, type CurrentUser } from "@/lib/auth-user";
 import { openFestivalOffersDialog } from "@/components/FestivalOffersDialog";
 import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
-import { Wand2, Zap, LogOut, ChevronDown, Menu, X } from "lucide-react";
-import { DualTokenPill, MergedTokenPill, TokenCoin } from "@/components/TokenCoins";
+import { Wand2, LogOut, ChevronDown, Menu, X, ArrowRight } from "lucide-react";
+import { MergedTokenPill, TokenCoin } from "@/components/TokenCoins";
 
 const links = [
   { label: "Home.", to: "/" },
@@ -17,7 +17,16 @@ const links = [
   { label: "FAQ.", to: "/pricing", hash: "faq" },
 ] as const;
 
+const announcementColors: Record<string, string> = {
+  amber: "bg-amber-500 text-amber-950 hover:bg-amber-400",
+  emerald: "bg-emerald-600 text-white hover:bg-emerald-500",
+  indigo: "bg-indigo-600 text-white hover:bg-indigo-500",
+  rose: "bg-rose-600 text-white hover:bg-rose-500",
+  violet: "bg-violet-600 text-white hover:bg-violet-500",
+};
+
 export function SiteHeader({ floating = false }: { floating?: boolean }) {
+  const [uiSettings, setUiSettings] = useState<UiEditSettings>(() => AdminStore.getUiSettings());
   const [activeOffer, setActiveOffer] = useState<PurchasePlanConfig | null>(() => AdminStore.getActiveFestivalOffer());
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => AuthUser.getCurrentUser());
   const [profileOpen, setProfileOpen] = useState(false);
@@ -26,6 +35,7 @@ export function SiteHeader({ floating = false }: { floating?: boolean }) {
 
   useEffect(() => {
     const update = () => {
+      setUiSettings(AdminStore.getUiSettings());
       setActiveOffer(AdminStore.getActiveFestivalOffer());
       setCurrentUser(AuthUser.getCurrentUser());
     };
@@ -57,8 +67,56 @@ export function SiteHeader({ floating = false }: { floating?: boolean }) {
     window.location.reload();
   };
 
+  // Filter links dynamically according to page tree and AI toggles
+  const visibleLinks = links.filter((l) => {
+    if (l.to === "/chat") {
+      return (
+        uiSettings.aiMasterEnabled &&
+        uiSettings.aiAssistantEnabled &&
+        uiSettings.aiHeaderLinksEnabled &&
+        AdminStore.isPageEnabled("/chat")
+      );
+    }
+    if (l.to === "/models") {
+      return (
+        uiSettings.aiMasterEnabled &&
+        uiSettings.aiModelsPageEnabled &&
+        uiSettings.aiHeaderLinksEnabled &&
+        AdminStore.isPageEnabled("/models")
+      );
+    }
+    if (l.to === "/tools") {
+      return uiSettings.showToolsLink && AdminStore.isPageEnabled("/tools");
+    }
+    if (l.to === "/pricing") {
+      if ("hash" in l && l.hash === "faq") {
+        return uiSettings.showFaqLink && AdminStore.isPageEnabled("/pricing");
+      }
+      return uiSettings.showPricingLink && AdminStore.isPageEnabled("/pricing");
+    }
+    return AdminStore.isPageEnabled(l.to);
+  });
+
   return (
     <header className={floating ? "fixed inset-x-0 top-0 z-50 bg-background/90 backdrop-blur-md" : "relative z-50 border-b border-border bg-background"}>
+      {/* Top Announcement Bar if enabled in Pro Settings */}
+      {uiSettings.announcementEnabled && uiSettings.announcementText && (
+        <div
+          className={`w-full py-1.5 px-4 text-center text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-2 ${
+            announcementColors[uiSettings.announcementBgColor] || announcementColors["amber"]
+          }`}
+        >
+          {uiSettings.announcementLink ? (
+            <Link to={uiSettings.announcementLink} className="inline-flex items-center gap-1.5 hover:underline">
+              <span>{uiSettings.announcementText}</span>
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          ) : (
+            <span>{uiSettings.announcementText}</span>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between px-4 sm:px-6 py-2 md:px-12 md:py-3">
         {/* Mobile Hamburger Menu Toggle */}
         <button
@@ -71,7 +129,7 @@ export function SiteHeader({ floating = false }: { floating?: boolean }) {
         </button>
 
         <nav className="hidden items-center gap-8 py-5 text-base font-semibold md:flex">
-          {links.map((l) =>
+          {visibleLinks.map((l) =>
             "hash" in l ? (
               <Link
                 key={l.label}
@@ -93,11 +151,11 @@ export function SiteHeader({ floating = false }: { floating?: boolean }) {
           to="/"
           className="notranslate py-4 font-display text-3xl font-bold tracking-tight md:absolute md:left-1/2 md:-translate-x-1/2 md:text-4xl"
         >
-          bg<span className="text-accent">.</span>
+          {uiSettings.headerBrandText || "bg."}
         </Link>
 
         <div className="flex items-center gap-2.5 sm:gap-4 py-4">
-          {activeOffer && (
+          {uiSettings.showFestivalOfferButton && activeOffer && (
             <button
               type="button"
               onClick={openFestivalOffersDialog}
@@ -108,18 +166,20 @@ export function SiteHeader({ floating = false }: { floating?: boolean }) {
             </button>
           )}
 
-          <ThemeToggle />
+          {uiSettings.showThemeToggle && <ThemeToggle />}
 
           {/* User Logged In State vs Logged Out State */}
           {currentUser ? (
             <div className="flex items-center gap-2.5 sm:gap-3">
               {/* Merged Token Pill: single coin + total number */}
-              <Link to="/pricing">
-                <MergedTokenPill
-                  silver={currentUser.freeCredits ?? 10}
-                  gold={currentUser.paidCredits ?? 0}
-                />
-              </Link>
+              {uiSettings.showTokenPill && (
+                <Link to="/pricing">
+                  <MergedTokenPill
+                    silver={currentUser.freeCredits ?? 10}
+                    gold={currentUser.paidCredits ?? 0}
+                  />
+                </Link>
+              )}
 
               {/* Profile Dropdown */}
               <div className="relative" ref={menuRef}>
@@ -237,7 +297,7 @@ export function SiteHeader({ floating = false }: { floating?: boolean }) {
       {mobileMenuOpen && (
         <div className="md:hidden border-t border-border bg-card/98 backdrop-blur-xl px-5 py-4 shadow-xl space-y-3 animate-fade-in">
           <nav className="flex flex-col gap-1">
-            {links.map((l) =>
+            {visibleLinks.map((l) =>
               "hash" in l ? (
                 <Link
                   key={l.label}

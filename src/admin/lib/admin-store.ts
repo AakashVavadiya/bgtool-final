@@ -423,6 +423,159 @@ export const DEFAULT_PURCHASE_PLANS: PurchasePlanConfig[] = [
   },
 ];
 
+export interface PageRouteConfig {
+  id: string;
+  name: string;
+  path: string;
+  category: "core" | "ai" | "tools" | "legal" | "account";
+  description: string;
+  isEnabled: boolean;
+  isAiRelated: boolean;
+}
+
+export interface UiEditSettings {
+  // Master AI Controls
+  aiMasterEnabled: boolean; // Master switch for ALL AI features
+  aiAssistantEnabled: boolean; // Controls /chat, Karudi FAB, AI chat buttons
+  aiModelsPageEnabled: boolean; // Controls /models, model specs section, model links
+  aiFabWidgetEnabled: boolean; // Controls floating assistant widget
+  aiHeaderLinksEnabled: boolean; // Controls "Smart Assistant." and "Models." in SiteHeader
+  aiFooterLinksEnabled: boolean; // Controls AI links in SiteFooter
+  aiHomeSectionsEnabled: boolean; // Controls AI sections & CTA buttons on home page
+
+  // Navigation & Header Settings
+  headerBrandText: string; // default "bg."
+  showFestivalOfferButton: boolean; // default true
+  showThemeToggle: boolean; // default true
+  showTokenPill: boolean; // default true
+  showPricingLink: boolean; // default true
+  showToolsLink: boolean; // default true
+  showFaqLink: boolean; // default true
+
+  // Top Announcement / Alert Bar
+  announcementEnabled: boolean; // default false
+  announcementText: string;
+  announcementBgColor: "amber" | "emerald" | "indigo" | "rose" | "violet";
+  announcementLink: string;
+
+  // Custom Page Route Overrides (e.g. { "/chat": false, "/models": false, "/pricing": true })
+  pageRoutes: Record<string, boolean>;
+}
+
+export const DEFAULT_UI_SETTINGS: UiEditSettings = {
+  aiMasterEnabled: true,
+  aiAssistantEnabled: true,
+  aiModelsPageEnabled: true,
+  aiFabWidgetEnabled: true,
+  aiHeaderLinksEnabled: true,
+  aiFooterLinksEnabled: true,
+  aiHomeSectionsEnabled: true,
+  headerBrandText: "bg.",
+  showFestivalOfferButton: true,
+  showThemeToggle: true,
+  showTokenPill: true,
+  showPricingLink: true,
+  showToolsLink: true,
+  showFaqLink: true,
+  announcementEnabled: false,
+  announcementText: "🚀 Welcome to bg.tools — Unlimited Free Background Removal & 130+ Image Tools!",
+  announcementBgColor: "amber",
+  announcementLink: "/tools",
+  pageRoutes: {
+    "/": true,
+    "/chat": true,
+    "/models": true,
+    "/tools": true,
+    "/pricing": true,
+    "/auth": true,
+    "/contact": true,
+    "/terms": true,
+    "/privacy": true,
+  },
+};
+
+export const CORE_PAGE_ROUTES: Array<{
+  id: string;
+  name: string;
+  path: string;
+  category: "core" | "ai" | "legal" | "account";
+  description: string;
+  isAiRelated: boolean;
+}> = [
+  {
+    id: "home",
+    name: "Home Page",
+    path: "/",
+    category: "core",
+    description: "Main landing page, hero upload, before/after showcase, and features.",
+    isAiRelated: false,
+  },
+  {
+    id: "chat",
+    name: "Smart AI Assistant & Chat",
+    path: "/chat",
+    category: "ai",
+    description: "Interactive AI Chat assistant, file analysis, and agent loop workflow.",
+    isAiRelated: true,
+  },
+  {
+    id: "models",
+    name: "AI Models Suite & Specs",
+    path: "/models",
+    category: "ai",
+    description: "Specifications for Karudi, Ganga, Brahmaputra, Narmada, and Saraswati.",
+    isAiRelated: true,
+  },
+  {
+    id: "tools",
+    name: "Tools Directory",
+    path: "/tools",
+    category: "core",
+    description: "Complete catalogue and category filter of 130+ processing tools.",
+    isAiRelated: false,
+  },
+  {
+    id: "pricing",
+    name: "Pricing & Token Plans",
+    path: "/pricing",
+    category: "core",
+    description: "Token packs, Lite/Pro subscriptions, and FAQ pricing table.",
+    isAiRelated: false,
+  },
+  {
+    id: "auth",
+    name: "User Login & Registration",
+    path: "/auth",
+    category: "account",
+    description: "Authentication portal, signup, login, and password resets.",
+    isAiRelated: false,
+  },
+  {
+    id: "contact",
+    name: "Support Desk & Contact",
+    path: "/contact",
+    category: "core",
+    description: "User inquiry form, support tickets, and direct contact details.",
+    isAiRelated: false,
+  },
+  {
+    id: "terms",
+    name: "Terms of Service",
+    path: "/terms",
+    category: "legal",
+    description: "Legal terms, acceptable use policy, and processing disclaimers.",
+    isAiRelated: false,
+  },
+  {
+    id: "privacy",
+    name: "Privacy Policy",
+    path: "/privacy",
+    category: "legal",
+    description: "Data handling, zero-retention image processing, and cookies policy.",
+    isAiRelated: false,
+  },
+];
+
 const STORAGE_KEYS = {
   USERS: "bg.admin.users.v2",
   PURCHASES: "bg.admin.purchases.v2",
@@ -439,6 +592,7 @@ const STORAGE_KEYS = {
   TOOL_ENGINE_AUDIT_HISTORY: "bg.admin.tool_engine_audit_history.v2",
   SEO_AUDIT: "bg.admin.seo_audit.v2",
   SEO_AUDIT_HISTORY: "bg.admin.seo_audit_history.v2",
+  UI_SETTINGS: "bg.admin.ui_settings.v2",
 };
 
 // Safe LocalStorage Wrappers
@@ -1376,5 +1530,145 @@ export const AdminStore = {
         topReferrers: [{ source: "Direct", visitors: 1, conversionRate: "100%" }],
       };
     }
+  },
+
+  // ─── Pro Settings, Live UI Customizer & Page Tree Toggles ─────────────────
+  getUiSettings(): UiEditSettings {
+    const stored = loadFromStorage<Partial<UiEditSettings>>(STORAGE_KEYS.UI_SETTINGS, {});
+    return {
+      ...DEFAULT_UI_SETTINGS,
+      ...stored,
+      pageRoutes: {
+        ...DEFAULT_UI_SETTINGS.pageRoutes,
+        ...(stored?.pageRoutes || {}),
+      },
+    };
+  },
+
+  saveUiSettings(partial: Partial<UiEditSettings>): UiEditSettings {
+    const current = this.getUiSettings();
+    const updated: UiEditSettings = {
+      ...current,
+      ...partial,
+      pageRoutes: {
+        ...current.pageRoutes,
+        ...(partial.pageRoutes || {}),
+      },
+    };
+    saveToStorage(STORAGE_KEYS.UI_SETTINGS, updated);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_ui_settings_updated", settings: updated },
+        })
+      );
+      window.dispatchEvent(new Event("storage"));
+    }
+    return updated;
+  },
+
+  isPageEnabled(path: string): boolean {
+    const settings = this.getUiSettings();
+    const clean = ((path.split("?")[0] ?? "").split("#")[0] ?? "").replace(/\/+$/, "") || "/";
+
+    // AI Chat & Assistant routes
+    if (clean === "/chat" || clean.startsWith("/chat/")) {
+      if (!settings.aiMasterEnabled || !settings.aiAssistantEnabled) return false;
+      if (settings.pageRoutes && settings.pageRoutes["/chat"] === false) return false;
+      return true;
+    }
+
+    // AI Models route
+    if (clean === "/models" || clean.startsWith("/models/")) {
+      if (!settings.aiMasterEnabled || !settings.aiModelsPageEnabled) return false;
+      if (settings.pageRoutes && settings.pageRoutes["/models"] === false) return false;
+      return true;
+    }
+
+    // Specific tool slug routes
+    if (clean.startsWith("/tools/")) {
+      const slug = clean.replace("/tools/", "");
+      if (!this.isToolEnabled(slug)) return false;
+      if (settings.pageRoutes && settings.pageRoutes[clean] === false) return false;
+      return true;
+    }
+
+    // General routes
+    if (settings.pageRoutes && settings.pageRoutes[clean] !== undefined) {
+      return settings.pageRoutes[clean];
+    }
+
+    return true;
+  },
+
+  togglePageRoute(path: string): boolean {
+    const settings = this.getUiSettings();
+    const clean = ((path.split("?")[0] ?? "").split("#")[0] ?? "").replace(/\/+$/, "") || "/";
+    const current = this.isPageEnabled(clean);
+    const nextState = !current;
+
+    // Handle tool slugs
+    if (clean.startsWith("/tools/")) {
+      const slug = clean.replace("/tools/", "");
+      this.toggleToolStatus(slug);
+    }
+
+    const updatedRoutes = {
+      ...settings.pageRoutes,
+      [clean]: nextState,
+    };
+
+    // If toggling /chat, sync aiAssistantEnabled
+    let assistantEnabled = settings.aiAssistantEnabled;
+    if (clean === "/chat") {
+      assistantEnabled = nextState;
+    }
+
+    // If toggling /models, sync aiModelsPageEnabled
+    let modelsEnabled = settings.aiModelsPageEnabled;
+    if (clean === "/models") {
+      modelsEnabled = nextState;
+    }
+
+    this.saveUiSettings({
+      pageRoutes: updatedRoutes,
+      aiAssistantEnabled: assistantEnabled,
+      aiModelsPageEnabled: modelsEnabled,
+    });
+
+    return nextState;
+  },
+
+  setAllAiFeatures(enabled: boolean): UiEditSettings {
+    const settings = this.getUiSettings();
+    const updatedRoutes = {
+      ...settings.pageRoutes,
+      "/chat": enabled,
+      "/models": enabled,
+    };
+
+    return this.saveUiSettings({
+      aiMasterEnabled: enabled,
+      aiAssistantEnabled: enabled,
+      aiModelsPageEnabled: enabled,
+      aiFabWidgetEnabled: enabled,
+      aiHeaderLinksEnabled: enabled,
+      aiFooterLinksEnabled: enabled,
+      aiHomeSectionsEnabled: enabled,
+      pageRoutes: updatedRoutes,
+    });
+  },
+
+  resetUiSettingsToDefault(): UiEditSettings {
+    saveToStorage(STORAGE_KEYS.UI_SETTINGS, DEFAULT_UI_SETTINGS);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(REALTIME_EVENT_NAME, {
+          detail: { type: "admin_ui_settings_updated", settings: DEFAULT_UI_SETTINGS },
+        })
+      );
+      window.dispatchEvent(new Event("storage"));
+    }
+    return DEFAULT_UI_SETTINGS;
   },
 };

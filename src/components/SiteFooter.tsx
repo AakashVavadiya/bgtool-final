@@ -1,7 +1,9 @@
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { LanguageTranslator } from "@/components/LanguageTranslator";
+import { AdminStore, type UiEditSettings } from "@/admin/lib/admin-store";
+import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
 import {
   ArrowRight,
   CheckCircle2,
@@ -16,8 +18,21 @@ import {
 } from "lucide-react";
 
 export function SiteFooter() {
+  const [uiSettings, setUiSettings] = useState<UiEditSettings>(() => AdminStore.getUiSettings());
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
+
+  useEffect(() => {
+    const sync = () => {
+      setUiSettings(AdminStore.getUiSettings());
+    };
+    window.addEventListener(REALTIME_EVENT_NAME, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(REALTIME_EVENT_NAME, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
 
   const handleSubscribe = (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,14 +175,19 @@ export function SiteFooter() {
                   Convert PNG, JPG, WebP
                 </Link>
               </li>
-              <li>
-                <Link to="/chat" className="hover:text-accent transition-colors flex items-center gap-1.5">
-                  <span>Try Karudi 1.0 Prime</span>
-                  <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-extrabold text-accent-foreground uppercase">
-                    Prime
-                  </span>
-                </Link>
-              </li>
+              {uiSettings.aiMasterEnabled &&
+                uiSettings.aiAssistantEnabled &&
+                uiSettings.aiFooterLinksEnabled &&
+                AdminStore.isPageEnabled("/chat") && (
+                  <li>
+                    <Link to="/chat" className="hover:text-accent transition-colors flex items-center gap-1.5">
+                      <span>Try Karudi 1.0 Prime</span>
+                      <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-extrabold text-accent-foreground uppercase">
+                        Prime
+                      </span>
+                    </Link>
+                  </li>
+                )}
               <li className="pt-1 border-t border-border/50">
                 <Link to="/tools" className="font-bold text-accent hover:underline flex items-center gap-1">
                   <span>Browse All 130+ Tools</span>
@@ -177,40 +197,45 @@ export function SiteFooter() {
             </ul>
           </div>
 
-          {/* AI Models */}
-          <div>
-            <h4 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">
-              AI Models Suite
-            </h4>
-            <ul className="mt-4 space-y-2.5 text-sm font-semibold">
-              <li>
-                <Link to="/models" className="hover:text-accent transition-colors flex items-center gap-1.5">
-                  <span>Karudi (Universal Master)</span>
-                  <span className="rounded-full bg-foreground text-background px-1.5 py-0.2 text-[9px] font-bold">★</span>
-                </Link>
-              </li>
-              <li>
-                <Link to="/models" className="hover:text-accent transition-colors">
-                  Ganga (Background Removal)
-                </Link>
-              </li>
-              <li>
-                <Link to="/models" className="hover:text-accent transition-colors">
-                  Brahmaputra (Format Conversion)
-                </Link>
-              </li>
-              <li>
-                <Link to="/models" className="hover:text-accent transition-colors">
-                  Narmada (OCR, Summary & Memes)
-                </Link>
-              </li>
-              <li>
-                <Link to="/models" className="hover:text-accent transition-colors">
-                  Saraswati (Research Tools)
-                </Link>
-              </li>
-            </ul>
-          </div>
+          {/* AI Models Suite - Hidden when AI Models is turned OFF */}
+          {uiSettings.aiMasterEnabled &&
+            uiSettings.aiModelsPageEnabled &&
+            uiSettings.aiFooterLinksEnabled &&
+            AdminStore.isPageEnabled("/models") && (
+              <div>
+                <h4 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  AI Models Suite
+                </h4>
+                <ul className="mt-4 space-y-2.5 text-sm font-semibold">
+                  <li>
+                    <Link to="/models" className="hover:text-accent transition-colors flex items-center gap-1.5">
+                      <span>Karudi (Universal Master)</span>
+                      <span className="rounded-full bg-foreground text-background px-1.5 py-0.2 text-[9px] font-bold">★</span>
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/models" className="hover:text-accent transition-colors">
+                      Ganga (Background Removal)
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/models" className="hover:text-accent transition-colors">
+                      Brahmaputra (Format Conversion)
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/models" className="hover:text-accent transition-colors">
+                      Narmada (OCR, Summary & Memes)
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/models" className="hover:text-accent transition-colors">
+                      Saraswati (Research Tools)
+                    </Link>
+                  </li>
+                </ul>
+              </div>
+            )}
 
           {/* Pricing & Accounts */}
           <div>

@@ -1,12 +1,33 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Wand2, X, ArrowRight, Send } from "lucide-react";
 import { KarudiAvatar } from "@/components/KarudiAvatar";
+import { AdminStore } from "@/admin/lib/admin-store";
+import { REALTIME_EVENT_NAME } from "@/lib/telemetry";
 
 export function KarudiFab() {
   const [open, setOpen] = useState(false);
   const [quickPrompt, setQuickPrompt] = useState("");
+  const [aiEnabled, setAiEnabled] = useState(() => {
+    const s = AdminStore.getUiSettings();
+    return s.aiMasterEnabled && s.aiAssistantEnabled && s.aiFabWidgetEnabled && AdminStore.isPageEnabled("/chat");
+  });
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const sync = () => {
+      const s = AdminStore.getUiSettings();
+      setAiEnabled(s.aiMasterEnabled && s.aiAssistantEnabled && s.aiFabWidgetEnabled && AdminStore.isPageEnabled("/chat"));
+    };
+    window.addEventListener(REALTIME_EVENT_NAME, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(REALTIME_EVENT_NAME, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  if (!aiEnabled) return null;
 
   const handleQuickSubmit = (e: React.FormEvent) => {
     e.preventDefault();
