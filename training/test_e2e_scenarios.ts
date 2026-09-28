@@ -77,6 +77,34 @@ async function runTests() {
   );
   console.log("Result 4 Reply:", t4.reply);
 
+  // Test 5: CRITICAL — "remove background" with NO FILE (must ask for file, NOT say "Processing completed.")
+  console.log("\n[Test 5] CRITICAL: 'remove background' with NO file in context");
+  const noFileContext: ToolExecutionContext = {
+    userId: "test-user",
+    threadId: "test-nofile-thread",
+    // No activeFile, no attachedFiles, no documentContext
+  };
+  const t5 = await localAgent.executeChat(
+    [{ role: "user", content: "remove background" }],
+    noFileContext,
+    false
+  );
+  console.log("Result 5 Reply:", t5.reply);
+  const isCorrect = !t5.reply.toLowerCase().includes("processing completed") &&
+    (t5.reply.toLowerCase().includes("upload") || t5.reply.toLowerCase().includes("share") || t5.reply.toLowerCase().includes("image"));
+  console.log("✅ PASS:", isCorrect, "— Expected: asks for file upload | Got:", t5.reply);
+
+  // Test 6: Plain "hello" should get a friendly reply, not "Processing completed."
+  console.log("\n[Test 6] Plain 'hello' greeting should get a natural reply");
+  const t6 = await localAgent.executeChat(
+    [{ role: "user", content: "hello" }],
+    noFileContext,
+    false
+  );
+  console.log("Result 6 Reply:", t6.reply);
+  const isHelloOk = !t6.reply.toLowerCase().includes("processing completed");
+  console.log("✅ PASS:", isHelloOk, "— Expected: friendly greeting | Got:", t6.reply);
+
   console.log("\n=== ALL EVALUATION TESTS FINISHED SUCCESSFULLY ===");
 }
 

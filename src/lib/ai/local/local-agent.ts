@@ -4,7 +4,7 @@
  * executes real local tool engines, and sends results back to the model.
  */
 
-import { KARUDI_TOOL_REGISTRY, createAiSdkTools, type ToolExecutionContext } from "../tool-registry";
+import { createAiSdkTools, type ToolExecutionContext } from "../tool-registry";
 import { localInference, type ChatMessage } from "./local-inference";
 import { buildLocalSystemPrompt } from "./local-prompt";
 import { getLocalModelConfig } from "./local-config";
@@ -61,7 +61,11 @@ export class LocalAgentOrchestrator {
   /**
    * Parses JSON tool calls or multi-tool calls emitted by the local model
    */
-  public parseToolCalls(modelOutput: string, userQuery?: string): ToolCallSpec[] {
+  public parseToolCalls(
+    modelOutput: string,
+    userQuery?: string,
+    fileAvailability?: { hasImage: boolean; hasPdf: boolean }
+  ): ToolCallSpec[] {
     const specs: ToolCallSpec[] = [];
 
     // Search for code block with JSON: ```json { ... } ``` or raw JSON objects
@@ -81,9 +85,11 @@ export class LocalAgentOrchestrator {
       }
     }
 
-    // Semantic action recovery: if the local LLM declared its execution intent in text
-    // Semantic action recovery: if the local LLM declared its execution intent in text or user query
-    if (specs.length === 0) {
+    // Semantic action recovery: ONLY when a relevant file is actually available!
+    const hasImage = fileAvailability ? fileAvailability.hasImage : true;
+    const hasPdf = fileAvailability ? fileAvailability.hasPdf : true;
+
+    if (specs.length === 0 && (hasImage || hasPdf)) {
       const lower = (modelOutput + " " + (userQuery || "")).toLowerCase();
       const mentionsRemoveBg =
         lower.includes("remove the background") ||
@@ -104,15 +110,12 @@ export class LocalAgentOrchestrator {
         lower.includes("png to pdf") ||
         lower.includes("image to pdf");
 
-      const mentionsResize = lower.includes("resize") && (lower.includes("image") || lower.includes("photo"));
-      const mentionsCompress = lower.includes("compress") && (lower.includes("image") || lower.includes("pdf"));
-
-      if (mentionsRemoveBg && mentionsPdf) {
+      if (hasImage && mentionsRemoveBg && mentionsPdf) {
         specs.push({ tool: "remove_background", arguments: {} });
         specs.push({ tool: "image_to_pdf", arguments: {} });
-      } else if (mentionsRemoveBg) {
+      } else if (hasImage && mentionsRemoveBg) {
         specs.push({ tool: "remove_background", arguments: {} });
-      } else if (mentionsPdf) {
+      } else if (hasImage && mentionsPdf) {
         specs.push({ tool: "image_to_pdf", arguments: {} });
       }
     }
@@ -156,7 +159,24 @@ export class LocalAgentOrchestrator {
     const steps: LocalAgentStep[] = [];
     const tools = createAiSdkTools(context);
 
-    // 1. Build Local System Prompt with tool definitions and document context
+    // 1. Detect file availability in current context
+    const hasImage = Boolean(
+      context.lastToolResult?.resultImageSrc ||
+      context.activeFile?.dataUrl?.startsWith("data:image/") ||
+      context.activeFile?.mediaType?.startsWith("image/") ||
+      context.attachedFiles?.some((f) => f.mediaType?.startsWith("image/") || f.dataUrl?.startsWith("data:image/"))
+    );
+
+    const hasPdf = Boolean(
+      context.lastToolResult?.resultPdfDataUrl ||
+      context.activeFile?.name?.toLowerCase().endsWith(".pdf") ||
+      context.activeFile?.dataUrl?.startsWith("data:application/pdf") ||
+      context.attachedFiles?.some((f) => f.name?.toLowerCase().endsWith(".pdf") || f.dataUrl?.startsWith("data:application/pdf"))
+    );
+
+    const hasAnyFile = hasImage || hasPdf || Boolean(context.documentContext || context.activeFile || (context.attachedFiles && context.attachedFiles.length > 0));
+
+    // 2. Build Local System Prompt with tool definitions and document context
     const uploadedFiles: Array<{ name: string; mediaType?: string | undefined; extractedText?: string | undefined; structureInfo?: string | undefined }> = [];
     if (context.documentContext) {
       uploadedFiles.push({
@@ -177,7 +197,7 @@ export class LocalAgentOrchestrator {
       isThinking,
     });
 
-    // 2. Prepare conversation history for the local LLM
+    // 3. Prepare conversation history for the local LLM
     const modelMessages: ChatMessage[] = [{ role: "system", content: systemPrompt }];
 
     let latestUserQuery = "";
@@ -199,7 +219,48 @@ export class LocalAgentOrchestrator {
       }
     }
 
-    // 3. Multi-Step Execution Loop
+    // 4. Fast Check: If user explicitly asks for file operations but NO file is uploaded, prompt for file immediately
+    const lowerQuery = latestUserQuery.toLowerCase().trim();
+    const queryMentionsBg =
+      lowerQuery.includes("remove background") ||
+      lowerQuery.includes("background remove") ||
+      lowerQuery.includes("bg remove") ||
+      lowerQuery.includes("remove bg") ||
+      lowerQuery.includes("rfemove bg") ||
+      lowerQuery.includes("cutout") ||
+      lowerQuery.includes("bg hata") ||
+      lowerQuery.includes("background hata");
+
+    const queryMentionsPdf =
+      lowerQuery.includes("make pdf") ||
+      lowerQuery.includes("convert to pdf") ||
+      lowerQuery.includes("image to pdf");
+
+    if (!hasImage && queryMentionsBg) {
+      const isGujarati = /[\u0A80-\u0AFF]|(photo|karo|kari|aapo|nathi|che)\b/i.test(latestUserQuery);
+      const isHindi = /[\u0900-\u097F]|(kardo|kijiye|hatao|karna|chahiye)\b/i.test(latestUserQuery);
+      const reply = isGujarati
+        ? "કૃપા કરીને જે ફોટોનું બેકગ્રાઉન્ડ દૂર કરવું છે તે અપલોડ કરો."
+        : isHindi
+        ? "कृपया वह फोटो अपलोड करें जिसका बैकग्राउंड आप हटाना चाहते हैं।"
+        : "Please upload or share the image you'd like me to remove the background from.";
+
+      return {
+        reply,
+        steps: [],
+        toolExecuted: undefined,
+      };
+    }
+
+    if (!hasImage && !hasPdf && queryMentionsPdf) {
+      return {
+        reply: "Please upload or drop the image or document you would like to convert to PDF.",
+        steps: [],
+        toolExecuted: undefined,
+      };
+    }
+
+    // 5. Multi-Step Execution Loop
     let currentIteration = 0;
     let lastToolResult: any = null;
     let finalAssistantReply = "";
@@ -215,7 +276,11 @@ export class LocalAgentOrchestrator {
       });
 
       // Check if model emitted tool calls (only check query fallback on first iteration)
-      const toolCalls = this.parseToolCalls(modelOutput, currentIteration === 1 ? latestUserQuery : undefined);
+      const toolCalls = this.parseToolCalls(
+        modelOutput,
+        currentIteration === 1 ? latestUserQuery : undefined,
+        { hasImage, hasPdf }
+      );
 
       if (toolCalls.length === 0) {
         // Model provided final answer
@@ -267,13 +332,20 @@ export class LocalAgentOrchestrator {
             role: "user",
             content: `Tool Execution Result for "${toolName}":\n${JSON.stringify(res)}\nPlease review this result and provide your natural answer to the user in their requested language.`,
           });
+
+          if (res && res.success === false && res.error) {
+            finalAssistantReply = res.error;
+            break;
+          }
         } catch (e: any) {
           const errRes = { success: false, error: e?.message || "Tool execution failed" };
           steps[steps.length - 1]!.result = errRes;
+          finalAssistantReply = errRes.error;
           modelMessages.push({
             role: "user",
             content: `Tool Execution Error:\n${JSON.stringify(errRes)}`,
           });
+          break;
         }
       }
 
@@ -282,20 +354,30 @@ export class LocalAgentOrchestrator {
         finalAssistantReply = lastToolResult.message || "Done — the requested operation was completed successfully.";
         break;
       }
+
+      if (finalAssistantReply) {
+        break;
+      }
     }
 
     if (!finalAssistantReply) {
       if (lastToolResult && lastToolResult.success !== false) {
         finalAssistantReply = lastToolResult.message || "Done — the requested operation was completed successfully.";
+      } else if (lastToolResult && lastToolResult.error) {
+        finalAssistantReply = lastToolResult.error;
+      } else if (!hasAnyFile) {
+        finalAssistantReply = "Please upload or share a file to proceed with this operation.";
       } else {
-        finalAssistantReply = "Processing completed.";
+        finalAssistantReply = "I am ready. How can I assist you with your files?";
       }
     }
+
+    const hasSuccessfulTool = lastToolResult && lastToolResult.success !== false;
 
     return {
       reply: finalAssistantReply,
       steps,
-      toolExecuted: lastToolResult
+      toolExecuted: hasSuccessfulTool
         ? {
             toolName: steps[steps.length - 1]?.tool || "tool",
             action: lastToolResult.action || steps[steps.length - 1]?.tool || "tool",

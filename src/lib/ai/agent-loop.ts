@@ -112,7 +112,7 @@ export async function runAgentChat(options: AgentRequestOptions): Promise<Respon
           writer.write({ type: "text-end", id: textId });
 
           // If local agent executed a real tool, stream custom event so UI renders preview/downloads
-          if (localResult.toolExecuted) {
+          if (localResult.toolExecuted && localResult.toolExecuted.result?.success !== false) {
             writer.write({
               type: "custom",
               kind: "karudi.toolResult",
