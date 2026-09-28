@@ -1546,16 +1546,35 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
         /give\s*(me)?\s*(a|the)?\s*binary/i.test(text.trim()) ||
         /convert\s*(to\s*)?(jpg|jpeg|png|webp|pdf|word|docx|binary|bin|base64)/i.test(text.trim());
       if (isFormatChoice) {
-        for (let i = messages.length - 1; i >= 0; i--) {
-          const m = messages[i];
-          if (!m || !m.parts) continue;
-          const filePart = m.parts.find((p: any) => p.type === "file" && (p as any).url);
-          if (filePart && (filePart as any).url) {
-            currentImg = (filePart as any).url;
-            currentFileName = (filePart as any).filename || currentFileName;
-            setActiveImageSrc(currentImg);
-            setActiveFilename(currentFileName);
-            break;
+        if (activeCutoutSrc) {
+          currentImg = activeCutoutSrc;
+          currentFileName = activeFilename.replace(/\.[^.]+$/, "") + "_cutout.png";
+          setActiveImageSrc(currentImg);
+          setActiveFilename(currentFileName);
+        } else {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (!m || !m.parts) continue;
+            const toolPart = m.parts.find((p: any) =>
+              (p.type === "custom" && p.providerMetadata?.karudi?.toolInvocation?.state === "result") ||
+              (p.type === "tool-invocation" && p.toolInvocation?.state === "result")
+            ) as any;
+            const invocation = toolPart?.toolInvocation || toolPart?.providerMetadata?.karudi?.toolInvocation;
+            if (invocation?.result?.resultImageSrc) {
+              currentImg = invocation.result.resultImageSrc;
+              currentFileName = invocation.result.filename || "cutout.png";
+              setActiveImageSrc(currentImg);
+              setActiveFilename(currentFileName);
+              break;
+            }
+            const filePart = m.parts.find((p: any) => p.type === "file" && (p as any).url);
+            if (filePart && (filePart as any).url) {
+              currentImg = (filePart as any).url;
+              currentFileName = (filePart as any).filename || currentFileName;
+              setActiveImageSrc(currentImg);
+              setActiveFilename(currentFileName);
+              break;
+            }
           }
         }
       }

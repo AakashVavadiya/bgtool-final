@@ -66,6 +66,24 @@ export class LocalAgentOrchestrator {
       }
     }
 
+    // Semantic action recovery: if the local LLM declared its execution intent in text
+    if (specs.length === 0) {
+      const lower = modelOutput.toLowerCase();
+      const mentionsRemoveBg = lower.includes("remove the background") || lower.includes("remove background") || lower.includes("removing the background");
+      const mentionsPdf = lower.includes("create a pdf") || lower.includes("make a pdf") || lower.includes("convert to pdf") || lower.includes("creating a pdf");
+      const mentionsResize = lower.includes("resize") && (lower.includes("image") || lower.includes("photo"));
+      const mentionsCompress = lower.includes("compress") && (lower.includes("image") || lower.includes("pdf"));
+
+      if (mentionsRemoveBg && mentionsPdf) {
+        specs.push({ tool: "remove_background", arguments: {} });
+        specs.push({ tool: "image_to_pdf", arguments: {} });
+      } else if (mentionsRemoveBg) {
+        specs.push({ tool: "remove_background", arguments: {} });
+      } else if (mentionsPdf) {
+        specs.push({ tool: "image_to_pdf", arguments: {} });
+      }
+    }
+
     return specs;
   }
 

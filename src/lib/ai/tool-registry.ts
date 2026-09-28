@@ -200,6 +200,24 @@ export const KARUDI_TOOL_REGISTRY = {
     subModel: "brahmaputra",
   },
 
+  image_to_pdf: {
+    name: "Image to PDF Converter",
+    toolId: "image_to_pdf",
+    description: "Convert or transcode an image (including transparent PNG cutouts) into a standard PDF document.",
+    purpose: "Image to PDF document conversion.",
+    category: "image",
+    inputTypes: ["JPG", "PNG", "WEBP"],
+    outputTypes: ["PDF"],
+    requiredParameters: [],
+    optionalParameters: ["filename"],
+    requiresFile: true,
+    supportsMultipleFiles: false,
+    supportedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
+    limitations: "Converts current or previous cutout image into a single-page PDF.",
+    errorHandling: "Ensures PDF formatting conforms to standard specifications.",
+    subModel: "brahmaputra",
+  },
+
   merge_pdf: {
     name: "Merge PDF Documents",
     toolId: "merge_pdf",
@@ -654,6 +672,29 @@ export function createAiSdkTools(context: ToolExecutionContext) {
           };
         }
         return await runImageTool("image_to_binary", { imageSrc });
+      },
+    }),
+
+    image_to_pdf: tool({
+      description: KARUDI_TOOL_REGISTRY.image_to_pdf.description,
+      inputSchema: z.object({
+        filename: z.string().optional().describe("Output PDF filename"),
+      }),
+      execute: async (args) => {
+        const imageSrc = getActiveImageSrc();
+        if (!imageSrc) {
+          return {
+            success: false,
+            tool: "image_to_pdf",
+            error: "No image found to convert to PDF. Please upload or specify an image.",
+          };
+        }
+        const res = await runImageTool("image_to_pdf", {
+          imageSrc,
+          filename: args.filename || (context.activeFile?.name ? context.activeFile.name.replace(/\.[^.]+$/, ".pdf") : "converted_document.pdf"),
+        });
+        if (res.success) context.lastToolResult = res;
+        return res;
       },
     }),
 

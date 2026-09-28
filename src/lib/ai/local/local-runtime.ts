@@ -54,7 +54,7 @@ class LocalModelRuntimeManager {
     // Check if port is already active (e.g. from previous run)
     try {
       const probe = await fetch(`http://${this.config.host}:${this.config.port}/health`, {
-        signal: AbortSignal.timeout(1000),
+        signal: AbortSignal.timeout(2000),
       });
       if (probe.ok) {
         this.isReady = true;
@@ -75,7 +75,6 @@ class LocalModelRuntimeManager {
       "-t", "4", // 4 CPU threads for i7
       "-b", "512",
       "--temp", this.config.temperature.toString(),
-      "--nobrowser",
     ];
 
     try {

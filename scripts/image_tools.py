@@ -357,6 +357,35 @@ def op_to_binary(params):
         "message": f"Encoded image into {len(raw_bytes):,} raw bytes ({len(raw_bytes)*8:,} bits)."
     }
 
+def op_image_to_pdf(params):
+    src = params.get("imageSrc", "")
+    img, _ = load_image(src)
+    buf = io.BytesIO()
+    if img.mode in ("RGBA", "LA", "P"):
+        rgb_img = Image.new("RGB", img.size, (255, 255, 255))
+        if img.mode == "P":
+            img = img.convert("RGBA")
+        rgb_img.paste(img, mask=img.split()[3] if len(img.split()) == 4 else None)
+        img = rgb_img
+    elif img.mode != "RGB":
+        img = img.convert("RGB")
+    
+    img.save(buf, format="PDF", resolution=100.0)
+    pdf_bytes = buf.getvalue()
+    encoded = base64.b64encode(pdf_bytes).decode("utf-8")
+    out_filename = params.get("filename", "converted_document.pdf")
+    if not out_filename.lower().endswith(".pdf"):
+        out_filename += ".pdf"
+    
+    return {
+        "success": True,
+        "tool": "image_to_pdf",
+        "action": "image_to_pdf",
+        "resultPdfDataUrl": f"data:application/pdf;base64,{encoded}",
+        "filename": out_filename,
+        "message": f"Done — your PDF is ready ({len(pdf_bytes):,} bytes)."
+    }
+
 OPERATIONS = {
     "remove_background": op_remove_background,
     "resize_image": op_resize,
@@ -367,6 +396,7 @@ OPERATIONS = {
     "crop_image": op_crop,
     "analyze_image": op_analyze,
     "image_to_binary": op_to_binary,
+    "image_to_pdf": op_image_to_pdf,
 }
 
 def main():
