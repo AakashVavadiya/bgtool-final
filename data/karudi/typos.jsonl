@@ -1,0 +1,10 @@
+{"input": "remov bg", "corrected": "remove background", "tool": "remove_background"}
+{"input": "remov bakground", "corrected": "remove background", "tool": "remove_background"}
+{"input": "remove bakgroud", "corrected": "remove background", "tool": "remove_background"}
+{"input": "compresss image", "corrected": "compress image", "tool": "compress_image"}
+{"input": "compres this pdff", "corrected": "compress this pdf", "tool": "compress_pdf"}
+{"input": "resiz photo to 800*600", "corrected": "resize photo to 800x600", "tool": "resize_image"}
+{"input": "convet to webp", "corrected": "convert to webp", "tool": "convert_image_format"}
+{"input": "conert this file", "corrected": "convert this file", "tool": "convert_image_format"}
+{"input": "pdf sumary", "corrected": "pdf summary", "tool": "summarize_document"}
+{"input": "exel export", "corrected": "excel export", "tool": "jpg_to_excel"}

@@ -1,0 +1,8 @@
+{"user": "Who founded Microsoft and when?", "needs_web": true, "reason": "Requires general world knowledge and historical verification"}
+{"user": "What is the latest stock price of Apple?", "needs_web": true, "reason": "Real-time volatile information not present in local tool state"}
+{"user": "What is the capital of France?", "needs_web": true, "reason": "General trivia fact"}
+{"user": "Remove the background from this photo", "needs_web": false, "reason": "Local Karudi image tool available (remove_background)"}
+{"user": "Compress this image", "needs_web": false, "reason": "Local Karudi image tool available (compress_image)"}
+{"user": "Resize this photo to 1000px wide", "needs_web": false, "reason": "Local Karudi image tool available (resize_image)"}
+{"user": "What is the invoice number in this PDF?", "needs_web": false, "reason": "Grounded strictly in uploaded PDF document content"}
+{"user": "Summarize this uploaded document", "needs_web": false, "reason": "Grounded strictly in uploaded PDF document content"}

@@ -1,0 +1,24 @@
+{"user": "remove bg", "task": "tool_execution", "tool": "remove_background", "arguments": {}, "language": "en"}
+{"user": "remove background", "task": "tool_execution", "tool": "remove_background", "arguments": {}, "language": "en"}
+{"user": "make background transparent", "task": "tool_execution", "tool": "remove_background", "arguments": {}, "language": "en"}
+{"user": "delete the background", "task": "tool_execution", "tool": "remove_background", "arguments": {}, "language": "en"}
+{"user": "erase background", "task": "tool_execution", "tool": "remove_background", "arguments": {}, "language": "en"}
+{"user": "cut out subject", "task": "tool_execution", "tool": "remove_background", "arguments": {}, "language": "en"}
+{"user": "make this transparent", "task": "tool_execution", "tool": "remove_background", "arguments": {}, "language": "en"}
+{"user": "background hata do", "task": "tool_execution", "tool": "remove_background", "arguments": {}, "language": "hi"}
+{"user": "is photo ka background nikal do", "task": "tool_execution", "tool": "remove_background", "arguments": {}, "language": "hi"}
+{"user": "Aa photo nu background remove kari do", "task": "tool_execution", "tool": "remove_background", "arguments": {}, "language": "gu"}
+{"user": "આ ફોટાનું બેકગ્રાઉન્ડ દૂર કરો", "task": "tool_execution", "tool": "remove_background", "arguments": {}, "language": "gu"}
+{"user": "compress this image", "task": "tool_execution", "tool": "compress_image", "arguments": {"quality": 80}, "language": "en"}
+{"user": "photo size chota kardo", "task": "tool_execution", "tool": "compress_image", "arguments": {"quality": 75}, "language": "hi"}
+{"user": "resize to 1200x800", "task": "tool_execution", "tool": "resize_image", "arguments": {"width": 1200, "height": 800}, "language": "en"}
+{"user": "make this image square", "task": "tool_execution", "tool": "square_image", "arguments": {"background": "blur"}, "language": "en"}
+{"user": "rotate 90 degrees", "task": "tool_execution", "tool": "rotate_image", "arguments": {"degrees": 90}, "language": "en"}
+{"user": "convert to webp", "task": "tool_execution", "tool": "convert_image_format", "arguments": {"targetFormat": "webp"}, "language": "en"}
+{"user": "convert this to png", "task": "tool_execution", "tool": "convert_image_format", "arguments": {"targetFormat": "png"}, "language": "en"}
+{"user": "convert image to pdf", "task": "tool_execution", "tool": "image_to_pdf", "arguments": {}, "language": "en"}
+{"user": "compress this pdf", "task": "tool_execution", "tool": "compress_pdf", "arguments": {"compressionLevel": "recommended"}, "language": "en"}
+{"user": "merge these pdfs", "task": "tool_execution", "tool": "merge_pdf", "arguments": {}, "language": "en"}
+{"user": "split pdf pages", "task": "tool_execution", "tool": "split_pdf", "arguments": {"pageRanges": "1-end"}, "language": "en"}
+{"user": "lock this pdf with password secure123", "task": "tool_execution", "tool": "protect_pdf", "arguments": {"password": "secure123"}, "language": "en"}
+{"user": "extract text from this document", "task": "tool_execution", "tool": "ocr_pdf", "arguments": {}, "language": "en"}

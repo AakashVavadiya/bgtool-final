@@ -1,17 +1,12 @@
 import {
-  streamText,
-  stepCountIs,
-  convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
   type UIMessage,
 } from "ai";
-import { getLanguageModel } from "./model";
-import { buildSystemPrompt } from "./prompts";
-import { createAiSdkTools, type ToolExecutionContext } from "./tool-registry";
+import { type ToolExecutionContext } from "./tool-registry";
 import { extractDocumentContext, type ExtractedDocumentContext } from "./document-context";
-import { getAIConfig } from "./config";
 import { executeLocalAgent } from "./local-engine";
+import { executeNativeKarudiModel } from "./local";
 
 export interface AgentRequestOptions {
   messages: UIMessage[];
@@ -66,12 +61,9 @@ export async function runAgentChat(options: AgentRequestOptions): Promise<Respon
     documentContext,
   };
 
-  // 4. Check if external custom model endpoint is configured in .env
-  const aiConfig = getAIConfig();
-  if (!aiConfig.isConfigured) {
-    // RUN 100% LOCALLY: Native Karudi Autonomous AI Engine
-    // Zero external APIs, zero third-party cloud services, 100% local on user PC
-    const localResult = await executeLocalAgent(
+  // 4. Primary: Run Real Native Karudi Local LLM Model
+  try {
+    const localResult = await executeNativeKarudiModel(
       { messages, isThinking, tier },
       toolContext
     );
@@ -91,7 +83,7 @@ export async function runAgentChat(options: AgentRequestOptions): Promise<Respon
               id: textId,
               delta: words[i] + (i === words.length - 1 ? "" : " "),
             });
-            await new Promise((r) => setTimeout(r, 12));
+            await new Promise((r) => setTimeout(r, 10));
           }
 
           writer.write({ type: "text-end", id: textId });
@@ -115,103 +107,51 @@ export async function runAgentChat(options: AgentRequestOptions): Promise<Respon
         },
       }),
     });
-  }
+  } catch (localErr: any) {
+    console.warn("[AgentLoop] Native local model runtime notice:", localErr?.message);
+    // If local runtime model is initializing, use local autonomous fallback
+    const fallbackResult = await executeLocalAgent(
+      { messages, isThinking, tier },
+      toolContext
+    );
 
-  // 4. Resolve Model and System Prompt
-  const modelInfo = getLanguageModel({ isThinking, tier });
-
-  const promptFiles = [];
-  if (documentContext && documentContext.fullText) {
-    promptFiles.push({
-      name: documentContext.filename,
-      mediaType: documentContext.fileType === "pdf" ? "application/pdf" : "text/plain",
-      extractedText: documentContext.fullText,
-      structureInfo: documentContext.structureSummary,
-    });
-  } else if (activeFile) {
-    promptFiles.push({
-      name: activeFile.name,
-      mediaType: activeFile.mediaType,
-    });
-  }
-
-  const systemPrompt = buildSystemPrompt({
-    uploadedFiles: promptFiles,
-    activeFilename: activeFile?.name,
-    isThinking,
-    tier,
-  });
-
-  // 5. Create AI SDK Tools
-  const tools = createAiSdkTools(toolContext);
-
-  // 6. Convert UI messages to model messages
-  // To protect context window and avoid provider payload limits with huge base64 strings,
-  // we filter out massive raw base64 dataUrls from the message payload since the extracted
-  // text and tools already have direct access to the files.
-  const cleanedMessages = messages.map((m) => {
-    if (!m.parts) return m;
-    const cleanedParts = m.parts.map((p) => {
-      if (p.type === "file") {
-        const filePart = p as any;
-        const isSmallImage =
-          filePart.mediaType?.startsWith("image/") &&
-          typeof filePart.url === "string" &&
-          filePart.url.length < 500_000;
-
-        if (isSmallImage) {
-          return p;
-        }
-        // Replace huge raw dataUrl with descriptive reference for the LLM
-        return {
-          type: "text",
-          text: `[Attached File: "${filePart.filename || "file"}" (${filePart.mediaType || "application/octet-stream"})]`,
-        };
-      }
-      return p;
-    });
-    return {
-      ...m,
-      parts: cleanedParts,
-    };
-  });
-
-  const modelMessages = await convertToModelMessages(cleanedMessages as UIMessage[], {
-    ignoreIncompleteToolCalls: true,
-  });
-
-  try {
-    // 7. Execute Real LLM Tool-Calling Stream
-    const streamResult = streamText({
-      model: modelInfo.model,
-      system: systemPrompt,
-      messages: modelMessages,
-      tools,
-      stopWhen: stepCountIs(5), // Multi-step tool calls up to 5 steps
-      maxRetries: 2,
-    });
-
-    return streamResult.toUIMessageStreamResponse({
-      originalMessages: messages,
-    });
-  } catch (err: any) {
-    console.error("[AgentLoop Error]:", err);
-
-    // Friendly error fallback stream without leaking stack trace
     return createUIMessageStreamResponse({
       stream: createUIMessageStream({
         originalMessages: messages,
         async execute({ writer }) {
-          const textId = "err_" + Date.now();
+          const textId = "karudi_fallback_" + Date.now();
           writer.write({ type: "text-start", id: textId });
-          writer.write({
-            type: "text-delta",
-            id: textId,
-            delta: `I encountered an unexpected issue while processing your request with ${modelInfo.provider}. Please verify your file format or try again in a few moments.`,
-          });
+
+          const words = fallbackResult.reply.split(" ");
+          for (let i = 0; i < words.length; i++) {
+            writer.write({
+              type: "text-delta",
+              id: textId,
+              delta: words[i] + (i === words.length - 1 ? "" : " "),
+            });
+            await new Promise((r) => setTimeout(r, 12));
+          }
+
           writer.write({ type: "text-end", id: textId });
+
+          if (fallbackResult.toolExecuted) {
+            writer.write({
+              type: "custom",
+              kind: "karudi.toolResult",
+              providerMetadata: {
+                karudi: {
+                  toolInvocation: {
+                    state: "result",
+                    toolName: fallbackResult.toolExecuted.toolName,
+                    result: fallbackResult.toolExecuted.result,
+                  },
+                },
+              },
+            });
+          }
         },
       }),
     });
   }
 }
+

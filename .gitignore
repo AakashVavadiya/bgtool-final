@@ -35,3 +35,8 @@ ganga_native_*.png
 __pycache__/
 *.pyc
 
+# Local AI Models and Inference Binaries
+models/**/*.gguf
+bin/
+scratch/
+

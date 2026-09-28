@@ -1,0 +1,6 @@
+{"document_type": "invoice", "user_query": "What is the GST number?", "grounded_rule": "Must match GST format strictly from text, otherwise respond not found", "example_answer": "The GST number in this document is 24AABCK1234F1Z5."}
+{"document_type": "invoice", "user_query": "What is the invoice total?", "grounded_rule": "Extract grand total amount", "example_answer": "The total invoice amount is ₹14,500."}
+{"document_type": "pdf_report", "user_query": "Summarize this PDF", "grounded_rule": "Produce concise multi-bullet structural summary", "example_answer": "Summary of uploaded report:\n- Key point 1\n- Key point 2"}
+{"document_type": "pdf_report", "user_query": "Aa PDF nu summary Gujarati ma aapo", "grounded_rule": "Generate summary in Gujarati", "example_answer": "આ અપલોડ કરેલ PDF નો સારાંશ:\n- મુખ્ય મુદ્દો ૧\n- મુખ્ય મુદ્દો ૨"}
+{"document_type": "contract", "user_query": "What does page 5 say?", "grounded_rule": "Retrieve text from page 5 strictly", "example_answer": "Page 5 details the termination clause and dispute resolution mechanism."}
+{"document_type": "invoice", "user_query": "Who is the CEO of Google?", "grounded_rule": "External question not in invoice -> redirect or use external research", "example_answer": "That information is not in the uploaded invoice document."}
